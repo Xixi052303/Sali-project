@@ -29,8 +29,17 @@ Godot 4.7 制作的竖屏移动端玩法竖切片。当前版本使用程序绘�
 - 餐车耐久、1秒受击无敌、结算统计和一键重开。
 - 720×1280、19.5:9和20:9竖屏适配结构。
 
-策划案中尚未确认的概率、区间和正式角色内容仍然是原型值，集中存放在 `data/` 资源与时间轴中。
+策划案中尚未确认的概率、区间和正式角色内容仍然是原型值。当前时间轴以
+`balance_tables/时间轴.xlsx`为运行主源，其他已接入数值仍主要存放在`data/`资源中。
 投射物只在发射瞬间确定方向；数据层已预留按食材开启追踪的特殊强化接口。
+
+## 数值表
+
+时间轴可以直接在`balance_tables/时间轴.xlsx`中修改。保存并关闭工作簿后重新开始本局或重新运行
+`run.tscn`，游戏会读取最新保存值；运行中的既有单局不会热替换，以免重复触发已经发生的事件。
+
+成功读取时输出`BALANCE_TIMELINE_LOADED`。表格缺失或校验失败时输出
+`BALANCE_TIMELINE_FALLBACK`，并使用`data/timelines/vertical_slice.tres`作为安全回退。
 
 ## 自动校验
 
@@ -52,6 +61,8 @@ Godot_v4.7-stable_win64_console.exe --headless --path . --quit-after 20000 -- --
 
 - `scenes/`：可运行场景。
 - `scripts/`：单局、单位、武器、界面和数据类型。
-- `data/`：食材、食客、Boss及竖切片时间轴。
+- `balance_tables/`：数值策划 Excel 主表与综合查看表。
+- `addons/excel_reader_47/`：可跨项目复制的 Godot 4.7 `.xlsx`读取器。
+- `data/`：食材、食客、Boss及时间轴安全回退资源。
 - `docs/`：玩法策划案。
 - `tests/`：无需第三方插件的核心规则测试。

@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scripts/run.gd" id="1_run"]
 [ext_resource type="Script" path="res://scripts/world_background.gd" id="2_background"]
@@ -14,6 +14,7 @@
 [ext_resource type="Resource" path="res://data/customers/elite_guest.tres" id="12_elite"]
 [ext_resource type="Resource" path="res://data/bosses/prototype_boss.tres" id="13_boss"]
 [ext_resource type="Resource" path="res://data/timelines/vertical_slice.tres" id="14_timeline"]
+[ext_resource type="Texture2D" path="res://assets/backgrounds/road_loop.png" id="15_road"]
 
 [node name="Run" type="Node2D"]
 script = ExtResource("1_run")
@@ -29,6 +30,22 @@ boss_data = ExtResource("13_boss")
 unique_name_in_owner = true
 z_index = -20
 script = ExtResource("2_background")
+
+[node name="RoadTiles" type="Node2D" parent="Background"]
+unique_name_in_owner = true
+position = Vector2(-137.85, 0)
+scale = Vector2(1.0582, 0.76555)
+
+[node name="RoadB" type="Sprite2D" parent="Background/RoadTiles"]
+unique_name_in_owner = true
+position = Vector2(0, -1672)
+texture = ExtResource("15_road")
+centered = false
+
+[node name="RoadA" type="Sprite2D" parent="Background/RoadTiles"]
+unique_name_in_owner = true
+texture = ExtResource("15_road")
+centered = false
 
 [node name="Gates" type="Node2D" parent="."]
 unique_name_in_owner = true

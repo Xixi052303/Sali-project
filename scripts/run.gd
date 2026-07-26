@@ -26,6 +26,8 @@ class ForwardSpawnRequest:
 	func _init(request_kind: Kind) -> void:
 		kind = request_kind
 
+const TIMELINE_WORKBOOK_PATH: String = "res://balance_tables/时间轴.xlsx"
+
 @export_group("Prototype data")
 @export var potato_data: FoodData
 @export var baguette_data: FoodData
@@ -69,6 +71,7 @@ var _smoke_minimum_gate_customer_gap: float = INF
 
 
 func _ready() -> void:
+	_load_timeline_balance()
 	_smoke_test = OS.get_cmdline_user_args().has("--smoke-test")
 	if _smoke_test:
 		_upgrade_rng.seed = 1701
@@ -98,6 +101,30 @@ func _ready() -> void:
 	hud.set_phase("准备出餐 · 横向拖动餐车")
 	hud.show_toast("按住并横向拖动，松手后餐车留在原位")
 	phase = Phase.FORWARD
+
+
+# 每次进入单局读取已保存的 Excel；非法表只回退场景装配的 .tres。
+func _load_timeline_balance() -> void:
+	var load_result: TimelineExcelLoader.LoadResult = TimelineExcelLoader.load_from_excel(
+		TIMELINE_WORKBOOK_PATH,
+		director.timeline
+	)
+	if load_result.timeline != null:
+		director.timeline = load_result.timeline
+	if load_result.loaded_from_excel:
+		print(
+			"BALANCE_TIMELINE_LOADED path=%s events=%d" % [
+				TIMELINE_WORKBOOK_PATH,
+				director.timeline.event_times.size(),
+			]
+		)
+	else:
+		push_warning(
+			"BALANCE_TIMELINE_FALLBACK path=%s reason=%s" % [
+				TIMELINE_WORKBOOK_PATH,
+				load_result.error_message,
+			]
+		)
 
 
 func _process(delta: float) -> void:
@@ -733,5 +760,5 @@ func _roll_customer_reward() -> UpgradeData:
 
 func _current_baseline_appetite() -> float:
 	if director.timeline == null:
-		return 32.0
+		return 20.0
 	return director.timeline.baseline_appetite_at(state.elapsed_seconds)

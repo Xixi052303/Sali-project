@@ -6,7 +6,7 @@
 script = ExtResource("1_timeline")
 event_times = PackedFloat32Array(2, 18, 27, 39, 50, 62, 74, 80, 86, 94, 102, 110, 118, 126, 135)
 event_ids = PackedStringArray("start_gate", "gate_0", "gate_1", "gate_2", "gate_3", "gate_4", "gate_5", "elite", "gate_6", "gate_7", "gate_8", "gate_9", "gate_10", "gate_11", "boss")
-baseline_appetite_start = 32.0
-baseline_appetite_end = 80.0
+baseline_appetite_start = 20.0
+baseline_appetite_end = 300.0
 baseline_appetite_end_time = 135.0
 baseline_appetite_exponent = 1.6

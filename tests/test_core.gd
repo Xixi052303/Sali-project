@@ -168,11 +168,37 @@ func _test_customer_reward_gate() -> void:
 
 
 func _test_timeline() -> void:
-	var timeline: EncounterTimeline = load("res://data/timelines/vertical_slice.tres") as EncounterTimeline
+	var fallback: EncounterTimeline = load("res://data/timelines/vertical_slice.tres") as EncounterTimeline
+	var load_result: TimelineExcelLoader.LoadResult = TimelineExcelLoader.load_from_excel(
+		"res://balance_tables/时间轴.xlsx",
+		fallback
+	)
+	_check(load_result.loaded_from_excel, "时间轴直接读取 Excel 数值主表")
+	var timeline: EncounterTimeline = load_result.timeline
 	_check(timeline != null and timeline.is_valid(), "时间轴事件数量一致")
-	_check(is_equal_approx(timeline.baseline_appetite_at(0.0), 32.0), "基准胃口曲线起点")
-	_check(is_equal_approx(timeline.baseline_appetite_at(135.0), 80.0), "基准胃口曲线终点")
-	_check(timeline.baseline_appetite_at(67.5) < 56.0, "基准胃口在中段保持加速增长形状")
+	if timeline == null:
+		return
+	_check(
+		is_equal_approx(timeline.baseline_appetite_at(0.0), roundf(timeline.baseline_appetite_start)),
+		"基准胃口曲线使用 Excel 起点"
+	)
+	_check(
+		is_equal_approx(
+			timeline.baseline_appetite_at(timeline.baseline_appetite_end_time),
+			roundf(timeline.baseline_appetite_end)
+		),
+		"基准胃口曲线使用 Excel 终点和结束时间"
+	)
+	var midpoint_time: float = timeline.baseline_appetite_end_time * 0.5
+	var expected_midpoint: float = roundf(lerpf(
+		timeline.baseline_appetite_start,
+		timeline.baseline_appetite_end,
+		pow(0.5, timeline.baseline_appetite_exponent)
+	))
+	_check(
+		is_equal_approx(timeline.baseline_appetite_at(midpoint_time), expected_midpoint),
+		"基准胃口曲线使用 Excel 增长指数"
+	)
 	var gate_count: int = 0
 	for event_text: String in timeline.event_ids:
 		if event_text.begins_with("gate_"):
@@ -181,7 +207,17 @@ func _test_timeline() -> void:
 	_check(timeline.event_ids.has("elite"), "时间轴包含精英")
 	_check(timeline.event_ids.has("boss"), "时间轴包含Boss")
 	var post_elite_gate_index: int = timeline.event_ids.find("gate_6")
-	_check(post_elite_gate_index >= 0 and is_equal_approx(timeline.event_times[post_elite_gate_index], 86.0), "精英后首门提前衔接")
+	var elite_index: int = timeline.event_ids.find("elite")
+	_check(
+		post_elite_gate_index > elite_index
+		and timeline.event_times[post_elite_gate_index] >= timeline.event_times[elite_index],
+		"精英后首门保持在精英事件之后"
+	)
+	var missing_result: TimelineExcelLoader.LoadResult = TimelineExcelLoader.load_from_excel(
+		"res://balance_tables/__missing__.xlsx",
+		fallback
+	)
+	_check(missing_result.used_fallback and missing_result.timeline == fallback, "Excel 缺失时使用 .tres 回退")
 
 
 func _test_resources() -> void:
