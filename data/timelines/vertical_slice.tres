@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="EncounterTimeline" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/encounter_timeline.gd" id="1_timeline"]
+
+[resource]
+script = ExtResource("1_timeline")
+event_times = PackedFloat32Array(2, 18, 27, 39, 50, 62, 74, 80, 98, 103, 108, 113, 118, 126, 135)
+event_ids = PackedStringArray("start_gate", "gate_0", "gate_1", "gate_2", "gate_3", "gate_4", "gate_5", "elite", "gate_6", "gate_7", "gate_8", "gate_9", "gate_10", "gate_11", "boss")

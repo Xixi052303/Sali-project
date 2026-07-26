@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CustomerData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/customer_data.gd" id="1_customer"]
+
+[resource]
+script = ExtResource("1_customer")
+id = &"elite_guest"
+display_name = "六席贵客"
+kind = 3
+appetite = 180.0
+move_speed = 18.0
+occupied_regions = 6
+body_color = Color(0.51, 0.25, 0.24, 1)

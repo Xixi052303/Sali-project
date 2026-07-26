@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="FoodData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/food_data.gd" id="1_food"]
+
+[resource]
+script = ExtResource("1_food")
+id = &"potato"
+display_name = "土豆"
+attack_kind = 0
+initial_aim_mode = 0
+initial_tracking_mode = 0
+homing_turn_speed = 4.5
+base_satisfaction = 10.0
+base_interval = 0.8
+projectile_speed = 760.0
+projectile_radius = 17.0
+base_lifetime = 1.6
+pierce_count = 1
+visual_color = Color(0.89, 0.71, 0.29, 1)

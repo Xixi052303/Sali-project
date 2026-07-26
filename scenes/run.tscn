@@ -1,0 +1,62 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://scripts/run.gd" id="1_run"]
+[ext_resource type="Script" path="res://scripts/world_background.gd" id="2_background"]
+[ext_resource type="Script" path="res://scripts/cart.gd" id="3_cart"]
+[ext_resource type="Script" path="res://scripts/weapon_controller.gd" id="4_weapon"]
+[ext_resource type="Script" path="res://scripts/encounter_director.gd" id="5_director"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="6_hud"]
+[ext_resource type="Resource" path="res://data/foods/potato.tres" id="7_potato"]
+[ext_resource type="Resource" path="res://data/foods/baguette.tres" id="8_baguette"]
+[ext_resource type="Resource" path="res://data/customers/basic_guest.tres" id="9_basic"]
+[ext_resource type="Resource" path="res://data/customers/fast_guest.tres" id="10_fast"]
+[ext_resource type="Resource" path="res://data/customers/ranged_guest.tres" id="11_ranged"]
+[ext_resource type="Resource" path="res://data/customers/elite_guest.tres" id="12_elite"]
+[ext_resource type="Resource" path="res://data/bosses/prototype_boss.tres" id="13_boss"]
+[ext_resource type="Resource" path="res://data/timelines/vertical_slice.tres" id="14_timeline"]
+
+[node name="Run" type="Node2D"]
+script = ExtResource("1_run")
+potato_data = ExtResource("7_potato")
+baguette_data = ExtResource("8_baguette")
+basic_guest_data = ExtResource("9_basic")
+fast_guest_data = ExtResource("10_fast")
+ranged_guest_data = ExtResource("11_ranged")
+elite_guest_data = ExtResource("12_elite")
+boss_data = ExtResource("13_boss")
+
+[node name="Background" type="Node2D" parent="."]
+unique_name_in_owner = true
+z_index = -20
+script = ExtResource("2_background")
+
+[node name="Gates" type="Node2D" parent="."]
+unique_name_in_owner = true
+
+[node name="Entities" type="Node2D" parent="."]
+unique_name_in_owner = true
+
+[node name="Projectiles" type="Node2D" parent="."]
+unique_name_in_owner = true
+
+[node name="Drops" type="Node2D" parent="."]
+unique_name_in_owner = true
+
+[node name="Cart" type="Node2D" parent="."]
+unique_name_in_owner = true
+z_index = 40
+script = ExtResource("3_cart")
+
+[node name="WeaponController" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("4_weapon")
+
+[node name="EncounterDirector" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("5_director")
+timeline = ExtResource("14_timeline")
+
+[node name="Hud" type="CanvasLayer" parent="."]
+unique_name_in_owner = true
+layer = 100
+script = ExtResource("6_hud")
