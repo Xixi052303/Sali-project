@@ -10,6 +10,22 @@ enum Phase {
 	FAILED,
 }
 
+
+class ForwardSpawnRequest:
+	enum Kind {
+		CUSTOMER,
+		ELITE,
+		GATE,
+	}
+
+	var kind: Kind
+	var customer_data: CustomerData
+	var gate_index: int = 0
+	var start_food_gate: bool = false
+
+	func _init(request_kind: Kind) -> void:
+		kind = request_kind
+
 @export_group("Prototype data")
 @export var potato_data: FoodData
 @export var baguette_data: FoodData
@@ -45,10 +61,19 @@ var _drop_counter: int = 0
 var _normal_wave_index: int = 0
 var _next_normal_spawn_time: float = 8.0
 var _smoke_test: bool = false
+# 请求队列保留时间轴顺序，并在预测到纵向追尾时延迟生成。
+var _forward_spawn_requests: Array[ForwardSpawnRequest] = []
+var _normal_waves_suspended: bool = false
+var _upgrade_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _smoke_minimum_gate_customer_gap: float = INF
 
 
 func _ready() -> void:
 	_smoke_test = OS.get_cmdline_user_args().has("--smoke-test")
+	if _smoke_test:
+		_upgrade_rng.seed = 1701
+	else:
+		_upgrade_rng.randomize()
 	state = RunState.new()
 	if _smoke_test:
 		state.maximum_durability = 10000.0
@@ -81,6 +106,9 @@ func _process(delta: float) -> void:
 		director.advance(state.elapsed_seconds)
 		if phase == Phase.FORWARD:
 			_advance_normal_waves()
+			_process_spawn_requests()
+			if _smoke_test:
+				_track_smoke_gate_customer_gap()
 		hud.set_time(state.elapsed_seconds)
 		if _smoke_test:
 			cart.target_x = 360.0 + sin(state.elapsed_seconds * 1.7) * 245.0
@@ -122,6 +150,22 @@ func get_priority_target() -> Node2D:
 			best_forward = forward
 			best_horizontal = horizontal
 			best_spawn_index = customer.spawn_index
+	for child: Node in gates.get_children():
+		if not child is UpgradeGate or child.is_queued_for_deletion():
+			continue
+		var gate: UpgradeGate = child as UpgradeGate
+		if gate.position.y >= cart.position.y:
+			continue
+		var gate_target: Node2D = gate.target_for_cart_x(cart.position.x)
+		if gate_target == null:
+			continue
+		var gate_forward: float = cart.position.y - gate.position.y
+		var gate_horizontal: float = absf(gate_target.global_position.x - cart.global_position.x)
+		if _target_is_better(gate_forward, gate_horizontal, gate.spawn_index, best_forward, best_horizontal, best_spawn_index):
+			best_target = gate_target
+			best_forward = gate_forward
+			best_horizontal = gate_horizontal
+			best_spawn_index = gate.spawn_index
 	if boss != null and is_instance_valid(boss) and boss.active:
 		var boss_forward: float = cart.position.y - boss.position.y
 		var boss_horizontal: float = absf(boss.position.x - cart.position.x)
@@ -161,6 +205,12 @@ func resolve_projectile_hits(projectile: FoodProjectile) -> void:
 			customer.receive_satisfaction(projectile.satisfaction)
 			if projectile.register_hit(customer):
 				return
+	for child: Node in gates.get_children():
+		if not child is UpgradeGate or child.is_queued_for_deletion():
+			continue
+		var gate: UpgradeGate = child as UpgradeGate
+		if gate.try_receive_projectile(projectile):
+			return
 	if boss != null and is_instance_valid(boss) and boss.active and projectile.can_hit(boss):
 		var boss_distance: float = projectile.global_position.distance_to(boss.global_position)
 		if boss_distance <= projectile.radius + boss.hit_radius():
@@ -204,33 +254,95 @@ func damage_cart(amount: float, source: String) -> void:
 
 func _on_timeline_event(event_id: StringName) -> void:
 	if event_id == &"start_gate":
-		_spawn_gate(0, true)
+		_queue_gate(0, true)
 	elif event_id == &"basic":
-		_spawn_customer(basic_guest_data)
+		_queue_customer(basic_guest_data)
 	elif event_id == &"fast":
-		_spawn_customer(fast_guest_data)
+		_queue_customer(fast_guest_data)
 	elif event_id == &"ranged":
-		_spawn_customer(ranged_guest_data)
+		_queue_customer(ranged_guest_data)
 	elif event_id == &"elite":
-		_spawn_elite()
+		_normal_waves_suspended = true
+		_queue_elite()
 	elif event_id == &"boss":
 		_start_boss()
 	elif String(event_id).begins_with("gate_"):
 		var gate_index: int = String(event_id).trim_prefix("gate_").to_int()
-		_spawn_gate(gate_index, false)
+		_queue_gate(gate_index, false)
 
 
-func _spawn_customer(customer_data: CustomerData) -> void:
-	if phase != Phase.FORWARD:
-		return
+# 将普通食客加入统一队列，避免同帧双生或与门产生视觉重叠。
+func _queue_customer(customer_data: CustomerData) -> void:
+	var request: ForwardSpawnRequest = ForwardSpawnRequest.new(ForwardSpawnRequest.Kind.CUSTOMER)
+	request.customer_data = customer_data
+	_forward_spawn_requests.append(request)
+
+
+func _queue_elite() -> void:
+	_forward_spawn_requests.append(ForwardSpawnRequest.new(ForwardSpawnRequest.Kind.ELITE))
+
+
+func _queue_gate(index: int, is_start_gate: bool) -> void:
+	var request: ForwardSpawnRequest = ForwardSpawnRequest.new(ForwardSpawnRequest.Kind.GATE)
+	request.gate_index = index
+	request.start_food_gate = is_start_gate
+	_forward_spawn_requests.append(request)
+
+
+# 按请求顺序生成；队首不安全时保留到后续帧，避免后来的事件越过它。
+func _process_spawn_requests() -> void:
+	var spawned_this_frame: int = 0
+	while not _forward_spawn_requests.is_empty() and spawned_this_frame < 4:
+		var request: ForwardSpawnRequest = _forward_spawn_requests[0]
+		if not _spawn_request_is_safe(request):
+			return
+		_forward_spawn_requests.pop_front()
+		match request.kind:
+			ForwardSpawnRequest.Kind.CUSTOMER:
+				_spawn_customer_now(request.customer_data)
+			ForwardSpawnRequest.Kind.ELITE:
+				_spawn_elite_now()
+			ForwardSpawnRequest.Kind.GATE:
+				_spawn_gate_now(request.gate_index, request.start_food_gate)
+		spawned_this_frame += 1
+
+
+# 对候选对象与全部活动前进对象做匀速路径预测，追尾风险解除后才生成。
+func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
+	var candidate_y: float = 0.0
+	var candidate_speed: float = 250.0
+	if request.kind == ForwardSpawnRequest.Kind.CUSTOMER:
+		if request.customer_data == null:
+			return false
+		candidate_y = Playfield.CUSTOMER_SPAWN_Y
+		candidate_speed = world_scroll_speed + request.customer_data.move_speed
+	elif request.kind == ForwardSpawnRequest.Kind.ELITE:
+		candidate_y = Playfield.CUSTOMER_SPAWN_Y
+		candidate_speed = world_scroll_speed + elite_guest_data.move_speed
+	for customer: Customer in customers:
+		if not is_instance_valid(customer) or not customer.active:
+			continue
+		if not playfield.forward_paths_are_separated(candidate_y, candidate_speed, customer.position.y, customer.travel_speed()):
+			return false
+	for child: Node in gates.get_children():
+		if not child is UpgradeGate or child.is_queued_for_deletion():
+			continue
+		var gate: UpgradeGate = child as UpgradeGate
+		if not playfield.forward_paths_are_separated(candidate_y, candidate_speed, gate.position.y, gate.travel_speed()):
+			return false
+	return true
+
+
+func _spawn_customer_now(customer_data: CustomerData) -> void:
 	_spawn_counter += 1
 	var customer: Customer = Customer.new()
 	customer.z_index = 10
 	var max_start: int = Playfield.REGION_COUNT - customer_data.occupied_regions
 	var first_region: int = (_spawn_counter * 2 + customer_data.kind) % (max_start + 1)
-	customer.position = Vector2(playfield.spawn_x(first_region, customer_data.occupied_regions), -95.0)
+	customer.position = Vector2(playfield.spawn_x(first_region, customer_data.occupied_regions), Playfield.CUSTOMER_SPAWN_Y)
 	entities.add_child(customer)
-	customer.configure(customer_data, self, _spawn_counter)
+	var appetite: float = roundf(_current_baseline_appetite() * customer_data.appetite_multiplier)
+	customer.configure(customer_data, self, _spawn_counter, appetite)
 	customer.satisfied.connect(_on_customer_satisfied)
 	customer.leaked.connect(_on_customer_leaked)
 	customer.ranged_attack.connect(_on_customer_ranged_attack)
@@ -239,10 +351,7 @@ func _spawn_customer(customer_data: CustomerData) -> void:
 
 func _advance_normal_waves() -> void:
 	var elapsed: float = state.elapsed_seconds
-	if elapsed >= 132.0:
-		return
-	if elapsed >= 78.0 and elapsed < 96.0:
-		_next_normal_spawn_time = 96.0
+	if elapsed >= 132.0 or _normal_waves_suspended:
 		return
 	while elapsed >= _next_normal_spawn_time and _next_normal_spawn_time < 132.0:
 		var pattern: int = _normal_wave_index % 5
@@ -251,23 +360,22 @@ func _advance_normal_waves() -> void:
 			customer_data = fast_guest_data
 		elif pattern == 4:
 			customer_data = ranged_guest_data
-		_spawn_customer(customer_data)
+		_queue_customer(customer_data)
 		if _normal_wave_index % 4 == 3:
-			_spawn_customer(basic_guest_data if pattern == 4 else fast_guest_data)
+			_queue_customer(basic_guest_data if pattern == 4 else fast_guest_data)
 		_normal_wave_index += 1
 		_next_normal_spawn_time += 3.2 if _next_normal_spawn_time < 78.0 else 2.8
 
 
-func _spawn_elite() -> void:
-	if phase != Phase.FORWARD:
-		return
+func _spawn_elite_now() -> void:
 	_elite_started_at = state.elapsed_seconds
 	_spawn_counter += 1
 	var elite: Customer = Customer.new()
 	elite.z_index = 12
-	elite.position = Vector2(360.0, -95.0)
+	elite.position = Vector2(360.0, Playfield.CUSTOMER_SPAWN_Y)
 	entities.add_child(elite)
-	elite.configure(elite_guest_data, self, _spawn_counter)
+	var appetite: float = roundf(_current_baseline_appetite() * elite_guest_data.appetite_multiplier)
+	elite.configure(elite_guest_data, self, _spawn_counter, appetite)
 	elite.satisfied.connect(_on_customer_satisfied)
 	elite.leaked.connect(_on_customer_leaked)
 	elite.ranged_attack.connect(_on_customer_ranged_attack)
@@ -276,25 +384,25 @@ func _spawn_elite() -> void:
 	hud.show_toast("六席贵客挡住整条路，尽快满足它！", Color("#f0c45f"))
 
 
-func _spawn_gate(index: int, is_start_gate: bool) -> void:
-	if phase != Phase.FORWARD:
-		return
+func _spawn_gate_now(index: int, is_start_gate: bool) -> void:
+	_spawn_counter += 1
 	var gate: UpgradeGate = UpgradeGate.new()
 	gate.z_index = 28
 	gates.add_child(gate)
 	if is_start_gate:
-		gate.configure(self, _upgrade_pairs[0], _upgrade_pairs[0], true)
+		gate.configure(self, _upgrade_pairs[0], _upgrade_pairs[0], true, _current_baseline_appetite(), _spawn_counter)
 		return
 	var pair_start: int = (index * 2) % _upgrade_pairs.size()
-	var left: UpgradeData = _upgrade_pairs[pair_start]
-	var right: UpgradeData = _upgrade_pairs[(pair_start + 1) % _upgrade_pairs.size()]
-	gate.configure(self, left, right)
+	var left: UpgradeData = _roll_gate_upgrade(_upgrade_pairs[pair_start])
+	var right: UpgradeData = _roll_gate_upgrade(_upgrade_pairs[(pair_start + 1) % _upgrade_pairs.size()])
+	gate.configure(self, left, right, false, _current_baseline_appetite(), _spawn_counter)
 
 
 func _start_boss() -> void:
 	if phase == Phase.BOSS or phase == Phase.RESULTS or phase == Phase.FAILED:
 		return
 	phase = Phase.BOSS
+	_normal_waves_suspended = true
 	background.scrolling = false
 	_clear_forward_objects()
 	_boss_started_at = state.elapsed_seconds
@@ -378,6 +486,8 @@ func _on_special_choice_selected(choice_id: StringName) -> void:
 	hud.set_phase("继续前进 · 构筑已变化")
 	hud.set_inventory(state)
 	phase = Phase.FORWARD
+	_normal_waves_suspended = false
+	_next_normal_spawn_time = state.elapsed_seconds + 1.0
 
 
 func _on_boss_satisfied() -> void:
@@ -388,18 +498,24 @@ func _on_boss_satisfied() -> void:
 	var body: String = _build_results_text()
 	hud.show_results("Boss满意离场！", body)
 	if _smoke_test:
+		if _smoke_minimum_gate_customer_gap < Playfield.FORWARD_MIN_CENTER_DISTANCE - 0.1:
+			push_error("SMOKE_TEST_FAILED forward_gap=%.2f" % _smoke_minimum_gate_customer_gap)
+			Engine.time_scale = 1.0
+			get_tree().quit(1)
+			return
 		if state.upgrade_drops_spawned != state.normal_defeats:
 			push_error("SMOKE_TEST_FAILED drops=%d normal_defeats=%d" % [state.upgrade_drops_spawned, state.normal_defeats])
 			Engine.time_scale = 1.0
 			get_tree().quit(1)
 			return
 		print(
-			"SMOKE_TEST_OK elapsed=%.2f gates=%d defeated=%d collisions=%d drops=%d" % [
+			"SMOKE_TEST_OK elapsed=%.2f gates=%d defeated=%d collisions=%d drops=%d min_gap=%.2f" % [
 				state.elapsed_seconds,
 				state.gate_choices,
 				state.customers_satisfied,
 				state.collided_defeats,
 				state.upgrade_drops_spawned,
+				_smoke_minimum_gate_customer_gap,
 			]
 		)
 		Engine.time_scale = 1.0
@@ -431,6 +547,7 @@ func _refresh_inventory() -> void:
 
 
 func _clear_forward_objects() -> void:
+	_forward_spawn_requests.clear()
 	for customer: Customer in customers:
 		if is_instance_valid(customer):
 			customer.queue_free()
@@ -460,6 +577,21 @@ func _target_is_better(
 	if absf(horizontal - best_horizontal) > 0.01:
 		return false
 	return spawn_index < best_spawn_index
+
+
+# 烟雾测试记录真实运行中的最小门客距离，防止预测公式接入错误。
+func _track_smoke_gate_customer_gap() -> void:
+	for customer: Customer in customers:
+		if not is_instance_valid(customer) or not customer.active:
+			continue
+		for child: Node in gates.get_children():
+			if not child is UpgradeGate or child.is_queued_for_deletion():
+				continue
+			var gate: UpgradeGate = child as UpgradeGate
+			_smoke_minimum_gate_customer_gap = minf(
+				_smoke_minimum_gate_customer_gap,
+				absf(customer.position.y - gate.position.y)
+			)
 
 
 func _build_results_text() -> String:
@@ -492,14 +624,14 @@ func _build_results_text() -> String:
 
 func _build_prototype_upgrades() -> void:
 	_upgrade_pairs = [
-		_make_upgrade(&"sugar", "糖", UpgradeData.Kind.SUGAR, 0.35, "%", "寻常", Color("#d7c59a")),
-		_make_upgrade(&"quick_prep", "快速备餐", UpgradeData.Kind.QUICK_PREP, 0.18, "%", "精良", Color("#73b8a6")),
-		_make_upgrade(&"light_cart", "轻便餐车", UpgradeData.Kind.LIGHT_CART, 260.0, "速度", "寻常", Color("#d7c59a")),
-		_make_upgrade(&"sturdy_cart", "坚固餐车", UpgradeData.Kind.STURDY_CART, 25.0, "点", "精良", Color("#73b8a6")),
-		_make_upgrade(&"repair", "现场修理", UpgradeData.Kind.REPAIR, 0.30, "%", "稀罕", Color("#c88ad4")),
-		_make_upgrade(&"wine", "酒", UpgradeData.Kind.WINE, 0.35, "%", "寻常", Color("#d7c59a")),
-		_make_upgrade(&"scallion", "葱", UpgradeData.Kind.SCALLION, 0.45, "%", "精良", Color("#73b8a6")),
-		_make_upgrade(&"starch", "淀粉", UpgradeData.Kind.STARCH, 0.50, "%", "寻常", Color("#d7c59a")),
+		_make_upgrade_range(&"sugar", "糖", UpgradeData.Kind.SUGAR, 0.05, 0.45, "%"),
+		_make_upgrade_range(&"quick_prep", "快速备餐", UpgradeData.Kind.QUICK_PREP, 0.02, 0.20, "%"),
+		_make_upgrade_range(&"light_cart", "轻便餐车", UpgradeData.Kind.LIGHT_CART, 50.0, 300.0, "速度"),
+		_make_upgrade_range(&"sturdy_cart", "坚固餐车", UpgradeData.Kind.STURDY_CART, 5.0, 32.0, "点"),
+		_make_upgrade_range(&"repair", "现场修理", UpgradeData.Kind.REPAIR, 0.05, 0.40, "%"),
+		_make_upgrade_range(&"wine", "酒", UpgradeData.Kind.WINE, 0.10, 0.50, "%"),
+		_make_upgrade_range(&"scallion", "葱", UpgradeData.Kind.SCALLION, 0.10, 0.60, "%"),
+		_make_upgrade_range(&"starch", "淀粉", UpgradeData.Kind.STARCH, 0.15, 0.75, "%"),
 	]
 
 
@@ -534,3 +666,33 @@ func _make_upgrade(
 	upgrade.rarity_name = rarity
 	upgrade.rarity_color = color
 	return upgrade
+
+
+# 门模板只保存区间，每个实际门选项都会复制后独立抽取百分位。
+func _make_upgrade_range(
+	id: StringName,
+	display_name: String,
+	kind: UpgradeData.Kind,
+	minimum_value: float,
+	maximum_value: float,
+	suffix: String
+) -> UpgradeData:
+	var upgrade: UpgradeData = UpgradeData.new()
+	upgrade.id = id
+	upgrade.display_name = display_name
+	upgrade.kind = kind
+	upgrade.value_suffix = suffix
+	upgrade.configure_value_range(minimum_value, maximum_value)
+	return upgrade
+
+
+func _roll_gate_upgrade(template: UpgradeData) -> UpgradeData:
+	var rolled: UpgradeData = template.duplicate() as UpgradeData
+	rolled.set_value_ratio(_upgrade_rng.randf())
+	return rolled
+
+
+func _current_baseline_appetite() -> float:
+	if director.timeline == null:
+		return 32.0
+	return director.timeline.baseline_appetite_at(state.elapsed_seconds)

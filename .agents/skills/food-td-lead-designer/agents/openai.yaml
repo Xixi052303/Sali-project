@@ -1,0 +1,4 @@
+interface:
+  display_name: "小厨西主策划"
+  short_description: "与你共同推敲小厨西设计，并在确认后持续维护结构化策划案"
+  default_prompt: "使用 $food-td-lead-designer 在计划模式中与我共同推敲‘小厨西’的设计，并在我确认后维护策划文档。"

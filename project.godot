@@ -1,5 +1,10 @@
 ; Engine configuration file.
-; Designed for a 720x1280 portrait mobile viewport.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -13,6 +18,12 @@ config/icon="res://icon.svg"
 [audio]
 
 default_bus_layout="res://default_bus_layout.tres"
+
+[debug]
+
+gdscript/warnings/untyped_declaration=2
+gdscript/warnings/unsafe_property_access=1
+gdscript/warnings/unsafe_method_access=1
 
 [display]
 
@@ -36,12 +47,3 @@ pointing/emulate_touch_from_mouse=true
 
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="mobile"
-renderer/rendering_method.mobile="mobile"
-textures/default_filters/use_nearest_mipmap_filter=false
-anti_aliasing/quality/msaa_2d=0
-
-[debug]
-
-gdscript/warnings/untyped_declaration=2
-gdscript/warnings/unsafe_property_access=1
-gdscript/warnings/unsafe_method_access=1

@@ -1,0 +1,7 @@
+interface:
+  display_name: "小厨西技术负责人"
+  short_description: "负责小厨西项目的工程定位、修改、验证、影响分析与技术导航维护"
+  default_prompt: "使用 $food-td-engineering-lead 恢复实际调用链并安全完成这项小厨西工程任务。"
+
+policy:
+  allow_implicit_invocation: true

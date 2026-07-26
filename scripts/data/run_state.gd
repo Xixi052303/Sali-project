@@ -8,11 +8,12 @@ const MINIMUM_INTERVAL: float = 1.0 / 60.0
 
 var maximum_durability: float = 100.0
 var current_durability: float = 100.0
-var satisfaction_bonus: float = 0.0
-var interval_reduction: float = 0.0
-var projectile_speed_bonus: float = 0.0
-var range_bonus: float = 0.0
-var duration_bonus: float = 0.0
+# 百分比强化在整局内逐次乘算，后取得的食材直接继承这些全局倍率。
+var satisfaction_multiplier: float = 1.0
+var interval_multiplier: float = 1.0
+var projectile_speed_multiplier: float = 1.0
+var range_multiplier: float = 1.0
+var duration_multiplier: float = 1.0
 var cart_speed_bonus: float = 0.0
 var servings: int = 1
 var foods: Array[StringName] = []
@@ -81,15 +82,15 @@ func apply_upgrade(upgrade: UpgradeData, count_as_gate: bool = true) -> void:
 		dropped_upgrades += 1
 	match upgrade.kind:
 		UpgradeData.Kind.SUGAR:
-			satisfaction_bonus += upgrade.value
+			satisfaction_multiplier *= 1.0 + upgrade.value
 		UpgradeData.Kind.QUICK_PREP:
-			interval_reduction += upgrade.value
+			interval_multiplier *= maxf(0.0, 1.0 - upgrade.value)
 		UpgradeData.Kind.WINE:
-			projectile_speed_bonus += upgrade.value
+			projectile_speed_multiplier *= 1.0 + upgrade.value
 		UpgradeData.Kind.SCALLION:
-			range_bonus += upgrade.value
+			range_multiplier *= 1.0 + upgrade.value
 		UpgradeData.Kind.STARCH:
-			duration_bonus += upgrade.value
+			duration_multiplier *= 1.0 + upgrade.value
 		UpgradeData.Kind.LIGHT_CART:
 			cart_speed_bonus += upgrade.value
 		UpgradeData.Kind.STURDY_CART:
@@ -116,37 +117,37 @@ func repair(amount: float) -> void:
 
 
 func effective_satisfaction(food: FoodData) -> float:
-	return food.base_satisfaction * (1.0 + satisfaction_bonus)
+	return food.base_satisfaction * satisfaction_multiplier
 
 
 func effective_interval(food: FoodData) -> float:
-	return maxf(MINIMUM_INTERVAL, food.base_interval * (1.0 - interval_reduction))
+	return maxf(MINIMUM_INTERVAL, food.base_interval * interval_multiplier)
 
 
 func effective_projectile_speed(food: FoodData) -> float:
-	return food.projectile_speed * (1.0 + projectile_speed_bonus)
+	return food.projectile_speed * projectile_speed_multiplier
 
 
 func effective_projectile_radius(food: FoodData) -> float:
-	return food.projectile_radius * (1.0 + range_bonus)
+	return food.projectile_radius * range_multiplier
 
 
 func effective_duration(food: FoodData) -> float:
-	return food.base_lifetime * (1.0 + duration_bonus)
+	return food.base_lifetime * duration_multiplier
 
 
 func cumulative_effect_text(kind: UpgradeData.Kind) -> String:
 	match kind:
 		UpgradeData.Kind.SUGAR:
-			return "累计满足值 +%.0f%%" % (satisfaction_bonus * 100.0)
+			return "累计满足值 +%.0f%%" % ((satisfaction_multiplier - 1.0) * 100.0)
 		UpgradeData.Kind.QUICK_PREP:
-			return "累计攻击间隔 -%.0f%%" % (interval_reduction * 100.0)
+			return "累计攻击间隔 -%.0f%%" % ((1.0 - interval_multiplier) * 100.0)
 		UpgradeData.Kind.WINE:
-			return "累计投射速度 +%.0f%%" % (projectile_speed_bonus * 100.0)
+			return "累计投射速度 +%.0f%%" % ((projectile_speed_multiplier - 1.0) * 100.0)
 		UpgradeData.Kind.SCALLION:
-			return "累计作用范围 +%.0f%%" % (range_bonus * 100.0)
+			return "累计作用范围 +%.0f%%" % ((range_multiplier - 1.0) * 100.0)
 		UpgradeData.Kind.STARCH:
-			return "累计持续时间 +%.0f%%" % (duration_bonus * 100.0)
+			return "累计持续时间 +%.0f%%" % ((duration_multiplier - 1.0) * 100.0)
 		UpgradeData.Kind.LIGHT_CART:
 			return "累计横移速度 +%.0f" % cart_speed_bonus
 		UpgradeData.Kind.STURDY_CART:
