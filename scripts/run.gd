@@ -116,7 +116,7 @@ func _process(delta: float) -> void:
 	if _debug_accumulator >= 0.25:
 		_debug_accumulator = 0.0
 		hud.set_debug_text(
-			"FPS %d  食客 %d  投射物 %d\n门 %d  掉落 %d  击败 %d" % [
+			"FPS %d  食客 %d  投射物 %d\n门 %d  奖励 %d  击败 %d" % [
 				Engine.get_frames_per_second(),
 				customers.size(),
 				projectiles.get_child_count(),
@@ -172,6 +172,22 @@ func get_priority_target() -> Node2D:
 			best_forward = gate_forward
 			best_horizontal = gate_horizontal
 			best_spawn_index = gate.spawn_index
+	for child: Node in drops.get_children():
+		if not child is UpgradeDrop or child.is_queued_for_deletion():
+			continue
+		var reward_gate: UpgradeDrop = child as UpgradeDrop
+		if reward_gate.position.y >= cart.position.y:
+			continue
+		var reward_target: Node2D = reward_gate.target_for_cart_x(cart.position.x)
+		if reward_target == null:
+			continue
+		var reward_forward: float = cart.position.y - reward_gate.position.y
+		var reward_horizontal: float = absf(reward_target.global_position.x - cart.global_position.x)
+		if _target_is_better(reward_forward, reward_horizontal, reward_gate.spawn_index, best_forward, best_horizontal, best_spawn_index):
+			best_target = reward_target
+			best_forward = reward_forward
+			best_horizontal = reward_horizontal
+			best_spawn_index = reward_gate.spawn_index
 	if boss != null and is_instance_valid(boss) and boss.active:
 		var boss_forward: float = cart.position.y - boss.position.y
 		var boss_horizontal: float = absf(boss.position.x - cart.position.x)
@@ -217,6 +233,12 @@ func resolve_projectile_hits(projectile: FoodProjectile) -> void:
 		var gate: UpgradeGate = child as UpgradeGate
 		if gate.try_receive_projectile(projectile):
 			return
+	for child: Node in drops.get_children():
+		if not child is UpgradeDrop or child.is_queued_for_deletion():
+			continue
+		var reward_gate: UpgradeDrop = child as UpgradeDrop
+		if reward_gate.try_receive_projectile(projectile):
+			return
 	if boss != null and is_instance_valid(boss) and boss.active and projectile.can_hit(boss):
 		var boss_distance: float = projectile.global_position.distance_to(boss.global_position)
 		if boss_distance <= projectile.radius + boss.hit_radius():
@@ -246,11 +268,11 @@ func on_gate_selected(
 		damage_cart(remaining_base_health, "撞门")
 
 
-func on_upgrade_drop_collected(upgrade: UpgradeData) -> void:
+func on_customer_reward_gate_collected(upgrade: UpgradeData) -> void:
 	state.apply_upgrade(upgrade, false)
 	cart.play_upgrade_feedback(upgrade.rarity_color)
 	hud.show_toast(
-		"掉落 %s：%s\n%s" % [
+		"奖励门 %s：%s\n%s" % [
 			upgrade.display_name,
 			upgrade.effect_text(state.maximum_durability),
 			state.cumulative_effect_text(upgrade.kind),
@@ -353,8 +375,10 @@ func _spawn_customer_now(customer_data: CustomerData) -> void:
 	var first_region: int = (_spawn_counter * 2 + customer_data.kind) % (max_start + 1)
 	customer.position = Vector2(playfield.spawn_x(first_region, customer_data.occupied_regions), Playfield.CUSTOMER_SPAWN_Y)
 	entities.add_child(customer)
-	var appetite: float = roundf(_current_baseline_appetite() * customer_data.appetite_multiplier)
-	customer.configure(customer_data, self, _spawn_counter, appetite)
+	var baseline_appetite: float = _current_baseline_appetite()
+	var reward_upgrade: UpgradeData = _roll_customer_reward()
+	var appetite: float = customer_data.appetite_at(baseline_appetite, reward_upgrade.value_ratio)
+	customer.configure(customer_data, self, _spawn_counter, appetite, reward_upgrade, baseline_appetite)
 	customer.satisfied.connect(_on_customer_satisfied)
 	customer.collided_with_cart.connect(_on_customer_collided_with_cart)
 	customer.escaped.connect(_on_customer_escaped)
@@ -387,7 +411,7 @@ func _spawn_elite_now() -> void:
 	elite.z_index = 12
 	elite.position = Vector2(360.0, Playfield.CUSTOMER_SPAWN_Y)
 	entities.add_child(elite)
-	var appetite: float = roundf(_current_baseline_appetite() * elite_guest_data.appetite_multiplier)
+	var appetite: float = elite_guest_data.appetite_at(_current_baseline_appetite())
 	elite.configure(elite_guest_data, self, _spawn_counter, appetite)
 	elite.satisfied.connect(_on_customer_satisfied)
 	elite.collided_with_cart.connect(_on_customer_collided_with_cart)
@@ -448,6 +472,9 @@ func _on_customer_escaped(customer: Customer) -> void:
 func _finish_customer(customer: Customer, collided: bool) -> void:
 	var was_elite: bool = customer.data.kind == CustomerData.Kind.ELITE
 	var defeat_position: Vector2 = customer.global_position
+	var reward_upgrade: UpgradeData = customer.reward_upgrade
+	var reward_baseline_appetite: float = customer.reward_baseline_appetite
+	var occupied_regions: int = customer.data.occupied_regions
 	state.customers_satisfied += 1
 	if collided:
 		state.collided_defeats += 1
@@ -467,20 +494,24 @@ func _finish_customer(customer: Customer, collided: bool) -> void:
 			get_tree().paused = true
 	else:
 		state.normal_defeats += 1
-		_spawn_upgrade_drop(defeat_position)
-		hud.show_toast("撞击击败，掉落强化" if collided else "击败食客，掉落强化", Color("#f0d36e"))
+		_spawn_customer_reward_gate(defeat_position, reward_upgrade, reward_baseline_appetite, occupied_regions)
+		hud.show_toast("撞击击败，留下奖励门" if collided else "食客已满足，留下奖励门", Color("#f0d36e"))
 
 
-func _spawn_upgrade_drop(start_position: Vector2) -> void:
-	if _drop_upgrades.is_empty():
+func _spawn_customer_reward_gate(
+	start_position: Vector2,
+	upgrade: UpgradeData,
+	baseline_appetite: float,
+	occupied_regions: int
+) -> void:
+	if upgrade == null:
 		return
 	state.upgrade_drops_spawned += 1
-	var upgrade: UpgradeData = _drop_upgrades[_drop_counter % _drop_upgrades.size()]
-	_drop_counter += 1
+	_spawn_counter += 1
 	var drop: UpgradeDrop = UpgradeDrop.new()
 	drop.z_index = 25
 	drops.add_child(drop)
-	drop.configure(self, upgrade, start_position)
+	drop.configure(self, upgrade, start_position, baseline_appetite, occupied_regions, _spawn_counter)
 
 
 func _on_customer_ranged_attack(_customer: Customer, amount: float) -> void:
@@ -529,12 +560,13 @@ func _on_boss_satisfied() -> void:
 			get_tree().quit(1)
 			return
 		print(
-			"SMOKE_TEST_OK elapsed=%.2f gates=%d defeated=%d collisions=%d drops=%d min_gap=%.2f" % [
+			"SMOKE_TEST_OK elapsed=%.2f gates=%d defeated=%d collisions=%d reward_gates=%d collected=%d min_gap=%.2f" % [
 				state.elapsed_seconds,
 				state.gate_choices,
 				state.customers_satisfied,
 				state.collided_defeats,
 				state.upgrade_drops_spawned,
+				state.dropped_upgrades,
 				_smoke_minimum_gate_customer_gap,
 			]
 		)
@@ -618,7 +650,7 @@ func _build_results_text() -> String:
 	return (
 		"用时：%02d:%02d\n"
 		+ "强化门：%d\n"
-		+ "掉落强化：%d\n"
+		+ "取得奖励门：%d\n"
 		+ "击败敌人：%d\n"
 		+ "撞击击败：%d\n"
 		+ "受击次数：%d\n"
@@ -657,35 +689,15 @@ func _build_prototype_upgrades() -> void:
 
 func _build_drop_upgrades() -> void:
 	_drop_upgrades = [
-		_make_upgrade(&"drop_sugar", "糖", UpgradeData.Kind.SUGAR, 0.08, "%", "掉落", Color("#d7c59a")),
-		_make_upgrade(&"drop_quick", "备餐", UpgradeData.Kind.QUICK_PREP, 0.04, "%", "掉落", Color("#73b8a6")),
-		_make_upgrade(&"drop_wine", "酒", UpgradeData.Kind.WINE, 0.08, "%", "掉落", Color("#d7c59a")),
-		_make_upgrade(&"drop_scallion", "葱", UpgradeData.Kind.SCALLION, 0.08, "%", "掉落", Color("#73b8a6")),
-		_make_upgrade(&"drop_starch", "淀粉", UpgradeData.Kind.STARCH, 0.10, "%", "掉落", Color("#d7c59a")),
-		_make_upgrade(&"drop_light", "轻车", UpgradeData.Kind.LIGHT_CART, 45.0, "速度", "掉落", Color("#73b8a6")),
-		_make_upgrade(&"drop_sturdy", "坚固", UpgradeData.Kind.STURDY_CART, 4.0, "点", "掉落", Color("#d7c59a")),
-		_make_upgrade(&"drop_repair", "修理", UpgradeData.Kind.REPAIR, 0.08, "%", "掉落", Color("#c88ad4")),
+		_make_upgrade_range(&"drop_sugar", "糖", UpgradeData.Kind.SUGAR, 0.05, 0.45, "%"),
+		_make_upgrade_range(&"drop_quick", "备餐", UpgradeData.Kind.QUICK_PREP, 0.02, 0.20, "%"),
+		_make_upgrade_range(&"drop_wine", "酒", UpgradeData.Kind.WINE, 0.10, 0.50, "%"),
+		_make_upgrade_range(&"drop_scallion", "葱", UpgradeData.Kind.SCALLION, 0.10, 0.60, "%"),
+		_make_upgrade_range(&"drop_starch", "淀粉", UpgradeData.Kind.STARCH, 0.15, 0.75, "%"),
+		_make_upgrade_range(&"drop_light", "轻车", UpgradeData.Kind.LIGHT_CART, 50.0, 300.0, "速度"),
+		_make_upgrade_range(&"drop_sturdy", "坚固", UpgradeData.Kind.STURDY_CART, 5.0, 32.0, "点"),
+		_make_upgrade_range(&"drop_repair", "修理", UpgradeData.Kind.REPAIR, 0.05, 0.40, "%"),
 	]
-
-
-func _make_upgrade(
-	id: StringName,
-	display_name: String,
-	kind: UpgradeData.Kind,
-	value: float,
-	suffix: String,
-	rarity: String,
-	color: Color
-) -> UpgradeData:
-	var upgrade: UpgradeData = UpgradeData.new()
-	upgrade.id = id
-	upgrade.display_name = display_name
-	upgrade.kind = kind
-	upgrade.value = value
-	upgrade.value_suffix = suffix
-	upgrade.rarity_name = rarity
-	upgrade.rarity_color = color
-	return upgrade
 
 
 # 门模板只保存区间，每个实际门选项都会复制后独立抽取百分位。
@@ -710,6 +722,13 @@ func _roll_gate_upgrade(template: UpgradeData) -> UpgradeData:
 	var rolled: UpgradeData = template.duplicate() as UpgradeData
 	rolled.set_value_ratio(_upgrade_rng.randf())
 	return rolled
+
+
+# 普通食客生成时就锁定奖励类型与百分位，胃口和奖励门共享这一结果。
+func _roll_customer_reward() -> UpgradeData:
+	var template: UpgradeData = _drop_upgrades[_drop_counter % _drop_upgrades.size()]
+	_drop_counter += 1
+	return _roll_gate_upgrade(template)
 
 
 func _current_baseline_appetite() -> float:

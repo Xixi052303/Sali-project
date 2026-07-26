@@ -12,6 +12,9 @@ var data: CustomerData
 var run: RunController
 var remaining_appetite: float = 0.0
 var spawn_index: int = 0
+# 普通食客生成时锁定奖励及其基准胃口，满足后原样交给奖励门。
+var reward_upgrade: UpgradeData
+var reward_baseline_appetite: float = 1.0
 var active: bool = false
 var _attack_remaining: float = 0.0
 # 受击反馈只保存短时剩余时长，不改变食客的玩法状态。
@@ -22,12 +25,16 @@ func configure(
 	source_data: CustomerData,
 	run_controller: RunController,
 	index: int,
-	spawn_appetite: float
+	spawn_appetite: float,
+	spawn_reward_upgrade: UpgradeData = null,
+	baseline_appetite: float = 1.0
 ) -> void:
 	data = source_data
 	run = run_controller
 	spawn_index = index
 	remaining_appetite = maxf(1.0, spawn_appetite)
+	reward_upgrade = spawn_reward_upgrade
+	reward_baseline_appetite = maxf(1.0, baseline_appetite)
 	_attack_remaining = data.attack_interval
 	active = true
 	queue_redraw()
@@ -117,7 +124,8 @@ func _draw() -> void:
 	var text_position: Vector2 = Vector2(-width * 0.5, -62.0)
 	for offset: Vector2 in [Vector2(-2.0, 0.0), Vector2(2.0, 0.0), Vector2(0.0, -2.0), Vector2(0.0, 2.0)]:
 		draw_string(font, text_position + offset, appetite_text, HORIZONTAL_ALIGNMENT_CENTER, width, 30, INK)
-	draw_string(font, text_position, appetite_text, HORIZONTAL_ALIGNMENT_CENTER, width, 30, Color("#ffe09a"))
+	var appetite_color: Color = Color("#ffe09a") if reward_upgrade == null else reward_upgrade.rarity_color
+	draw_string(font, text_position, appetite_text, HORIZONTAL_ALIGNMENT_CENTER, width, 30, appetite_color)
 
 
 func _body_width() -> float:

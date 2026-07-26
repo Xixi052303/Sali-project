@@ -45,8 +45,8 @@ func configure(
 	position = Vector2.ZERO
 	_ensure_targets()
 	if not start_food_gate:
-		left_base_health = baseline_appetite
-		right_base_health = baseline_appetite
+		left_base_health = baseline_appetite * (1.0 + left_upgrade.value_ratio)
+		right_base_health = baseline_appetite * (1.0 + right_upgrade.value_ratio)
 		left_upgrade_health = baseline_appetite * (1.0 - left_upgrade.value_ratio)
 		right_upgrade_health = baseline_appetite * (1.0 - right_upgrade.value_ratio)
 	queue_redraw()

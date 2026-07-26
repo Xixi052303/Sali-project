@@ -8,6 +8,7 @@ func _init() -> void:
 	_test_customer_cart_collision()
 	_test_run_state()
 	_test_upgrade_gate()
+	_test_customer_reward_gate()
 	_test_timeline()
 	_test_resources()
 	if _failures == 0:
@@ -109,8 +110,8 @@ func _test_run_state() -> void:
 	_check(repair.effect_text(state.maximum_durability) == "修复 +22点", "维修门显示简洁实际点数")
 	var previous_gate_count: int = state.gate_choices
 	state.apply_upgrade(sugar, false)
-	_check(state.gate_choices == previous_gate_count, "敌人掉落强化不计入强化门")
-	_check(state.dropped_upgrades == 1, "敌人掉落强化单独计数")
+	_check(state.gate_choices == previous_gate_count, "食客奖励门不计入普通双选门")
+	_check(state.dropped_upgrades == 1, "食客奖励门单独计数")
 
 
 func _test_upgrade_gate() -> void:
@@ -122,17 +123,17 @@ func _test_upgrade_gate() -> void:
 	right.configure_value_range(0.10, 0.50, 0.80)
 	var gate: UpgradeGate = UpgradeGate.new()
 	gate.configure(null, left, right, false, 100.0, 1)
-	_check(is_equal_approx(gate.left_base_health, 100.0), "左门基础血量等于食客基准胃口")
-	_check(is_equal_approx(gate.right_base_health, 100.0), "右门基础血量等于食客基准胃口")
+	_check(is_equal_approx(gate.left_base_health, 134.0), "左门基础血量按1加百分位乘基准胃口")
+	_check(is_equal_approx(gate.right_base_health, 180.0), "稀有门拥有更高基础血量与撞门风险")
 	_check(is_equal_approx(gate.left_upgrade_health, 66.0), "34%门的隐藏升值血量为基准胃口的66%")
 	_check(is_equal_approx(gate.right_upgrade_health, 20.0), "左右门使用各自抽取百分位计算隐藏血量")
-	gate.receive_damage(true, 100.0)
+	gate.receive_damage(true, 134.0)
 	_check(is_zero_approx(gate.left_base_health), "攻击先击破门的公开基础血量")
 	_check(is_equal_approx(left.value_ratio, 0.34), "击破基础层的攻击不会溢出到隐藏升值层")
 	gate.receive_damage(true, 33.0)
 	_check(is_equal_approx(left.value_ratio, 0.67), "打掉一半隐藏升值血量后百分位由34%提升到67%")
 	_check(is_equal_approx(left.value, lerpf(0.05, 0.45, 0.67)), "门奖励随受击百分位实时映射")
-	_check(is_equal_approx(gate.right_base_health, 100.0), "攻击左门不会改变右门基础血量")
+	_check(is_equal_approx(gate.right_base_health, 180.0), "攻击左门不会改变右门基础血量")
 	_check(is_equal_approx(gate.right_upgrade_health, 20.0), "攻击左门不会改变右门隐藏血量")
 	gate.receive_damage(true, 100.0)
 	_check(left.is_at_maximum() and not gate.side_is_attackable(true), "门打空后达到区间上限并停止锁定")
@@ -146,6 +147,24 @@ func _test_upgrade_gate() -> void:
 	_check(not start_gate.side_is_attackable(true), "开局食材门不可攻击")
 	_check(start_gate.target_for_cart_x(200.0) == null, "开局食材门不进入自动目标池")
 	start_gate.free()
+
+
+func _test_customer_reward_gate() -> void:
+	var reward: UpgradeData = UpgradeData.new()
+	reward.kind = UpgradeData.Kind.SUGAR
+	reward.configure_value_range(0.05, 0.45, 0.34)
+	var basic: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
+	var elite: CustomerData = load("res://data/customers/elite_guest.tres") as CustomerData
+	_check(is_equal_approx(basic.appetite_at(100.0, 0.34), 134.0), "普通食客胃口按奖励百分位提高")
+	_check(is_equal_approx(elite.appetite_at(32.0), 180.0), "精英不参与随机稀有度")
+	var reward_gate: UpgradeDrop = UpgradeDrop.new()
+	reward_gate.configure(null, reward, Vector2(160.0, 400.0), 100.0, 2, 3)
+	_check(is_equal_approx(reward_gate.upgrade_health, 66.0), "食客奖励门没有基础层并按百分位建立升值血量")
+	_check(reward_gate.contains_cart_x(160.0), "餐车经过食客原占地区域可以领取奖励门")
+	_check(not reward_gate.contains_cart_x(360.0), "餐车绕开奖励门时不能领取")
+	reward_gate.receive_damage(33.0)
+	_check(is_equal_approx(reward.value_ratio, 0.67), "攻击奖励门继续提高同一份奖励")
+	reward_gate.free()
 
 
 func _test_timeline() -> void:
