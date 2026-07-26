@@ -14,10 +14,11 @@ var resolved: bool = false
 var move_speed: float = 250.0
 var spawn_index: int = 0
 var baseline_appetite: float = 1.0
-var left_max_health: float = 0.0
-var right_max_health: float = 0.0
-var left_health: float = 0.0
-var right_health: float = 0.0
+# 基础血量负责撞门损伤并公开显示；隐藏血量只负责基础层击破后的奖励升值。
+var left_base_health: float = 0.0
+var right_base_health: float = 0.0
+var left_upgrade_health: float = 0.0
+var right_upgrade_health: float = 0.0
 
 # 两个目标节点只用于稳定区分左右门的瞄准与投射物命中记录。
 var _left_target: Node2D
@@ -26,7 +27,7 @@ var _left_hit_feedback: float = 0.0
 var _right_hit_feedback: float = 0.0
 
 
-# 生成时锁定门的基准胃口，后续伤害只改变各侧奖励百分位。
+# 生成时锁定门的基准胃口，并分别建立公开基础层和隐藏升值层。
 func configure(
 	run_controller: RunController,
 	left: UpgradeData,
@@ -44,10 +45,10 @@ func configure(
 	position = Vector2.ZERO
 	_ensure_targets()
 	if not start_food_gate:
-		left_max_health = baseline_appetite * (1.0 - left_upgrade.value_ratio)
-		right_max_health = baseline_appetite * (1.0 - right_upgrade.value_ratio)
-		left_health = left_max_health
-		right_health = right_max_health
+		left_base_health = baseline_appetite
+		right_base_health = baseline_appetite
+		left_upgrade_health = baseline_appetite * (1.0 - left_upgrade.value_ratio)
+		right_upgrade_health = baseline_appetite * (1.0 - right_upgrade.value_ratio)
 	queue_redraw()
 
 
@@ -62,8 +63,12 @@ func _process(delta: float) -> void:
 		position.y += move_speed * delta
 	if position.y >= Playfield.CART_Y:
 		resolved = true
-		var chose_left: bool = run.cart.position.x < SIDE_DIVIDER_X
-		run.on_gate_selected(left_upgrade if chose_left else right_upgrade, start_food_gate)
+		var cart_x: float = run.cart.position.x
+		run.on_gate_selected(
+			selected_upgrade_for_x(cart_x),
+			start_food_gate,
+			selected_base_health_for_x(cart_x)
+		)
 		queue_free()
 
 
@@ -75,6 +80,15 @@ func target_for_cart_x(cart_x: float) -> Node2D:
 	if not side_is_attackable(use_left):
 		return null
 	return _left_target if use_left else _right_target
+
+
+# 中心点固定归右侧，越线结算始终只返回一个门选项。
+func selected_upgrade_for_x(cart_x: float) -> UpgradeData:
+	return left_upgrade if cart_x < SIDE_DIVIDER_X else right_upgrade
+
+
+func selected_base_health_for_x(cart_x: float) -> float:
+	return left_base_health if cart_x < SIDE_DIVIDER_X else right_base_health
 
 
 # 投射物按实际所在面板结算，左右两侧的命中历史互不共享。
@@ -95,17 +109,23 @@ func try_receive_projectile(projectile: FoodProjectile) -> bool:
 	return projectile.register_hit(target)
 
 
-# 门血减少时，奖励百分位按剩余血量连续映射到完整数值区间。
+# 伤害必须先击破公开基础层；后续攻击才消耗隐藏层并提高奖励。
 func receive_damage(hit_left: bool, amount: float) -> void:
 	if start_food_gate or resolved or amount <= 0.0 or not side_is_attackable(hit_left):
 		return
 	if hit_left:
-		left_health = maxf(0.0, left_health - amount)
-		left_upgrade.set_value_ratio(1.0 - left_health / baseline_appetite)
+		if left_base_health > 0.0001:
+			left_base_health = maxf(0.0, left_base_health - amount)
+		else:
+			left_upgrade_health = maxf(0.0, left_upgrade_health - amount)
+			left_upgrade.set_value_ratio(1.0 - left_upgrade_health / baseline_appetite)
 		_left_hit_feedback = 0.12
 	else:
-		right_health = maxf(0.0, right_health - amount)
-		right_upgrade.set_value_ratio(1.0 - right_health / baseline_appetite)
+		if right_base_health > 0.0001:
+			right_base_health = maxf(0.0, right_base_health - amount)
+		else:
+			right_upgrade_health = maxf(0.0, right_upgrade_health - amount)
+			right_upgrade.set_value_ratio(1.0 - right_upgrade_health / baseline_appetite)
 		_right_hit_feedback = 0.12
 	queue_redraw()
 
@@ -113,7 +133,9 @@ func receive_damage(hit_left: bool, amount: float) -> void:
 func side_is_attackable(left_side: bool) -> bool:
 	if start_food_gate:
 		return false
-	return left_health > 0.0001 if left_side else right_health > 0.0001
+	if left_side:
+		return left_base_health > 0.0001 or left_upgrade_health > 0.0001
+	return right_base_health > 0.0001 or right_upgrade_health > 0.0001
 
 
 func travel_speed() -> float:
@@ -124,6 +146,9 @@ func _draw() -> void:
 	_draw_panel(LEFT_PANEL, left_upgrade, Color("#3d513d"), true)
 	_draw_panel(RIGHT_PANEL, right_upgrade, Color("#694035"), false)
 	draw_line(Vector2(SIDE_DIVIDER_X, -82.0), Vector2(SIDE_DIVIDER_X, 82.0), Color("#efbd4b"), 7.0)
+	if not start_food_gate:
+		_draw_base_health(LEFT_PANEL, left_base_health)
+		_draw_base_health(RIGHT_PANEL, right_base_health)
 
 
 func _draw_panel(rect: Rect2, upgrade: UpgradeData, color: Color, left_side: bool) -> void:
@@ -144,16 +169,20 @@ func _draw_panel(rect: Rect2, upgrade: UpgradeData, color: Color, left_side: boo
 	var title: String = "土豆 Lv.1" if start_food_gate else upgrade.display_name
 	var maximum_durability: float = 100.0 if run == null else run.state.maximum_durability
 	var value_text: String = "选择开局食材" if start_food_gate else upgrade.effect_text(maximum_durability)
-	draw_string(font, rect.position + Vector2(20.0, 34.0), title, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 40.0, 24, Color.WHITE)
-	draw_string(font, rect.position + Vector2(20.0, 69.0), value_text, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 40.0, 18, Color("#f0dfb6"))
+	draw_string(font, rect.position + Vector2(20.0, 39.0), title, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 40.0, 24, Color.WHITE)
+	draw_string(font, rect.position + Vector2(20.0, 82.0), value_text, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 40.0, 18, Color("#f0dfb6"))
 	if start_food_gate:
 		return
-	var current_health: float = left_health if left_side else right_health
-	var maximum_health: float = left_max_health if left_side else right_max_health
-	var health_text: String = "已强化至上限" if current_health <= 0.0001 else "门耐久 %d / %d" % [ceili(current_health), ceili(maximum_health)]
-	var detail_size: int = 18 if feedback > 0.0 else 16
-	draw_string(font, rect.position + Vector2(20.0, 100.0), upgrade.rarity_name, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 40.0, 16, upgrade.rarity_color)
-	draw_string(font, rect.position + Vector2(20.0, 128.0), health_text, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 40.0, detail_size, Color("#fff3d0"))
+	draw_string(font, rect.position + Vector2(20.0, 121.0), upgrade.rarity_name, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 40.0, 17, upgrade.rarity_color)
+
+
+func _draw_base_health(rect: Rect2, health: float) -> void:
+	var font: Font = ThemeDB.fallback_font
+	var health_text: String = str(ceili(health))
+	var text_position: Vector2 = Vector2(rect.position.x, rect.position.y - 14.0)
+	for offset: Vector2 in [Vector2(-2.0, 0.0), Vector2(2.0, 0.0), Vector2(0.0, -2.0), Vector2(0.0, 2.0)]:
+		draw_string(font, text_position + offset, health_text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 30, INK)
+	draw_string(font, text_position, health_text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 30, Color("#ffe09a"))
 
 
 func _ensure_targets() -> void:

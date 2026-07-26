@@ -9,6 +9,7 @@ const REGION_COUNT: int = 6
 const REGION_WIDTH: float = ROAD_WIDTH / float(REGION_COUNT)
 const CART_Y: float = 1050.0
 const CUSTOMER_SPAWN_Y: float = -640.0
+const CUSTOMER_DESPAWN_Y: float = 1360.0
 const PROJECTILE_TOP_BOUNDARY: float = -720.0
 const FORWARD_MIN_CENTER_DISTANCE: float = 180.0
 # 生成预测额外预留一帧移动量，保证低帧率下实际距离仍不低于视觉安全线。

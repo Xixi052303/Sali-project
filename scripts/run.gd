@@ -135,6 +135,12 @@ func can_weapons_fire() -> bool:
 	return phase == Phase.FORWARD or phase == Phase.BOSS
 
 
+func customer_collides_with_cart(customer: Customer) -> bool:
+	if customer == null or cart == null:
+		return false
+	return customer.collision_rect().intersects(cart.collision_rect())
+
+
 func get_priority_target() -> Node2D:
 	var best_target: Node2D = null
 	var best_forward: float = INF
@@ -218,7 +224,11 @@ func resolve_projectile_hits(projectile: FoodProjectile) -> void:
 			projectile.register_hit(boss)
 
 
-func on_gate_selected(upgrade: UpgradeData, start_food_gate: bool) -> void:
+func on_gate_selected(
+	upgrade: UpgradeData,
+	start_food_gate: bool,
+	remaining_base_health: float = 0.0
+) -> void:
 	if start_food_gate:
 		hud.show_toast("土豆装车！自动寻找最近的食客")
 		return
@@ -232,6 +242,8 @@ func on_gate_selected(upgrade: UpgradeData, start_food_gate: bool) -> void:
 		],
 		upgrade.rarity_color
 	)
+	if remaining_base_health > 0.0:
+		damage_cart(remaining_base_health, "撞门")
 
 
 func on_upgrade_drop_collected(upgrade: UpgradeData) -> void:
@@ -344,7 +356,8 @@ func _spawn_customer_now(customer_data: CustomerData) -> void:
 	var appetite: float = roundf(_current_baseline_appetite() * customer_data.appetite_multiplier)
 	customer.configure(customer_data, self, _spawn_counter, appetite)
 	customer.satisfied.connect(_on_customer_satisfied)
-	customer.leaked.connect(_on_customer_leaked)
+	customer.collided_with_cart.connect(_on_customer_collided_with_cart)
+	customer.escaped.connect(_on_customer_escaped)
 	customer.ranged_attack.connect(_on_customer_ranged_attack)
 	customers.append(customer)
 
@@ -377,7 +390,8 @@ func _spawn_elite_now() -> void:
 	var appetite: float = roundf(_current_baseline_appetite() * elite_guest_data.appetite_multiplier)
 	elite.configure(elite_guest_data, self, _spawn_counter, appetite)
 	elite.satisfied.connect(_on_customer_satisfied)
-	elite.leaked.connect(_on_customer_leaked)
+	elite.collided_with_cart.connect(_on_customer_collided_with_cart)
+	elite.escaped.connect(_on_customer_escaped)
 	elite.ranged_attack.connect(_on_customer_ranged_attack)
 	customers.append(elite)
 	hud.set_phase("精英检查 · 六区无法绕行")
@@ -419,10 +433,16 @@ func _on_customer_satisfied(customer: Customer) -> void:
 	_finish_customer(customer, false)
 
 
-func _on_customer_leaked(customer: Customer) -> void:
+func _on_customer_collided_with_cart(customer: Customer) -> void:
 	var remaining: float = customer.remaining_appetite
 	damage_cart(remaining, "漏客投诉")
 	_finish_customer(customer, true)
+
+
+# 绕开餐车的食客只离开模拟，不产生伤害、击败或掉落。
+func _on_customer_escaped(customer: Customer) -> void:
+	customers.erase(customer)
+	customer.queue_free()
 
 
 func _finish_customer(customer: Customer, collided: bool) -> void:

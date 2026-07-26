@@ -5,6 +5,7 @@ var _failures: int = 0
 
 func _init() -> void:
 	_test_playfield()
+	_test_customer_cart_collision()
 	_test_run_state()
 	_test_upgrade_gate()
 	_test_timeline()
@@ -32,6 +33,25 @@ func _test_playfield() -> void:
 		not field.forward_paths_are_separated(-300.0, 301.0, 0.0, 250.0),
 		"会在抵达餐车前追尾的对象需要延迟生成"
 	)
+	field.free()
+
+
+func _test_customer_cart_collision() -> void:
+	var field: Playfield = Playfield.new()
+	var state: RunState = RunState.new()
+	var cart: Cart = Cart.new()
+	cart.configure(state, field)
+	var basic_data: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
+	var customer: Customer = Customer.new()
+	customer.configure(basic_data, null, 1, 32.0)
+	customer.position = Vector2(160.0, 900.0)
+	_check(not customer.collision_rect().intersects(cart.collision_rect()), "食客纵向到达餐车但横向绕开时不算碰撞")
+	customer.position = Vector2(360.0, 900.0)
+	_check(customer.collision_rect().intersects(cart.collision_rect()), "食客与餐车绘制范围相交时算碰撞")
+	customer.position = Vector2(160.0, Playfield.CUSTOMER_DESPAWN_Y)
+	_check(not customer.collision_rect().intersects(cart.collision_rect()), "绕开的食客到达屏幕底部时不算碰撞")
+	customer.free()
+	cart.free()
 	field.free()
 
 
@@ -102,14 +122,23 @@ func _test_upgrade_gate() -> void:
 	right.configure_value_range(0.10, 0.50, 0.80)
 	var gate: UpgradeGate = UpgradeGate.new()
 	gate.configure(null, left, right, false, 100.0, 1)
-	_check(is_equal_approx(gate.left_health, 66.0), "34%门初始耐久为基准胃口的66%")
-	_check(is_equal_approx(gate.right_health, 20.0), "左右门使用各自抽取百分位计算耐久")
+	_check(is_equal_approx(gate.left_base_health, 100.0), "左门基础血量等于食客基准胃口")
+	_check(is_equal_approx(gate.right_base_health, 100.0), "右门基础血量等于食客基准胃口")
+	_check(is_equal_approx(gate.left_upgrade_health, 66.0), "34%门的隐藏升值血量为基准胃口的66%")
+	_check(is_equal_approx(gate.right_upgrade_health, 20.0), "左右门使用各自抽取百分位计算隐藏血量")
+	gate.receive_damage(true, 100.0)
+	_check(is_zero_approx(gate.left_base_health), "攻击先击破门的公开基础血量")
+	_check(is_equal_approx(left.value_ratio, 0.34), "击破基础层的攻击不会溢出到隐藏升值层")
 	gate.receive_damage(true, 33.0)
-	_check(is_equal_approx(left.value_ratio, 0.67), "打掉一半门耐久后百分位由34%提升到67%")
+	_check(is_equal_approx(left.value_ratio, 0.67), "打掉一半隐藏升值血量后百分位由34%提升到67%")
 	_check(is_equal_approx(left.value, lerpf(0.05, 0.45, 0.67)), "门奖励随受击百分位实时映射")
-	_check(is_equal_approx(gate.right_health, 20.0), "攻击左门不会改变右门")
+	_check(is_equal_approx(gate.right_base_health, 100.0), "攻击左门不会改变右门基础血量")
+	_check(is_equal_approx(gate.right_upgrade_health, 20.0), "攻击左门不会改变右门隐藏血量")
 	gate.receive_damage(true, 100.0)
 	_check(left.is_at_maximum() and not gate.side_is_attackable(true), "门打空后达到区间上限并停止锁定")
+	_check(gate.selected_upgrade_for_x(359.9) == left, "中心线左侧只选择左门")
+	_check(gate.selected_upgrade_for_x(360.0) == right, "中心点固定只选择右门")
+	_check(gate.selected_base_health_for_x(360.0) == gate.right_base_health, "中心点只结算右门碰撞损伤")
 	gate.free()
 
 	var start_gate: UpgradeGate = UpgradeGate.new()

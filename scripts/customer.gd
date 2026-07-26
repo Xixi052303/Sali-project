@@ -2,7 +2,8 @@ class_name Customer
 extends Node2D
 
 signal satisfied(customer: Customer)
-signal leaked(customer: Customer)
+signal collided_with_cart(customer: Customer)
+signal escaped(customer: Customer)
 signal ranged_attack(customer: Customer, amount: float)
 
 const INK: Color = Color("#241f1a")
@@ -49,9 +50,12 @@ func _process(delta: float) -> void:
 		if _attack_remaining <= 0.0:
 			_attack_remaining = data.attack_interval
 			ranged_attack.emit(self, remaining_appetite * data.attack_ratio)
-	if position.y >= Playfield.CART_Y - 30.0:
+	if run.customer_collides_with_cart(self):
 		active = false
-		leaked.emit(self)
+		collided_with_cart.emit(self)
+	elif position.y >= Playfield.CUSTOMER_DESPAWN_Y:
+		active = false
+		escaped.emit(self)
 
 
 func receive_satisfaction(amount: float) -> void:
@@ -71,6 +75,11 @@ func hit_radius() -> float:
 	return maxf(44.0, float(data.occupied_regions) * Playfield.REGION_WIDTH * 0.42)
 
 
+func collision_rect() -> Rect2:
+	var width: float = _body_width()
+	return Rect2(global_position + Vector2(-width * 0.5, -42.0), Vector2(width, 84.0))
+
+
 func travel_speed() -> float:
 	if data == null or run == null:
 		return 0.0
@@ -80,7 +89,7 @@ func travel_speed() -> float:
 func _draw() -> void:
 	if data == null:
 		return
-	var width: float = maxf(82.0, float(data.occupied_regions) * Playfield.REGION_WIDTH - 18.0)
+	var width: float = _body_width()
 	var body_rect: Rect2 = Rect2(-width * 0.5, -42.0, width, 84.0)
 	var body_color: Color = data.body_color
 	if _hit_feedback_remaining > 0.0:
@@ -109,6 +118,12 @@ func _draw() -> void:
 	for offset: Vector2 in [Vector2(-2.0, 0.0), Vector2(2.0, 0.0), Vector2(0.0, -2.0), Vector2(0.0, 2.0)]:
 		draw_string(font, text_position + offset, appetite_text, HORIZONTAL_ALIGNMENT_CENTER, width, 30, INK)
 	draw_string(font, text_position, appetite_text, HORIZONTAL_ALIGNMENT_CENTER, width, 30, Color("#ffe09a"))
+
+
+func _body_width() -> float:
+	if data == null:
+		return 82.0
+	return maxf(82.0, float(data.occupied_regions) * Playfield.REGION_WIDTH - 18.0)
 
 
 func _body_style(color: Color) -> StyleBoxFlat:

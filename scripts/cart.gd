@@ -6,6 +6,7 @@ signal destroyed
 
 const BASE_MOVE_SPEED: float = 900.0
 const INK: Color = Color("#241f1a")
+const COLLISION_RECT: Rect2 = Rect2(-96.0, -150.0, 192.0, 217.0)
 
 var state: RunState
 var playfield: Playfield
@@ -72,6 +73,10 @@ func take_damage(amount: float) -> bool:
 	if state.current_durability <= 0.0:
 		destroyed.emit()
 	return true
+
+
+func collision_rect() -> Rect2:
+	return Rect2(global_position + COLLISION_RECT.position, COLLISION_RECT.size)
 
 
 func play_upgrade_feedback(color: Color) -> void:
