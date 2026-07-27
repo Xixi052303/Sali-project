@@ -173,6 +173,15 @@ func can_weapons_fire() -> bool:
 	return phase == Phase.FORWARD or phase == Phase.BOSS
 
 
+# 所有 3D 对象直接运行在本场景的 X/Z 坐标系；根缩放只规范编辑器世界尺寸。
+func logic_position(node: Node3D) -> Vector3:
+	if node == null:
+		return Vector3.ZERO
+	if not is_inside_tree() or not node.is_inside_tree():
+		return node.position
+	return to_local(node.global_position)
+
+
 func customer_collides_with_cart(customer: Customer3D) -> bool:
 	if customer == null or cart == null:
 		return false
@@ -204,7 +213,7 @@ func get_priority_target() -> Node3D:
 		if gate_target == null:
 			continue
 		var gate_forward: float = cart.position.z - gate.position.z
-		var gate_horizontal: float = absf(gate_target.global_position.x - cart.global_position.x)
+		var gate_horizontal: float = absf(logic_position(gate_target).x - logic_position(cart).x)
 		if _target_is_better(gate_forward, gate_horizontal, gate.spawn_index, best_forward, best_horizontal, best_spawn_index):
 			best_target = gate_target
 			best_forward = gate_forward
@@ -220,7 +229,7 @@ func get_priority_target() -> Node3D:
 		if reward_target == null:
 			continue
 		var reward_forward: float = cart.position.z - reward_gate.position.z
-		var reward_horizontal: float = absf(reward_target.global_position.x - cart.global_position.x)
+		var reward_horizontal: float = absf(logic_position(reward_target).x - logic_position(cart).x)
 		if _target_is_better(reward_forward, reward_horizontal, reward_gate.spawn_index, best_forward, best_horizontal, best_spawn_index):
 			best_target = reward_target
 			best_forward = reward_forward
@@ -260,7 +269,7 @@ func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active or not projectile.can_hit(customer):
 			continue
-		var distance: float = projectile.global_position.distance_to(customer.global_position)
+		var distance: float = logic_position(projectile).distance_to(logic_position(customer))
 		if distance <= projectile.radius + customer.hit_radius():
 			customer.receive_satisfaction(projectile.satisfaction)
 			if projectile.register_hit(customer):
@@ -278,7 +287,7 @@ func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 		if reward_gate.try_receive_projectile(projectile):
 			return
 	if boss != null and is_instance_valid(boss) and boss.active and projectile.can_hit(boss):
-		var boss_distance: float = projectile.global_position.distance_to(boss.global_position)
+		var boss_distance: float = logic_position(projectile).distance_to(logic_position(boss))
 		if boss_distance <= projectile.radius + boss.hit_radius():
 			boss.receive_satisfaction(projectile.satisfaction)
 			projectile.register_hit(boss)
@@ -520,7 +529,7 @@ func _on_customer_escaped(customer: Customer3D) -> void:
 
 func _finish_customer(customer: Customer3D, collided: bool) -> void:
 	var was_elite: bool = customer.data.kind == CustomerData.Kind.ELITE
-	var defeat_position: Vector3 = customer.global_position
+	var defeat_position: Vector3 = logic_position(customer)
 	var reward_upgrade: UpgradeData = customer.reward_upgrade
 	var reward_baseline_appetite: float = customer.reward_baseline_appetite
 	var occupied_regions: int = customer.data.occupied_regions

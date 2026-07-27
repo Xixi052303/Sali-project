@@ -25,6 +25,8 @@ var _left_hit_feedback: float = 0.0
 var _right_hit_feedback: float = 0.0
 @onready var _left_label: Label3D = %LeftLabel
 @onready var _right_label: Label3D = %RightLabel
+@onready var _left_health_label: Label3D = %LeftHealthLabel
+@onready var _right_health_label: Label3D = %RightHealthLabel
 @onready var _left_mesh: MeshInstance3D = %LeftPanel
 @onready var _right_mesh: MeshInstance3D = %RightPanel
 
@@ -147,27 +149,47 @@ func _resolve_visual_nodes() -> void:
 	_right_mesh = get_node("RightPanel") as MeshInstance3D
 	_left_label = get_node("LeftLabel") as Label3D
 	_right_label = get_node("RightLabel") as Label3D
+	_left_health_label = get_node("LeftHealthLabel") as Label3D
+	_right_health_label = get_node("RightHealthLabel") as Label3D
 
 
 func _refresh_labels() -> void:
 	if _left_label == null or left_upgrade == null or right_upgrade == null:
 		return
 	var maximum_durability: float = 100.0 if run == null else run.state.maximum_durability
-	_left_label.text = _label_text(left_upgrade, left_base_health, maximum_durability)
-	_right_label.text = _label_text(right_upgrade, right_base_health, maximum_durability)
+	_left_label.text = _label_text(left_upgrade, maximum_durability)
+	_right_label.text = _label_text(right_upgrade, maximum_durability)
 	_left_label.modulate = Color.WHITE
 	_right_label.modulate = Color.WHITE
+	_left_health_label.visible = not start_food_gate
+	_right_health_label.visible = not start_food_gate
+	_left_health_label.text = str(ceili(left_base_health))
+	_right_health_label.text = str(ceili(right_base_health))
+	_left_health_label.modulate = left_upgrade.rarity_color.lightened(0.18)
+	_right_health_label.modulate = right_upgrade.rarity_color.lightened(0.18)
+	_refresh_rarity_colors()
 
 
-func _label_text(upgrade: UpgradeData, base_health: float, maximum_durability: float) -> String:
+func _label_text(upgrade: UpgradeData, maximum_durability: float) -> String:
 	if start_food_gate:
 		return "土豆 Lv.1\n选择开局食材"
-	return "%s\n%s\n%s\n胃口 %d" % [
+	return "%s\n%s\n%s" % [
 		upgrade.display_name,
 		upgrade.effect_text(maximum_durability),
 		upgrade.rarity_name,
-		ceili(base_health),
 	]
+
+
+# 门板颜色始终来自当前奖励稀有度，隐藏升值层跨档时立即刷新。
+func _refresh_rarity_colors() -> void:
+	var left_material: StandardMaterial3D = _left_mesh.material_override as StandardMaterial3D
+	var right_material: StandardMaterial3D = _right_mesh.material_override as StandardMaterial3D
+	if start_food_gate:
+		left_material.albedo_color = Color("#3d513d")
+		right_material.albedo_color = Color("#694035")
+		return
+	left_material.albedo_color = left_upgrade.rarity_color.darkened(0.22)
+	right_material.albedo_color = right_upgrade.rarity_color.darkened(0.22)
 
 
 func _refresh_feedback() -> void:

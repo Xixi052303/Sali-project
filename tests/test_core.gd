@@ -64,8 +64,14 @@ func _test_customer_cart_collision() -> void:
 func _test_3d_plane_rules() -> void:
 	var field: Playfield = Playfield.new()
 	var state: RunState = RunState.new()
+	var run_scene: PackedScene = load("res://scenes/run_3d.tscn") as PackedScene
 	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
 	var customer_scene: PackedScene = load("res://scenes/customer_3d.tscn") as PackedScene
+	var gate_scene: PackedScene = load("res://scenes/upgrade_gate_3d.tscn") as PackedScene
+	var drop_scene: PackedScene = load("res://scenes/upgrade_drop_3d.tscn") as PackedScene
+	var run_scene_instance: Node3D = run_scene.instantiate() as Node3D
+	_check(run_scene_instance.scale.is_equal_approx(Vector3.ONE * 0.01), "3D场景使用统一根尺度规范编辑器世界尺寸")
+	run_scene_instance.free()
 	var cart: Cart3D = cart_scene.instantiate() as Cart3D
 	cart.configure(state, field)
 	_check(is_equal_approx(cart.position.x, 360.0), "3D餐车沿用逻辑横坐标")
@@ -103,6 +109,34 @@ func _test_3d_plane_rules() -> void:
 	if projectiles.get_child_count() == 1:
 		var projectile: FoodProjectile3D = projectiles.get_child(0) as FoodProjectile3D
 		_check(projectile.velocity.z < 0.0 and is_zero_approx(projectile.velocity.y), "3D投射物只在X/Z玩法平面移动")
+
+	var left_upgrade: UpgradeData = UpgradeData.new()
+	left_upgrade.configure_value_range(0.05, 0.45, 0.1)
+	var right_upgrade: UpgradeData = UpgradeData.new()
+	right_upgrade.configure_value_range(0.05, 0.45, 0.8)
+	var gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
+	gate.configure(null, left_upgrade, right_upgrade, false, 100.0, 1)
+	var left_health_label: Label3D = gate.get_node("LeftHealthLabel") as Label3D
+	var left_panel: MeshInstance3D = gate.get_node("LeftPanel") as MeshInstance3D
+	var left_material: StandardMaterial3D = left_panel.material_override as StandardMaterial3D
+	var gate_color_before: Color = left_material.albedo_color
+	_check(left_health_label.text.to_int() == ceili(gate.left_base_health), "3D普通门在门板上方独立显示公开基础胃口")
+	gate.receive_damage(true, gate.left_base_health)
+	gate.receive_damage(true, 50.0)
+	_check(left_health_label.text == "0", "3D门基础胃口耗尽后悬浮数字实时归零")
+	_check(not left_material.albedo_color.is_equal_approx(gate_color_before), "3D普通门升值跨稀有度后实时换色")
+	gate.free()
+
+	var reward_upgrade: UpgradeData = UpgradeData.new()
+	reward_upgrade.configure_value_range(0.05, 0.45, 0.1)
+	var reward_gate: UpgradeDrop3D = drop_scene.instantiate() as UpgradeDrop3D
+	reward_gate.configure(null, reward_upgrade, Vector3.ZERO, 100.0, 2, 1)
+	var reward_panel: MeshInstance3D = reward_gate.get_node("Panel") as MeshInstance3D
+	var reward_material: StandardMaterial3D = reward_panel.material_override as StandardMaterial3D
+	var reward_color_before: Color = reward_material.albedo_color
+	reward_gate.receive_damage(50.0)
+	_check(not reward_material.albedo_color.is_equal_approx(reward_color_before), "3D食客奖励门升值跨稀有度后实时换色")
+	reward_gate.free()
 	run.free()
 	customer.free()
 	field.free()

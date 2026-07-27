@@ -60,8 +60,8 @@ rotation = Vector3(-0.605545, 0, 0)
 current = true
 fov = 46.0
 keep_aspect = 0
-near = 5.0
-far = 6000.0
+near = 0.05
+far = 60.0
 
 [node name="PaperEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("EnvironmentPaper")

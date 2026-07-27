@@ -48,12 +48,12 @@ func _fire(food: FoodData, target: Node3D) -> void:
 	var radius: float = state.effective_projectile_radius(food)
 	var count: int = maxi(1, state.servings)
 	var base_direction: Vector3 = Vector3.FORWARD
-	var cart_position: Vector3 = cart.global_position if cart.is_inside_tree() else cart.position
+	var cart_position: Vector3 = run.logic_position(cart)
 	if target != null and (
 		food.initial_aim_mode == FoodData.AimMode.TARGET_SNAPSHOT
 		or state.is_food_target_aimed(food.id)
 	):
-		var target_position: Vector3 = target.global_position if target.is_inside_tree() else target.position
+		var target_position: Vector3 = run.logic_position(target)
 		base_direction = target_position - cart_position
 		base_direction.y = 0.0
 		base_direction = base_direction.normalized()

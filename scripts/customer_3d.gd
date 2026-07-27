@@ -87,8 +87,7 @@ func hit_radius() -> float:
 
 func collision_rect_xz() -> Rect2:
 	var width: float = _body_width()
-	var world_position: Vector3 = global_position if is_inside_tree() else position
-	return Rect2(Vector2(world_position.x - width * 0.5, world_position.z - 42.0), Vector2(width, 84.0))
+	return Rect2(Vector2(position.x - width * 0.5, position.z - 42.0), Vector2(width, 84.0))
 
 
 func travel_speed() -> float:

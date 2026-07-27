@@ -16,6 +16,7 @@
 [ext_resource type="Resource" path="res://data/timelines/vertical_slice.tres" id="14_timeline"]
 
 [node name="Run3D" type="Node3D"]
+scale = Vector3(0.01, 0.01, 0.01)
 script = ExtResource("1_run")
 potato_data = ExtResource("7_potato")
 baguette_data = ExtResource("8_baguette")

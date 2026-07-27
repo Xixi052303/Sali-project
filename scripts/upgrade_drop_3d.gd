@@ -33,7 +33,7 @@ func configure(
 	occupied_regions = clampi(gate_occupied_regions, 1, Playfield.REGION_COUNT)
 	spawn_index = index
 	upgrade_health = baseline_appetite * (1.0 - upgrade.value_ratio)
-	global_position = start_position
+	position = start_position
 	_configure_visual()
 	_refresh_label()
 
@@ -48,7 +48,7 @@ func _process(delta: float) -> void:
 		position.z += move_speed * delta
 	if position.z >= Playfield.CART_Y:
 		resolved = true
-		if contains_cart_x(run.cart.global_position.x):
+		if contains_cart_x(run.cart.position.x):
 			run.on_customer_reward_gate_collected(upgrade)
 		queue_free()
 
@@ -61,7 +61,7 @@ func target_for_cart_x(cart_x: float) -> Node3D:
 
 func contains_cart_x(cart_x: float) -> bool:
 	var half_width: float = _panel_width() * 0.5
-	return cart_x >= global_position.x - half_width and cart_x < global_position.x + half_width
+	return cart_x >= position.x - half_width and cart_x < position.x + half_width
 
 
 func try_receive_projectile(projectile: FoodProjectile3D) -> bool:
@@ -116,6 +116,8 @@ func _refresh_label() -> void:
 	var maximum_durability: float = 100.0 if run == null else run.state.maximum_durability
 	_label.text = "%s\n%s\n%s" % [upgrade.display_name, upgrade.effect_text(maximum_durability), upgrade.rarity_name]
 	_label.modulate = Color.WHITE
+	var panel_material: StandardMaterial3D = _panel_mesh.material_override as StandardMaterial3D
+	panel_material.albedo_color = upgrade.rarity_color.darkened(0.22)
 
 
 func _refresh_feedback() -> void:

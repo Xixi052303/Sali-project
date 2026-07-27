@@ -34,10 +34,7 @@ func configure(
 ) -> void:
 	_resolve_visual_nodes()
 	run = run_controller
-	if is_inside_tree():
-		global_position = start_position
-	else:
-		position = start_position
+	position = start_position
 	velocity = direction.normalized() * speed
 	_movement_speed = speed
 	satisfaction = amount
@@ -61,7 +58,7 @@ func _process(delta: float) -> void:
 		queue_free()
 		return
 	if homing_enabled and is_instance_valid(tracking_target) and not tracking_target.is_queued_for_deletion():
-		var desired: Vector3 = tracking_target.global_position - global_position
+		var desired: Vector3 = run.logic_position(tracking_target) - run.logic_position(self)
 		desired.y = 0.0
 		var current_angle: float = atan2(velocity.x, -velocity.z)
 		var desired_angle: float = atan2(desired.x, -desired.z)
@@ -88,7 +85,7 @@ func register_hit(target: Node3D) -> bool:
 
 
 func planar_position() -> Vector2:
-	return Vector2(global_position.x, global_position.z)
+	return Vector2(position.x, position.z)
 
 
 func _resolve_visual_nodes() -> void:

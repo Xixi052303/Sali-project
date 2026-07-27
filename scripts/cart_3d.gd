@@ -77,8 +77,7 @@ func take_damage(amount: float) -> bool:
 
 
 func collision_rect_xz() -> Rect2:
-	var world_position: Vector3 = global_position if is_inside_tree() else position
-	return Rect2(Vector2(world_position.x, world_position.z) + COLLISION_RECT.position, COLLISION_RECT.size)
+	return Rect2(Vector2(position.x, position.z) + COLLISION_RECT.position, COLLISION_RECT.size)
 
 
 func play_upgrade_feedback(_color: Color) -> void:
