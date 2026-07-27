@@ -3,8 +3,10 @@ extends Node3D
 
 const ROAD_TILE_LENGTH: float = 12.8
 const ROAD_FIRST_CENTER_Z: float = -44.8
-const STREET_WRAP_LENGTH: float = 51.2
-const STREET_WRAP_EDGE_Z: float = 17.6
+# 街景沿六段道路的完整编辑器范围回卷，避免运行首帧改变手动摆位。
+const STREET_WRAP_BACK_Z: float = ROAD_FIRST_CENTER_Z - ROAD_TILE_LENGTH * 0.5
+const STREET_WRAP_LENGTH: float = ROAD_TILE_LENGTH * 6.0
+const STREET_WRAP_EDGE_Z: float = STREET_WRAP_BACK_Z + STREET_WRAP_LENGTH
 const DESIGN_ASPECT: float = 720.0 / 1280.0
 
 @export_group("滚动")
@@ -29,12 +31,17 @@ var _cart: Cart3D
 
 
 func _ready() -> void:
-	# 手动复制到 StreetProps 下的新面片会自动加入滚动，无需再改脚本名单。
-	for child: Node in _street_props_root.get_children():
-		if child is Sprite3D:
-			_street_props.append(child as Sprite3D)
+	_collect_street_props(_street_props_root)
 	get_viewport().size_changed.connect(_apply_camera_aspect_compensation)
 	_apply_camera_aspect_compensation()
+
+
+# 递归收集 StreetProps 下的面片，使分类容器内的道路装饰也参与滚动。
+func _collect_street_props(parent: Node) -> void:
+	for child: Node in parent.get_children():
+		if child is Sprite3D:
+			_street_props.append(child as Sprite3D)
+		_collect_street_props(child)
 
 
 func _process(delta: float) -> void:

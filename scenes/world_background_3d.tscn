@@ -3,18 +3,19 @@
 [ext_resource type="Script" uid="uid://dfhg4rcybu4dl" path="res://scripts/world_background_3d.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://dcsbqmlqi7ucv" path="res://assets/image/街景.png" id="3_street"]
 [ext_resource type="PackedScene" uid="uid://ovhyat2qa7p6" path="res://scenes/road_segment_3d.tscn" id="4_road_segment"]
+[ext_resource type="Texture2D" uid="uid://bpjvg3w8ry25j" path="res://assets/image/马路组件/马路组件1.png" id="4_uo2ig"]
 
 [sub_resource type="Environment" id="EnvironmentPaper"]
 background_mode = 1
 background_color = Color(0.545098, 0.505882, 0.435294, 1)
 background_energy_multiplier = 0.68
-ambient_light_source = 3
+ambient_light_source = 2
 ambient_light_color = Color(0.843137, 0.780392, 0.631373, 1)
 ambient_light_energy = 0.75
 tonemap_mode = 2
 fog_enabled = true
 fog_mode = 1
-fog_light_color = Color(0.560784, 0.529412, 0.458824, 1)
+fog_light_color = Color(0.6509804, 0.5294118, 0.45882353, 1)
 fog_light_energy = 0.82
 fog_density = 1.0
 fog_sky_affect = 0.7
@@ -79,9 +80,83 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 19.2)
 [node name="StreetProps" type="Node3D" parent="." unique_id=1167259546]
 unique_name_in_owner = true
 
+[node name="RoadProps" type="Node3D" parent="StreetProps" unique_id=1812118485]
+
+[node name="WellLid" type="Sprite3D" parent="StreetProps/RoadProps" unique_id=1111763016]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 1.0838497, 0.01, 23.227291)
+centered = false
+axis = 1
+texture = ExtResource("4_uo2ig")
+region_enabled = true
+region_rect = Rect2(37, 96, 278, 283)
+
+[node name="WellLid2" type="Sprite3D" parent="StreetProps/RoadProps" unique_id=1532053157]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 5.6511717, 0.01, 19.036747)
+centered = false
+axis = 1
+texture = ExtResource("4_uo2ig")
+region_enabled = true
+region_rect = Rect2(45, 527, 308, 195)
+
+[node name="WellLid3" type="Sprite3D" parent="StreetProps/RoadProps" unique_id=778024603]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 2.465341, 0.01, 10.147895)
+centered = false
+axis = 1
+texture = ExtResource("4_uo2ig")
+region_enabled = true
+region_rect = Rect2(958, 96, 279, 281)
+
+[node name="WellLid4" type="Sprite3D" parent="StreetProps/RoadProps" unique_id=2022169834]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 5.100652, 0.01, 0.20966339)
+centered = false
+axis = 1
+texture = ExtResource("4_uo2ig")
+region_enabled = true
+region_rect = Rect2(1874, 99, 273, 280)
+
+[node name="WellLid5" type="Sprite3D" parent="StreetProps/RoadProps" unique_id=31752204]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 1.0285959, 0.01, -12.0990925)
+centered = false
+axis = 1
+texture = ExtResource("4_uo2ig")
+region_enabled = true
+region_rect = Rect2(1754, 522, 226, 200)
+
+[node name="WellLid6" type="Sprite3D" parent="StreetProps/RoadProps" unique_id=1202731133]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 1.1535478, 0.01, -21.020483)
+centered = false
+axis = 1
+texture = ExtResource("4_uo2ig")
+region_enabled = true
+region_rect = Rect2(1754, 522, 226, 200)
+
+[node name="WellLid7" type="Sprite3D" parent="StreetProps/RoadProps" unique_id=278230674]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 5.4628615, 0.01, -29.8303)
+centered = false
+axis = 1
+texture = ExtResource("4_uo2ig")
+region_enabled = true
+region_rect = Rect2(2036, 518, 319, 230)
+
+[node name="WellLid8" type="Sprite3D" parent="StreetProps/RoadProps" unique_id=1853271859]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 1.107265, 0.01, -39.894108)
+centered = false
+axis = 1
+texture = ExtResource("4_uo2ig")
+region_enabled = true
+region_rect = Rect2(1579, 97, 280, 282)
+
+[node name="WellLid9" type="Sprite3D" parent="StreetProps/RoadProps" unique_id=1200189077]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 5.3919225, 0.01, -48.698376)
+centered = false
+axis = 1
+texture = ExtResource("4_uo2ig")
+region_enabled = true
+region_rect = Rect2(2151, 115, 217, 260)
+
 [node name="PropBench" type="Sprite3D" parent="StreetProps" unique_id=1808223018]
 unique_name_in_owner = true
-transform = Transform3D(0.9848077, 0, -0.17364818, 0, 1, 0, 0.17364818, 0, 0.9848077, 7.1628366, 0, 10.4)
+transform = Transform3D(0.9848077, 0, -0.17364818, 0, 1, 0, 0.17364818, 0, 0.9848077, 7.163, 0.5, 10.4)
 cast_shadow = 0
 centered = false
 pixel_size = 0.0025
@@ -94,7 +169,7 @@ region_rect = Rect2(35, 155, 488, 388)
 
 [node name="PropBin" type="Sprite3D" parent="StreetProps" unique_id=1446418963]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 1.7484555e-07, 0, 1, 0, -1.7484555e-07, 0, 1, 7.1, 0, 4.2)
+transform = Transform3D(1, 0, 1.7484555e-07, 0, 1, 0, -1.7484555e-07, 0, 1, 7.1, 0.5, 4.2)
 cast_shadow = 0
 centered = false
 pixel_size = 0.0025
@@ -107,7 +182,7 @@ region_rect = Rect2(585, 164, 226, 361)
 
 [node name="PropSign" type="Sprite3D" parent="StreetProps" unique_id=158195984]
 unique_name_in_owner = true
-transform = Transform3D(1.8793852, 0, 0.68404025, 0, 2.5, 0, -0.68404025, 0, 1.8793852, -0.47472486, 0, -4.2)
+transform = Transform3D(1.8793852, 0, 0.68404025, 0, 2.5, 0, -0.68404025, 0, 1.8793852, -0.47472486, 0.5, -4.2)
 cast_shadow = 0
 centered = false
 pixel_size = 0.0025
@@ -120,7 +195,7 @@ region_rect = Rect2(1530, 17, 259, 501)
 
 [node name="PropPlanter" type="Sprite3D" parent="StreetProps" unique_id=670414794]
 unique_name_in_owner = true
-transform = Transform3D(0.9085082, 0, -0.41786706, 0, 1, 0, 0.41786706, 0, 0.9085082, 6.918341, 0, -12.6)
+transform = Transform3D(0.9085082, 0, -0.41786706, 0, 1, 0, 0.41786706, 0, 0.9085082, 6.918341, 0.5, -12.6)
 cast_shadow = 0
 centered = false
 pixel_size = 0.0025
@@ -133,7 +208,7 @@ region_rect = Rect2(1808, 157, 407, 384)
 
 [node name="PropLamp" type="Sprite3D" parent="StreetProps" unique_id=683674454]
 unique_name_in_owner = true
-transform = Transform3D(2.988584, 0, 0.2614672, 0, 3, 0, -0.2614672, 0, 2.988584, -0.35374492, 0, -22)
+transform = Transform3D(2.988584, 0, 0.2614672, 0, 3, 0, -0.2614672, 0, 2.988584, -0.35374492, 0.5, -22)
 cast_shadow = 0
 centered = false
 pixel_size = 0.0025
@@ -146,7 +221,7 @@ region_rect = Rect2(484, 590, 286, 527)
 
 [node name="PropPlant" type="Sprite3D" parent="StreetProps" unique_id=616482856]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.4061084, 0, -33)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.4061084, 0.5, -33)
 cast_shadow = 0
 centered = false
 pixel_size = 0.0025
