@@ -22,8 +22,9 @@ var _hit_instances: Dictionary = {}
 var _miss_disappearing: bool = false
 var _orbit_angle: float = 0.0
 var _orbit_angular_speed: float = 3.2
-# 蘑菇按固定径向速度持续外扩，使弹速和额外持续都会提高最终覆盖范围。
-var _orbit_radial_speed: float = 0.5
+# 蘑菇用累计转角驱动“驻留一圈、扩张一圈”的半径阶段，不直接读取速度或持续倍率。
+var _orbit_travel_angle: float = 0.0
+var _orbit_base_radius: float = 1.2
 var _breathing_enabled: bool = false
 var _breathing_period: float = 1.2
 var _breathing_outer_multiplier: float = 2.0
@@ -70,12 +71,8 @@ func configure(
 	homing_turn_speed = food.homing_turn_speed
 	_orbit_angle = orbit_phase
 	_orbit_angular_speed = speed
-	var orbit_speed_multiplier: float = speed / maxf(0.001, food.orbit_angular_speed)
-	_orbit_radial_speed = (
-		Playfield.design_to_world(food.orbit_radius)
-		/ maxf(0.001, food.base_lifetime)
-		* orbit_speed_multiplier
-	)
+	_orbit_travel_angle = 0.0
+	_orbit_base_radius = Playfield.design_to_world(food.orbit_radius)
 	_breathing_enabled = breathing_enabled
 	_breathing_period = maxf(0.1, food.breathing_period)
 	_breathing_outer_multiplier = maxf(1.0, food.breathing_outer_multiplier)
@@ -129,20 +126,32 @@ func _process_forward_motion(delta: float) -> void:
 
 
 func _process_orbit(delta: float) -> void:
-	_orbit_angle += _orbit_angular_speed * delta
+	var angle_step: float = _orbit_angular_speed * delta
+	_orbit_angle += angle_step
+	_orbit_travel_angle += absf(angle_step)
 	var elapsed: float = _initial_lifetime - _lifetime_remaining
 	var radius_multiplier: float = 1.0
 	if _breathing_enabled:
 		var breath_progress: float = 0.5 - 0.5 * cos(TAU * elapsed / _breathing_period)
 		radius_multiplier = lerpf(1.0, _breathing_outer_multiplier, breath_progress)
 	var center: Vector3 = run.logic_position(run.cart)
-	var current_radius: float = _orbit_radial_speed * elapsed * radius_multiplier
+	var current_radius: float = _current_orbit_radius() * radius_multiplier
 	position = center + Vector3(
 		sin(_orbit_angle) * current_radius,
 		0.0,
 		-cos(_orbit_angle) * current_radius
 	)
 	rotation.y = -_orbit_angle
+
+
+# 每档先驻留一圈，再用一圈平滑扩到当前半径的1.5倍。
+func _current_orbit_radius() -> float:
+	var completed_phase_pairs: int = floori(_orbit_travel_angle / (TAU * 2.0))
+	var phase_turns: float = fmod(_orbit_travel_angle / TAU, 2.0)
+	var stage_radius: float = _orbit_base_radius * pow(1.5, completed_phase_pairs)
+	if phase_turns <= 1.0:
+		return stage_radius
+	return lerpf(stage_radius, stage_radius * 1.5, phase_turns - 1.0)
 
 
 func can_hit(target: Node3D) -> bool:

@@ -358,19 +358,18 @@ func _test_projectile_evolutions() -> void:
 		false
 	)
 	orbit._process_orbit(0.0)
-	var initial_radius: float = orbit.position.distance_to(cart.position)
-	orbit._lifetime_remaining = orbit._initial_lifetime - mushroom.base_lifetime * 0.5
-	orbit._process_orbit(0.0)
-	var middle_radius: float = orbit.position.distance_to(cart.position)
-	_check(is_zero_approx(initial_radius), "蘑菇从餐车中心开始环绕")
-	_check(is_equal_approx(middle_radius, 0.6), "蘑菇在基础持续中段扩张到一半基础半径")
-	orbit._breathing_enabled = true
-	orbit._lifetime_remaining = orbit._initial_lifetime - mushroom.breathing_period * 0.5
-	orbit._process_orbit(0.0)
-	_check(
-		is_equal_approx(orbit.position.distance_to(cart.position), 0.6),
-		"呼吸进化在持续外扩半径上叠加周期倍率"
-	)
+	var turn_duration: float = TAU / mushroom.orbit_angular_speed
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), 1.2), "蘑菇从基础半径开始环绕")
+	orbit._process_orbit(turn_duration)
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), 1.2), "蘑菇先在基础半径完整旋转一圈")
+	orbit._process_orbit(turn_duration * 0.5)
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), 1.5), "扩张圈中点平滑到基础半径的1.25倍")
+	orbit._process_orbit(turn_duration * 0.5)
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), 1.8), "扩张圈结束到达当前半径的1.5倍")
+	orbit._process_orbit(turn_duration)
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), 1.8), "蘑菇在1.5倍半径处再次完整旋转一圈")
+	orbit._process_orbit(turn_duration)
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), 2.7), "下一扩张圈继续到当前半径的1.5倍")
 
 	var faster_orbit: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
 	run.add_child(faster_orbit)
@@ -390,11 +389,10 @@ func _test_projectile_evolutions() -> void:
 		false,
 		false
 	)
-	faster_orbit._lifetime_remaining = faster_orbit._initial_lifetime - mushroom.base_lifetime * 0.5
-	faster_orbit._process_orbit(0.0)
+	faster_orbit._process_orbit(TAU * 1.5 / (mushroom.orbit_angular_speed * 1.5))
 	_check(
-		is_equal_approx(faster_orbit.position.distance_to(cart.position), 0.9),
-		"弹速倍率同时提高蘑菇旋转与外扩速度"
+		is_equal_approx(faster_orbit.position.distance_to(cart.position), 1.5),
+		"酒只提高转速，相同累计转角仍使用相同分段半径"
 	)
 
 	var longer_orbit: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
@@ -415,11 +413,38 @@ func _test_projectile_evolutions() -> void:
 		false,
 		false
 	)
-	longer_orbit._lifetime_remaining = 0.001
-	longer_orbit._process_orbit(0.0)
 	_check(
-		absf(longer_orbit.position.distance_to(cart.position) - 1.7995) < 0.001,
-		"持续时间倍率允许蘑菇继续扩张到更远半径"
+		is_equal_approx(longer_orbit._initial_lifetime, mushroom.base_lifetime * 1.5)
+		and is_equal_approx(longer_orbit._orbit_angular_speed, mushroom.orbit_angular_speed)
+		and is_equal_approx(longer_orbit._orbit_base_radius, 1.2),
+		"淀粉只延长蘑菇存续时间，不直接改变转速或分段半径"
+	)
+
+	var breathing_orbit: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	run.add_child(breathing_orbit)
+	breathing_orbit.configure(
+		run,
+		cart.position,
+		Vector3.FORWARD,
+		mushroom,
+		7.0,
+		mushroom.orbit_angular_speed,
+		0.22,
+		mushroom.base_lifetime,
+		1,
+		null,
+		false,
+		0.0,
+		false,
+		true
+	)
+	breathing_orbit._lifetime_remaining = (
+		breathing_orbit._initial_lifetime - mushroom.breathing_period * 0.5
+	)
+	breathing_orbit._process_orbit(0.0)
+	_check(
+		is_equal_approx(breathing_orbit.position.distance_to(cart.position), 2.4),
+		"呼吸进化在当前分段半径上叠加周期倍率"
 	)
 	run.free()
 

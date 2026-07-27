@@ -31,7 +31,7 @@ enum AimMode {
 @export var pierce_count: int = 1
 @export var visual_color: Color = Color("#e2b650")
 @export_group("Orbiting attack")
-# 环绕食材未强化时会在基础持续结束前由餐车中心扩张到此半径。
+# 环绕食材以此为首档半径，完成驻留圈后再逐档扩大。
 @export var orbit_radius: float = 120.0
 @export var orbit_angular_speed: float = 3.2
 @export var breathing_period: float = 1.2
