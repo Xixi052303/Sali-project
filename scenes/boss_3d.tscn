@@ -8,7 +8,7 @@ albedo_color = Color(0.439216, 0.27451, 0.219608, 1)
 roughness = 0.94
 
 [sub_resource type="BoxMesh" id="MeshBody"]
-size = Vector3(196, 150, 20)
+size = Vector3(1.96, 1.5, 0.2)
 
 [sub_resource type="StandardMaterial3D" id="MatHead"]
 resource_local_to_scene = true
@@ -35,40 +35,40 @@ albedo_color = Color(0.91, 0.22, 0.06, 0.34)
 
 [sub_resource type="BoxMesh" id="MeshLine"]
 resource_local_to_scene = true
-size = Vector3(108, 3, 750)
+size = Vector3(1.08, 0.03, 7.5)
 
 [sub_resource type="CylinderMesh" id="MeshArea"]
-top_radius = 110.0
-bottom_radius = 110.0
-height = 3.0
+top_radius = 1.1
+bottom_radius = 1.1
+height = 0.03
 
 [node name="PrototypeBoss3D" type="Node3D"]
 script = ExtResource("1_script")
 
 [node name="Body" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(0, 82, 0)
+position = Vector3(0, 0.82, 0)
 material_override = SubResource("MatBody")
 mesh = SubResource("MeshBody")
 
 [node name="Head" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(0, 190, 0)
-scale = Vector3(150, 116, 22)
+position = Vector3(0, 1.9, 0)
+scale = Vector3(1.5, 1.16, 0.22)
 material_override = SubResource("MatHead")
 mesh = SubResource("MeshHead")
 
 [node name="ContactShadow" type="MeshInstance3D" parent="."]
-position = Vector3(0, 3, 0)
-scale = Vector3(210, 5, 78)
+position = Vector3(0, 0.03, 0)
+scale = Vector3(2.1, 0.05, 0.78)
 cast_shadow = 0
 material_override = SubResource("MatShadow")
 mesh = SubResource("MeshShadow")
 
 [node name="AppetiteLabel" type="Label3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(0, 304, 12)
-pixel_size = 0.65
+position = Vector3(0, 3.04, 0.12)
+pixel_size = 0.0065
 font_size = 48
 outline_size = 10
 modulate = Color(1, 0.878431, 0.603922, 1)

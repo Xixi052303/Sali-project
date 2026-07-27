@@ -9,7 +9,7 @@ roughness = 0.94
 
 [sub_resource type="BoxMesh" id="MeshBody"]
 resource_local_to_scene = true
-size = Vector3(182, 84, 12)
+size = Vector3(1.82, 0.84, 0.12)
 
 [sub_resource type="StandardMaterial3D" id="MatHead"]
 resource_local_to_scene = true
@@ -36,29 +36,29 @@ unique_name_in_owner = true
 
 [node name="Body" type="MeshInstance3D" parent="PaperCustomerVisual"]
 unique_name_in_owner = true
-position = Vector3(0, 48, 0)
+position = Vector3(0, 0.48, 0)
 material_override = SubResource("MatBody")
 mesh = SubResource("MeshBody")
 
 [node name="Head" type="MeshInstance3D" parent="PaperCustomerVisual"]
 unique_name_in_owner = true
-position = Vector3(0, 118, 0)
-scale = Vector3(90, 72, 14)
+position = Vector3(0, 1.18, 0)
+scale = Vector3(0.9, 0.72, 0.14)
 material_override = SubResource("MatHead")
 mesh = SubResource("MeshHead")
 
 [node name="ContactShadow" type="MeshInstance3D" parent="PaperCustomerVisual"]
 unique_name_in_owner = true
-position = Vector3(0, 3, 0)
-scale = Vector3(182, 5, 56)
+position = Vector3(0, 0.03, 0)
+scale = Vector3(1.82, 0.05, 0.56)
 cast_shadow = 0
 material_override = SubResource("MatShadow")
 mesh = SubResource("MeshShadow")
 
 [node name="AppetiteLabel" type="Label3D" parent="PaperCustomerVisual"]
 unique_name_in_owner = true
-position = Vector3(0, 192, 8)
-pixel_size = 0.8
+position = Vector3(0, 1.92, 0.08)
+pixel_size = 0.008
 font_size = 38
 outline_size = 8
 modulate = Color(1, 0.878431, 0.603922, 1)

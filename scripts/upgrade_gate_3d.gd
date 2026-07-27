@@ -1,9 +1,9 @@
 class_name UpgradeGate3D
 extends Node3D
 
-const LEFT_PANEL: Rect2 = Rect2(66.0, -72.0, 288.0, 144.0)
-const RIGHT_PANEL: Rect2 = Rect2(366.0, -72.0, 288.0, 144.0)
-const SIDE_DIVIDER_X: float = 360.0
+const LEFT_PANEL: Rect2 = Rect2(0.66, -0.72, 2.88, 1.44)
+const RIGHT_PANEL: Rect2 = Rect2(3.66, -0.72, 2.88, 1.44)
+const SIDE_DIVIDER_X: float = 3.6
 
 var run: RunController3D
 var left_upgrade: UpgradeData
@@ -11,7 +11,7 @@ var right_upgrade: UpgradeData
 var start_food_gate: bool = false
 var resolved: bool = false
 # 远景门需要在既有时间轴窗口内抵达，速度高于普通道路滚动但不改变横向选择规则。
-var move_speed: float = 500.0
+var move_speed: float = 5.0
 var spawn_index: int = 0
 var baseline_appetite: float = 1.0
 # 基础胃口负责撞门损伤并公开显示；隐藏胃口只负责基础层击破后的奖励升值。

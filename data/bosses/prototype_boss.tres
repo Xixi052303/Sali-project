@@ -1,14 +1,8 @@
-[gd_resource type="Resource" script_class="BossPatternData" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="BossPatternData" format=3 uid="uid://c6u31iw01pg66"]
 
-[ext_resource type="Script" path="res://scripts/data/boss_pattern_data.gd" id="1_boss"]
+[ext_resource type="Script" uid="uid://daev3nwyrlqx0" path="res://scripts/data/boss_pattern_data.gd" id="1_boss"]
 
 [resource]
 script = ExtResource("1_boss")
 display_name = "临时主厨（原型）"
-appetite_multiplier = 3.0
-move_speed = 110.0
-telegraph_duration = 1.15
-recovery_duration = 1.0
-line_attack_ratio = 0.025
-area_attack_ratio = 0.036
 body_color = Color(0.53, 0.25, 0.21, 1)

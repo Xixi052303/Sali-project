@@ -18,20 +18,20 @@ roughness = 0.9
 
 [sub_resource type="BoxMesh" id="MeshBaguette"]
 resource_local_to_scene = true
-size = Vector3(24, 18, 80)
+size = Vector3(0.24, 0.18, 0.8)
 
 [node name="FoodProjectile3D" type="Node3D"]
 script = ExtResource("1_script")
 
 [node name="PotatoVisual" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(0, 82, 0)
-scale = Vector3(32, 32, 32)
+position = Vector3(0, 0.82, 0)
+scale = Vector3(0.32, 0.32, 0.32)
 material_override = SubResource("MatPotato")
 mesh = SubResource("MeshPotato")
 
 [node name="BaguetteVisual" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(0, 82, 0)
+position = Vector3(0, 0.82, 0)
 material_override = SubResource("MatBaguette")
 mesh = SubResource("MeshBaguette")

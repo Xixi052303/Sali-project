@@ -55,7 +55,7 @@ func _process(delta: float) -> void:
 		_visual_root.scale = Vector3.ONE
 	if run.is_world_scrolling():
 		position.z += travel_speed() * delta
-	if data.kind == CustomerData.Kind.RANGED and position.z > 180.0 and position.z < 820.0:
+	if data.kind == CustomerData.Kind.RANGED and position.z > 1.8 and position.z < 8.2:
 		_attack_remaining -= delta
 		if _attack_remaining <= 0.0:
 			_attack_remaining = data.attack_interval
@@ -81,25 +81,25 @@ func receive_satisfaction(amount: float) -> void:
 
 func hit_radius() -> float:
 	if data == null:
-		return 40.0
-	return maxf(44.0, float(data.occupied_regions) * Playfield.REGION_WIDTH * 0.42)
+		return 0.4
+	return maxf(0.44, float(data.occupied_regions) * Playfield.REGION_WIDTH * 0.42)
 
 
 func collision_rect_xz() -> Rect2:
 	var width: float = _body_width()
-	return Rect2(Vector2(position.x - width * 0.5, position.z - 42.0), Vector2(width, 84.0))
+	return Rect2(Vector2(position.x - width * 0.5, position.z - 0.42), Vector2(width, 0.84))
 
 
 func travel_speed() -> float:
 	if data == null or run == null:
 		return 0.0
-	return run.world_scroll_speed + data.move_speed
+	return run.world_scroll_speed + Playfield.design_to_world(data.move_speed)
 
 
 func _body_width() -> float:
 	if data == null:
-		return 82.0
-	return maxf(82.0, float(data.occupied_regions) * Playfield.REGION_WIDTH - 18.0)
+		return 0.82
+	return maxf(0.82, float(data.occupied_regions) * Playfield.REGION_WIDTH - 0.18)
 
 
 func _resolve_visual_nodes() -> void:
@@ -119,11 +119,11 @@ func _configure_visual() -> void:
 	body_box.size.x = width
 	var body_material: StandardMaterial3D = _body_mesh.material_override as StandardMaterial3D
 	body_material.albedo_color = color
-	_head_mesh.scale.x = minf(width * 0.52, 90.0)
+	_head_mesh.scale.x = minf(width * 0.52, 0.9)
 	var head_material: StandardMaterial3D = _head_mesh.material_override as StandardMaterial3D
 	head_material.albedo_color = color.lightened(0.12)
 	_shadow_mesh.scale.x = width
-	_appetite_label.width = width * 2.0
+	_appetite_label.width = Playfield.world_to_design(width) * 2.0
 
 
 func _refresh_label() -> void:

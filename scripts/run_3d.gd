@@ -52,7 +52,7 @@ const REWARD_GATE_SCENE: PackedScene = preload("res://scenes/upgrade_drop_3d.tsc
 @onready var director: EncounterDirector = %EncounterDirector
 @onready var hud: GameHud = %Hud
 
-var world_scroll_speed: float = 205.0
+var world_scroll_speed: float = 2.05
 var state: RunState
 var playfield: Playfield
 var phase: Phase = Phase.INTRO
@@ -147,7 +147,7 @@ func _process(delta: float) -> void:
 				_track_smoke_gate_customer_gap()
 		hud.set_time(state.elapsed_seconds)
 		if _smoke_test:
-			cart.target_x = 360.0 + sin(state.elapsed_seconds * 1.7) * 245.0
+			cart.target_x = 3.6 + sin(state.elapsed_seconds * 1.7) * 2.45
 	_debug_accumulator += delta
 	if _debug_accumulator >= 0.25:
 		_debug_accumulator = 0.0
@@ -171,7 +171,7 @@ func can_weapons_fire() -> bool:
 	return phase == Phase.FORWARD or phase == Phase.BOSS
 
 
-# 所有 3D 对象直接运行在本场景的 X/Z 坐标系；根缩放只规范编辑器世界尺寸。
+# 所有3D对象直接使用米制X/Z坐标；仅策划数据与触控输入在边界处从设计像素换算。
 func logic_position(node: Node3D) -> Vector3:
 	if node == null:
 		return Vector3.ZERO
@@ -389,15 +389,15 @@ func _process_spawn_requests() -> void:
 # 对候选对象与全部活动前进对象做匀速路径预测，追尾风险解除后才生成。
 func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 	var candidate_z: float = 0.0 if request.start_food_gate else Playfield.FORWARD_SPAWN_Z
-	var candidate_speed: float = 500.0 if request.kind == ForwardSpawnRequest.Kind.GATE else 250.0
+	var candidate_speed: float = 5.0 if request.kind == ForwardSpawnRequest.Kind.GATE else 2.5
 	if request.kind == ForwardSpawnRequest.Kind.CUSTOMER:
 		if request.customer_data == null:
 			return false
 		candidate_z = Playfield.FORWARD_SPAWN_Z
-		candidate_speed = world_scroll_speed + request.customer_data.move_speed
+		candidate_speed = world_scroll_speed + Playfield.design_to_world(request.customer_data.move_speed)
 	elif request.kind == ForwardSpawnRequest.Kind.ELITE:
 		candidate_z = Playfield.FORWARD_SPAWN_Z
-		candidate_speed = world_scroll_speed + elite_guest_data.move_speed
+		candidate_speed = world_scroll_speed + Playfield.design_to_world(elite_guest_data.move_speed)
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active:
 			continue
@@ -467,7 +467,7 @@ func _spawn_elite_now() -> void:
 	_elite_started_at = state.elapsed_seconds
 	_spawn_counter += 1
 	var elite: Customer3D = CUSTOMER_SCENE.instantiate() as Customer3D
-	elite.position = Vector3(360.0, 0.0, Playfield.FORWARD_SPAWN_Z)
+	elite.position = Vector3(3.6, 0.0, Playfield.FORWARD_SPAWN_Z)
 	entities.add_child(elite)
 	var appetite: float = elite_guest_data.appetite_at(_current_baseline_appetite())
 	elite.configure(elite_guest_data, self, _spawn_counter, appetite)
@@ -581,7 +581,7 @@ func _find_reward_gate_spawn_z(preferred_z: float) -> float:
 				continue
 			if not playfield.forward_paths_are_separated(
 				candidate_z,
-				250.0,
+				2.5,
 				customer.position.z,
 				customer.travel_speed()
 			):
@@ -590,7 +590,7 @@ func _find_reward_gate_spawn_z(preferred_z: float) -> float:
 			if not child is UpgradeGate3D or child.is_queued_for_deletion():
 				continue
 			var gate: UpgradeGate3D = child as UpgradeGate3D
-			if not playfield.forward_paths_are_separated(candidate_z, 250.0, gate.position.z, gate.travel_speed()):
+			if not playfield.forward_paths_are_separated(candidate_z, 2.5, gate.position.z, gate.travel_speed()):
 				conflict_z = minf(conflict_z, gate.position.z)
 		for child: Node in drops.get_children():
 			if not child is UpgradeDrop3D or child.is_queued_for_deletion():
@@ -598,7 +598,7 @@ func _find_reward_gate_spawn_z(preferred_z: float) -> float:
 			var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
 			if not playfield.forward_paths_are_separated(
 				candidate_z,
-				250.0,
+				2.5,
 				reward_gate.position.z,
 				reward_gate.travel_speed()
 			):
@@ -715,13 +715,13 @@ func _target_is_better(
 	best_horizontal: float,
 	best_spawn_index: int
 ) -> bool:
-	if forward < best_forward - 0.01:
+	if forward < best_forward - 0.0001:
 		return true
-	if absf(forward - best_forward) > 0.01:
+	if absf(forward - best_forward) > 0.0001:
 		return false
-	if horizontal < best_horizontal - 0.01:
+	if horizontal < best_horizontal - 0.0001:
 		return true
-	if absf(horizontal - best_horizontal) > 0.01:
+	if absf(horizontal - best_horizontal) > 0.0001:
 		return false
 	return spawn_index < best_spawn_index
 

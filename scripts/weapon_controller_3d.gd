@@ -44,8 +44,8 @@ func _tick_food(runtime: FoodRuntime, delta: float) -> void:
 
 func _fire(food: FoodData, target: Node3D) -> void:
 	var amount: float = state.effective_satisfaction(food)
-	var speed: float = state.effective_projectile_speed(food)
-	var radius: float = state.effective_projectile_radius(food)
+	var speed: float = Playfield.design_to_world(state.effective_projectile_speed(food))
+	var radius: float = Playfield.design_to_world(state.effective_projectile_radius(food))
 	var count: int = maxi(1, state.servings)
 	var base_direction: Vector3 = Vector3.FORWARD
 	var cart_position: Vector3 = run.logic_position(cart)
@@ -61,4 +61,4 @@ func _fire(food: FoodData, target: Node3D) -> void:
 		var direction: Vector3 = base_direction
 		var spread: float = (float(index) - float(count - 1) * 0.5) * 0.075
 		direction = direction.rotated(Vector3.UP, spread)
-		run.spawn_projectile(cart_position + Vector3(0.0, 0.0, -135.0), direction, food, amount, speed, radius, target)
+		run.spawn_projectile(cart_position + Vector3(0.0, 0.0, -1.35), direction, food, amount, speed, radius, target)

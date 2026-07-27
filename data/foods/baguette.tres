@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="FoodData" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="FoodData" format=3 uid="uid://ff1agbbjkhr6"]
 
-[ext_resource type="Script" path="res://scripts/data/food_data.gd" id="1_food"]
+[ext_resource type="Script" uid="uid://blbv2gfbbrm1l" path="res://scripts/data/food_data.gd" id="1_food"]
 
 [resource]
 script = ExtResource("1_food")
@@ -8,8 +8,6 @@ id = &"baguette"
 display_name = "法棍"
 attack_kind = 1
 initial_aim_mode = 1
-initial_tracking_mode = 0
-homing_turn_speed = 4.5
 base_satisfaction = 8.0
 base_interval = 1.2
 projectile_speed = 680.0

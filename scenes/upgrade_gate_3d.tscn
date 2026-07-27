@@ -13,35 +13,35 @@ albedo_color = Color(0.411765, 0.25098, 0.207843, 1)
 roughness = 0.94
 
 [sub_resource type="BoxMesh" id="MeshPanel"]
-size = Vector3(288, 144, 12)
+size = Vector3(2.88, 1.44, 0.12)
 
 [node name="UpgradeGate3D" type="Node3D"]
 script = ExtResource("1_script")
 
 [node name="LeftTarget" type="Node3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(210, 0, 0)
+position = Vector3(2.1, 0, 0)
 
 [node name="RightTarget" type="Node3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(510, 0, 0)
+position = Vector3(5.1, 0, 0)
 
 [node name="LeftPanel" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(210, 76, 0)
+position = Vector3(2.1, 0.76, 0)
 material_override = SubResource("MatLeft")
 mesh = SubResource("MeshPanel")
 
 [node name="RightPanel" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(510, 76, 0)
+position = Vector3(5.1, 0.76, 0)
 material_override = SubResource("MatRight")
 mesh = SubResource("MeshPanel")
 
 [node name="LeftLabel" type="Label3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(210, 82, 8)
-pixel_size = 0.6
+position = Vector3(2.1, 0.82, 0.08)
+pixel_size = 0.006
 width = 520.0
 font_size = 34
 outline_size = 8
@@ -52,8 +52,8 @@ alpha_cut = 0
 
 [node name="RightLabel" type="Label3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(510, 82, 8)
-pixel_size = 0.6
+position = Vector3(5.1, 0.82, 0.08)
+pixel_size = 0.006
 width = 520.0
 font_size = 34
 outline_size = 8
@@ -64,8 +64,8 @@ alpha_cut = 0
 
 [node name="LeftHealthLabel" type="Label3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(210, 180, 10)
-pixel_size = 0.8
+position = Vector3(2.1, 1.8, 0.1)
+pixel_size = 0.008
 width = 288.0
 font_size = 42
 outline_size = 9
@@ -75,8 +75,8 @@ alpha_cut = 0
 
 [node name="RightHealthLabel" type="Label3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(510, 180, 10)
-pixel_size = 0.8
+position = Vector3(5.1, 1.8, 0.1)
+pixel_size = 0.008
 width = 288.0
 font_size = 42
 outline_size = 9

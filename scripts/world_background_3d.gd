@@ -1,14 +1,14 @@
 class_name WorldBackground3D
 extends Node3D
 
-const ROAD_TILE_LENGTH: float = 1280.0
-const ROAD_FIRST_CENTER_Z: float = -4480.0
-const STREET_WRAP_LENGTH: float = 5120.0
-const STREET_WRAP_EDGE_Z: float = 1760.0
+const ROAD_TILE_LENGTH: float = 12.8
+const ROAD_FIRST_CENTER_Z: float = -44.8
+const STREET_WRAP_LENGTH: float = 51.2
+const STREET_WRAP_EDGE_Z: float = 17.6
 
 @export_group("滚动")
 @export var scrolling: bool = true
-@export_range(0.0, 600.0, 1.0, "or_greater") var scroll_speed: float = 205.0
+@export_range(0.0, 6.0, 0.01, "or_greater") var scroll_speed: float = 2.05
 
 @onready var _road_tiles: Array[MeshInstance3D] = [
 	%RoadTile0,

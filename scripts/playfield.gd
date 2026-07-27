@@ -2,27 +2,37 @@ class_name Playfield
 extends Node
 
 const DESIGN_SIZE: Vector2 = Vector2(720.0, 1280.0)
-const ROAD_LEFT: float = 60.0
-const ROAD_RIGHT: float = 660.0
-const ROAD_WIDTH: float = 600.0
+# 数据表和输入继续使用设计像素；进入3D世界时统一按1像素=0.01米换算。
+const WORLD_UNITS_PER_PIXEL: float = 0.01
+const ROAD_LEFT: float = 0.6
+const ROAD_RIGHT: float = 6.6
+const ROAD_WIDTH: float = 6.0
 const REGION_COUNT: int = 6
 const REGION_WIDTH: float = ROAD_WIDTH / float(REGION_COUNT)
-const CART_Z: float = 1050.0
+const CART_Z: float = 10.5
 # 四段前方道路从该位置延伸到餐车附近，远景对象会提前进入固定相机视野。
-const FORWARD_SPAWN_Z: float = -3200.0
-const CUSTOMER_DESPAWN_Z: float = 1360.0
-const PROJECTILE_FORWARD_BOUNDARY_Z: float = -720.0
-const FORWARD_MIN_CENTER_DISTANCE: float = 180.0
+const FORWARD_SPAWN_Z: float = -32.0
+const CUSTOMER_DESPAWN_Z: float = 13.6
+const PROJECTILE_FORWARD_BOUNDARY_Z: float = -7.2
+const FORWARD_MIN_CENTER_DISTANCE: float = 1.8
 # 生成预测额外预留一帧移动量，保证低帧率下实际距离仍不低于视觉安全线。
-const FORWARD_SPAWN_RESERVATION_DISTANCE: float = 220.0
+const FORWARD_SPAWN_RESERVATION_DISTANCE: float = 2.2
+
+
+static func design_to_world(value: float) -> float:
+	return value * WORLD_UNITS_PER_PIXEL
+
+
+static func world_to_design(value: float) -> float:
+	return value / WORLD_UNITS_PER_PIXEL
 
 
 func clamp_cart_x(value: float) -> float:
-	return clampf(value, ROAD_LEFT + 48.0, ROAD_RIGHT - 48.0)
+	return clampf(value, ROAD_LEFT + 0.48, ROAD_RIGHT - 0.48)
 
 
 func region_at_x(value: float) -> int:
-	var normalized: float = clampf(value - ROAD_LEFT, 0.0, ROAD_WIDTH - 0.001)
+	var normalized: float = clampf(value - ROAD_LEFT, 0.0, ROAD_WIDTH - 0.00001)
 	return clampi(floori(normalized / REGION_WIDTH), 0, REGION_COUNT - 1)
 
 

@@ -4,12 +4,12 @@ extends Node3D
 signal damaged(amount: float)
 signal destroyed
 
-const BASE_MOVE_SPEED: float = 900.0
-const COLLISION_RECT: Rect2 = Rect2(-96.0, -150.0, 192.0, 217.0)
+const BASE_MOVE_SPEED: float = 9.0
+const COLLISION_RECT: Rect2 = Rect2(-0.96, -1.5, 1.92, 2.17)
 
 var state: RunState
 var playfield: Playfield
-var target_x: float = 360.0
+var target_x: float = 3.6
 var _primary_touch_active: bool = false
 var _mouse_drag_active: bool = false
 var _invincible_remaining: float = 0.0
@@ -21,7 +21,7 @@ var _upgrade_tween: Tween
 func configure(run_state: RunState, field: Playfield) -> void:
 	state = run_state
 	playfield = field
-	position = Vector3(360.0, 0.0, Playfield.CART_Z)
+	position = Vector3(3.6, 0.0, Playfield.CART_Z)
 	target_x = position.x
 
 
@@ -35,7 +35,7 @@ func _physics_process(delta: float) -> void:
 		_visual_root.visible = true
 	if _upgrade_feedback_remaining > 0.0:
 		_upgrade_feedback_remaining = maxf(0.0, _upgrade_feedback_remaining - delta)
-	var speed: float = BASE_MOVE_SPEED + state.cart_speed_bonus
+	var speed: float = BASE_MOVE_SPEED + Playfield.design_to_world(state.cart_speed_bonus)
 	position.x = move_toward(position.x, target_x, speed * delta)
 
 
@@ -47,20 +47,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		if touch.index == 0:
 			_primary_touch_active = touch.pressed
 			if touch.pressed:
-				target_x = playfield.clamp_cart_x(touch.position.x)
+				target_x = playfield.clamp_cart_x(Playfield.design_to_world(touch.position.x))
 	elif event is InputEventScreenDrag:
 		var drag: InputEventScreenDrag = event
 		if drag.index == 0 and _primary_touch_active:
-			target_x = playfield.clamp_cart_x(drag.position.x)
+			target_x = playfield.clamp_cart_x(Playfield.design_to_world(drag.position.x))
 	elif event is InputEventMouseButton:
 		var mouse_button: InputEventMouseButton = event
 		if mouse_button.button_index == MOUSE_BUTTON_LEFT:
 			_mouse_drag_active = mouse_button.pressed
 			if mouse_button.pressed:
-				target_x = playfield.clamp_cart_x(mouse_button.position.x)
+				target_x = playfield.clamp_cart_x(Playfield.design_to_world(mouse_button.position.x))
 	elif event is InputEventMouseMotion and _mouse_drag_active:
 		var mouse_motion: InputEventMouseMotion = event
-		target_x = playfield.clamp_cart_x(mouse_motion.position.x)
+		target_x = playfield.clamp_cart_x(Playfield.design_to_world(mouse_motion.position.x))
 
 
 func take_damage(amount: float) -> bool:

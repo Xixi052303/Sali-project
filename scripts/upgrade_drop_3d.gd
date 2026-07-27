@@ -1,7 +1,7 @@
 class_name UpgradeDrop3D
 extends Node3D
 
-const PANEL_HEIGHT: float = 144.0
+const PANEL_HEIGHT: float = 1.44
 
 var run: RunController3D
 var upgrade: UpgradeData
@@ -9,7 +9,7 @@ var baseline_appetite: float = 1.0
 var occupied_regions: int = 2
 var spawn_index: int = 0
 var upgrade_health: float = 0.0
-var move_speed: float = 250.0
+var move_speed: float = 2.5
 var resolved: bool = false
 @onready var _target: Node3D = %RewardTarget
 var _hit_feedback_remaining: float = 0.0
@@ -92,7 +92,7 @@ func travel_speed() -> float:
 
 
 func _panel_width() -> float:
-	return maxf(82.0, float(occupied_regions) * Playfield.REGION_WIDTH - 18.0)
+	return maxf(0.82, float(occupied_regions) * Playfield.REGION_WIDTH - 0.18)
 
 
 func _resolve_visual_nodes() -> void:
@@ -107,7 +107,7 @@ func _resolve_visual_nodes() -> void:
 func _configure_visual() -> void:
 	var width: float = _panel_width()
 	_panel_box.size.x = width
-	_label.width = maxf(180.0, width * 2.0)
+	_label.width = maxf(180.0, Playfield.world_to_design(width) * 2.0)
 
 
 func _refresh_label() -> void:

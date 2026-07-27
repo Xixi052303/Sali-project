@@ -9,7 +9,7 @@ roughness = 0.94
 
 [sub_resource type="BoxMesh" id="MeshPanel"]
 resource_local_to_scene = true
-size = Vector3(182, 144, 12)
+size = Vector3(1.82, 1.44, 0.12)
 
 [node name="UpgradeDrop3D" type="Node3D"]
 script = ExtResource("1_script")
@@ -19,14 +19,14 @@ unique_name_in_owner = true
 
 [node name="Panel" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(0, 72, 0)
+position = Vector3(0, 0.72, 0)
 material_override = SubResource("MatPanel")
 mesh = SubResource("MeshPanel")
 
 [node name="DropLabel" type="Label3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(0, 76, 8)
-pixel_size = 0.6
+position = Vector3(0, 0.76, 0.08)
+pixel_size = 0.006
 width = 364.0
 font_size = 32
 outline_size = 8

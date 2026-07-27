@@ -22,7 +22,7 @@ var active: bool = false
 var _state: State = State.ENTER
 var _state_time: float = 0.0
 var _attack_index: int = 0
-var _locked_target_x: float = 360.0
+var _locked_target_x: float = 3.6
 var _direction: float = 1.0
 @onready var _body_mesh: MeshInstance3D = %Body
 @onready var _head_mesh: MeshInstance3D = %Head
@@ -40,7 +40,7 @@ func configure(source_data: BossPatternData, run_controller: RunController3D, ba
 	run = run_controller
 	maximum_appetite = data.appetite_at(baseline_appetite)
 	remaining_appetite = maximum_appetite
-	position = Vector3(360.0, 0.0, -120.0)
+	position = Vector3(3.6, 0.0, -1.2)
 	active = true
 	_state = State.ENTER
 	_state_time = 0.0
@@ -54,25 +54,25 @@ func _process(delta: float) -> void:
 	_state_time += delta
 	match _state:
 		State.ENTER:
-			position.z = move_toward(position.z, 300.0, 300.0 * delta)
-			if position.z >= 299.0:
+			position.z = move_toward(position.z, 3.0, 3.0 * delta)
+			if position.z >= 2.99:
 				_change_state(State.MOVE)
 		State.MOVE:
-			position.x += _direction * data.move_speed * delta
-			if position.x < 180.0 or position.x > 540.0:
+			position.x += _direction * Playfield.design_to_world(data.move_speed) * delta
+			if position.x < 1.8 or position.x > 5.4:
 				_direction *= -1.0
-				position.x = clampf(position.x, 180.0, 540.0)
+				position.x = clampf(position.x, 1.8, 5.4)
 			if _state_time >= 2.2:
 				_locked_target_x = run.cart.position.x
 				_change_state(State.TELEGRAPH_LINE if _attack_index % 2 == 0 else State.TELEGRAPH_AREA)
 		State.TELEGRAPH_LINE:
 			if _state_time >= data.telegraph_duration:
-				if absf(run.cart.position.x - _locked_target_x) <= 54.0:
+				if absf(run.cart.position.x - _locked_target_x) <= 0.54:
 					run.damage_cart(remaining_appetite * data.line_attack_ratio, "Boss直线投掷")
 				_finish_attack()
 		State.TELEGRAPH_AREA:
 			if _state_time >= data.telegraph_duration:
-				if absf(run.cart.position.x - _locked_target_x) <= 110.0:
+				if absf(run.cart.position.x - _locked_target_x) <= 1.1:
 					run.damage_cart(remaining_appetite * data.area_attack_ratio, "Boss范围攻击")
 				_finish_attack()
 		State.RECOVER:
@@ -96,7 +96,7 @@ func receive_satisfaction(amount: float) -> void:
 
 
 func hit_radius() -> float:
-	return 108.0
+	return 1.08
 
 
 func _resolve_visual_nodes() -> void:
@@ -142,7 +142,7 @@ func _update_telegraph() -> void:
 	var target_offset_x: float = _locked_target_x - position.x
 	var cart_offset_z: float = Playfield.CART_Z - position.z
 	if _telegraph_line.visible:
-		_line_box.size = Vector3(108.0, 3.0, absf(cart_offset_z))
-		_telegraph_line.position = Vector3(target_offset_x, 2.0, cart_offset_z * 0.5)
+		_line_box.size = Vector3(1.08, 0.03, absf(cart_offset_z))
+		_telegraph_line.position = Vector3(target_offset_x, 0.02, cart_offset_z * 0.5)
 	else:
-		_telegraph_area.position = Vector3(target_offset_x, 2.0, cart_offset_z)
+		_telegraph_area.position = Vector3(target_offset_x, 0.02, cart_offset_z)

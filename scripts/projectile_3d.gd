@@ -4,7 +4,7 @@ extends Node3D
 var run: RunController3D
 var velocity: Vector3 = Vector3.ZERO
 var satisfaction: float = 0.0
-var radius: float = 16.0
+var radius: float = 0.16
 var remaining_hits: int = 1
 var food_id: StringName = &"potato"
 var visual_color: Color = Color("#e2b650")
@@ -67,7 +67,7 @@ func _process(delta: float) -> void:
 	position += velocity * delta
 	rotation.y = atan2(velocity.x, -velocity.z)
 	run.resolve_projectile_hits(self)
-	if position.z < Playfield.PROJECTILE_FORWARD_BOUNDARY_Z or position.z > 1450.0 or position.x < -120.0 or position.x > 840.0:
+	if position.z < Playfield.PROJECTILE_FORWARD_BOUNDARY_Z or position.z > 14.5 or position.x < -1.2 or position.x > 8.4:
 		queue_free()
 
 
@@ -100,11 +100,11 @@ func _configure_visual() -> void:
 	_potato_visual.visible = food_id != &"baguette"
 	_baguette_visual.visible = food_id == &"baguette"
 	if food_id == &"baguette":
-		_baguette_box.size = Vector3(maxf(20.0, radius * 1.5), 18.0, 80.0)
+		_baguette_box.size = Vector3(maxf(0.2, radius * 1.5), 0.18, 0.8)
 		var baguette_material: StandardMaterial3D = _baguette_visual.material_override as StandardMaterial3D
 		baguette_material.albedo_color = visual_color
 	else:
-		var diameter: float = maxf(10.0, radius * 2.0)
+		var diameter: float = maxf(0.1, radius * 2.0)
 		_potato_visual.scale = Vector3.ONE * diameter
 		var potato_material: StandardMaterial3D = _potato_visual.material_override as StandardMaterial3D
 		potato_material.albedo_color = visual_color
