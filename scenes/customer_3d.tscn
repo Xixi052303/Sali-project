@@ -74,6 +74,7 @@ mesh = SubResource("MeshShadow")
 
 [node name="AppetiteBack" type="MeshInstance3D" parent="PaperCustomerVisual"]
 unique_name_in_owner = true
+visible = false
 position = Vector3(0, 1.92, 0.08)
 cast_shadow = 0
 material_override = SubResource("MatHealthBack")
@@ -81,6 +82,7 @@ mesh = SubResource("MeshHealthBack")
 
 [node name="AppetiteFill" type="MeshInstance3D" parent="PaperCustomerVisual"]
 unique_name_in_owner = true
+visible = false
 position = Vector3(0, 1.92, 0.14)
 cast_shadow = 0
 material_override = SubResource("MatHealthFill")
@@ -88,10 +90,10 @@ mesh = SubResource("MeshHealthFill")
 
 [node name="AppetiteLabel" type="Label3D" parent="PaperCustomerVisual"]
 unique_name_in_owner = true
-position = Vector3(0, 2.2, 0.18)
-pixel_size = 0.009
-font_size = 46
-outline_size = 10
+position = Vector3(0, 2.06, 0.18)
+pixel_size = 0.01
+font_size = 64
+outline_size = 12
 modulate = Color(1, 0.941176, 0.784314, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 alpha_cut = 0

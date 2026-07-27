@@ -80,8 +80,20 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.33229488, 0.05, 0)
 material_override = SubResource("MatLeftWalk")
 mesh = SubResource("MeshLeftWalk")
 
+[node name="LeftSidewalk2" type="MeshInstance3D" parent="." unique_id=173218504]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.137, 0.05, 0)
+material_override = SubResource("MatLeftWalk")
+mesh = SubResource("MeshLeftWalk")
+
 [node name="RightSidewalk" type="MeshInstance3D" parent="." unique_id=604140346]
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.517537, 0.05, 0)
+material_override = SubResource("MatRightWalk")
+mesh = SubResource("MeshRightWalk")
+
+[node name="RightSidewalk2" type="MeshInstance3D" parent="." unique_id=1287805768]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.3, 0.05, 0)
 material_override = SubResource("MatRightWalk")
 mesh = SubResource("MeshRightWalk")

@@ -52,12 +52,13 @@ func forward_paths_are_separated(
 	first_speed: float,
 	second_y: float,
 	second_speed: float,
-	minimum_distance: float = FORWARD_SPAWN_RESERVATION_DISTANCE
+	minimum_distance: float = FORWARD_SPAWN_RESERVATION_DISTANCE,
+	destination_z: float = CART_Z
 ) -> bool:
 	var safe_first_speed: float = maxf(0.001, first_speed)
 	var safe_second_speed: float = maxf(0.001, second_speed)
-	var first_exit_time: float = maxf(0.0, (CART_Z - first_y) / safe_first_speed)
-	var second_exit_time: float = maxf(0.0, (CART_Z - second_y) / safe_second_speed)
+	var first_exit_time: float = maxf(0.0, (destination_z - first_y) / safe_first_speed)
+	var second_exit_time: float = maxf(0.0, (destination_z - second_y) / safe_second_speed)
 	var comparison_time: float = minf(first_exit_time, second_exit_time)
 	var start_delta: float = first_y - second_y
 	var relative_speed: float = safe_first_speed - safe_second_speed

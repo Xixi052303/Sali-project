@@ -87,6 +87,8 @@ var _smoke_test: bool = false
 # 请求队列保留时间轴顺序，并在预测到纵向追尾时延迟生成。
 var _forward_spawn_requests: Array[ForwardSpawnRequest] = []
 var _normal_waves_suspended: bool = false
+# Boss事件到达时若仍有强化门，先保留前进阶段让该门完成结算。
+var _boss_pending: bool = false
 var _upgrade_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _smoke_minimum_gate_customer_gap: float = INF
 # 特殊池保留可重复的全局强化，并在展示前过滤已经取得的一次性能力。
@@ -113,6 +115,7 @@ func _ready() -> void:
 	playfield = Playfield.new()
 	add_child(playfield)
 	cart.configure(state, playfield)
+	background.set_cart(cart)
 	weapon_controller.configure(self, cart, state)
 	weapon_controller.add_food(potato_data)
 	_build_prototype_upgrades()
@@ -160,6 +163,8 @@ func _process(delta: float) -> void:
 		if phase == Phase.FORWARD:
 			_advance_normal_waves()
 			_process_spawn_requests()
+			if _boss_pending and not _has_pending_gate():
+				_begin_boss()
 			if _smoke_test:
 				_track_smoke_gate_customer_gap()
 		hud.set_time(state.elapsed_seconds)
@@ -186,6 +191,13 @@ func is_world_scrolling() -> bool:
 
 func can_weapons_fire() -> bool:
 	return phase == Phase.FORWARD or phase == Phase.BOSS
+
+
+# 正常运行读取场景节点；脱离主场景的规则验证继续使用设计回退值。
+func cart_destination_z() -> float:
+	if cart == null:
+		return Playfield.CART_Z
+	return cart.position.z
 
 
 # 所有3D对象直接使用米制X/Z坐标；仅策划数据与触控输入在边界处从设计像素换算。
@@ -420,13 +432,27 @@ func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active:
 			continue
-		if not playfield.forward_paths_are_separated(candidate_z, candidate_speed, customer.position.z, customer.travel_speed()):
+		if not playfield.forward_paths_are_separated(
+			candidate_z,
+			candidate_speed,
+			customer.position.z,
+			customer.travel_speed(),
+			Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE,
+			cart_destination_z()
+		):
 			return false
 	for child: Node in gates.get_children():
 		if not child is UpgradeGate3D or child.is_queued_for_deletion():
 			continue
 		var gate: UpgradeGate3D = child as UpgradeGate3D
-		if not playfield.forward_paths_are_separated(candidate_z, candidate_speed, gate.position.z, gate.travel_speed()):
+		if not playfield.forward_paths_are_separated(
+			candidate_z,
+			candidate_speed,
+			gate.position.z,
+			gate.travel_speed(),
+			Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE,
+			cart_destination_z()
+		):
 			return false
 	for child: Node in drops.get_children():
 		if not child is UpgradeDrop3D or child.is_queued_for_deletion():
@@ -436,7 +462,9 @@ func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 			candidate_z,
 			candidate_speed,
 			reward_gate.position.z,
-			reward_gate.travel_speed()
+			reward_gate.travel_speed(),
+			Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE,
+			cart_destination_z()
 		):
 			return false
 	return true
@@ -549,8 +577,28 @@ func _spawn_gate_now(index: int, is_start_gate: bool, scheduled_baseline_appetit
 func _start_boss() -> void:
 	if phase == Phase.BOSS or phase == Phase.RESULTS or phase == Phase.FAILED:
 		return
-	phase = Phase.BOSS
 	_normal_waves_suspended = true
+	_scheduled_normal_customers.clear()
+	if _has_pending_gate():
+		_boss_pending = true
+		return
+	_begin_boss()
+
+
+func _has_pending_gate() -> bool:
+	for child: Node in gates.get_children():
+		if child is UpgradeGate3D and not child.is_queued_for_deletion():
+			return true
+	for request: ForwardSpawnRequest in _forward_spawn_requests:
+		if request.kind == ForwardSpawnRequest.Kind.GATE:
+			return true
+	return false
+
+
+# 最后一门完成后才停止道路并清场，避免编辑器位置变化吞掉既定强化门。
+func _begin_boss() -> void:
+	_boss_pending = false
+	phase = Phase.BOSS
 	background.scrolling = false
 	_clear_forward_objects()
 	_boss_started_at = state.elapsed_seconds
@@ -630,7 +678,7 @@ func _find_reward_gate_spawn_z(preferred_z: float) -> float:
 	var distance: float = REWARD_GATE_SEARCH_STEP
 	while distance <= REWARD_GATE_SEARCH_LIMIT + 0.001:
 		var toward_cart_z: float = preferred_z + distance
-		if toward_cart_z < Playfield.CART_Z - 0.5 and _reward_gate_spawn_is_safe(toward_cart_z):
+		if toward_cart_z < cart_destination_z() - 0.5 and _reward_gate_spawn_is_safe(toward_cart_z):
 			return toward_cart_z
 		var toward_far_z: float = preferred_z - distance
 		if _reward_gate_spawn_is_safe(toward_far_z):
@@ -649,7 +697,8 @@ func _reward_gate_spawn_is_safe(candidate_z: float) -> bool:
 			2.5,
 			customer.position.z,
 			customer.travel_speed(),
-			Playfield.FORWARD_MIN_CENTER_DISTANCE
+			Playfield.FORWARD_MIN_CENTER_DISTANCE,
+			cart_destination_z()
 		):
 			return false
 	for child: Node in gates.get_children():
@@ -661,7 +710,8 @@ func _reward_gate_spawn_is_safe(candidate_z: float) -> bool:
 			2.5,
 			gate.position.z,
 			gate.travel_speed(),
-			Playfield.FORWARD_MIN_CENTER_DISTANCE
+			Playfield.FORWARD_MIN_CENTER_DISTANCE,
+			cart_destination_z()
 		):
 			return false
 	for child: Node in drops.get_children():
@@ -673,7 +723,8 @@ func _reward_gate_spawn_is_safe(candidate_z: float) -> bool:
 			2.5,
 			reward_gate.position.z,
 			reward_gate.travel_speed(),
-			Playfield.FORWARD_MIN_CENTER_DISTANCE
+			Playfield.FORWARD_MIN_CENTER_DISTANCE,
+			cart_destination_z()
 		):
 			return false
 	return true
@@ -957,11 +1008,16 @@ func _baseline_appetite_at(elapsed_seconds: float) -> float:
 	return director.timeline.baseline_appetite_at(elapsed_seconds)
 
 
-# 远端生成只补偿新增可见路程，不改变食客原有接近速度。
+# 提前量同时补偿远端生成和编辑器餐车位置，不改变食客原有接近速度。
 func _customer_spawn_lead_seconds(customer_data: CustomerData) -> float:
 	if customer_data == null:
 		return 0.0
-	var extra_distance: float = LEGACY_CUSTOMER_SPAWN_Z - Playfield.FORWARD_SPAWN_Z
+	var extra_distance: float = (
+		LEGACY_CUSTOMER_SPAWN_Z
+		- Playfield.FORWARD_SPAWN_Z
+		+ cart_destination_z()
+		- Playfield.CART_Z
+	)
 	var travel_speed: float = world_scroll_speed + Playfield.design_to_world(customer_data.move_speed)
 	return maxf(0.0, extra_distance / maxf(0.001, travel_speed))
 
@@ -969,7 +1025,12 @@ func _customer_spawn_lead_seconds(customer_data: CustomerData) -> float:
 func _timeline_event_lead_seconds(event_id: StringName) -> float:
 	if String(event_id).begins_with("gate_"):
 		return (
-			(LEGACY_GATE_SPAWN_Z - Playfield.FORWARD_SPAWN_Z) / FORWARD_GATE_SPEED
+			(
+				LEGACY_GATE_SPAWN_Z
+				- Playfield.FORWARD_SPAWN_Z
+				+ cart_destination_z()
+				- Playfield.CART_Z
+			) / FORWARD_GATE_SPEED
 			+ FORWARD_GATE_QUEUE_LEAD_SECONDS
 		)
 	match event_id:

@@ -33,7 +33,7 @@ size = Vector2(22, 80)
 script = ExtResource("1_script")
 
 [node name="PaperCamera" type="Camera3D" parent="." unique_id=375911804]
-transform = Transform3D(1, 0, 0, 0, 0.743145, 0.669131, 0, -0.669131, 0.743145, 3.6, 13.5, 18)
+transform = Transform3D(1, 0, 0, 0, 0.7660445, 0.64278764, 0, -0.64278764, 0.7660445, 3.6, 7.451024, 21.123247)
 keep_aspect = 0
 current = true
 fov = 32.0

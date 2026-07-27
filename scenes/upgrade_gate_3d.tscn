@@ -92,6 +92,7 @@ alpha_cut = 0
 
 [node name="LeftHealthBack" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
+visible = false
 position = Vector3(2.1, 1.82, 0.08)
 cast_shadow = 0
 material_override = SubResource("MatHealthBack")
@@ -99,6 +100,7 @@ mesh = SubResource("MeshLeftHealthBack")
 
 [node name="RightHealthBack" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
+visible = false
 position = Vector3(5.1, 1.82, 0.08)
 cast_shadow = 0
 material_override = SubResource("MatHealthBack")
@@ -106,6 +108,7 @@ mesh = SubResource("MeshRightHealthBack")
 
 [node name="LeftHealthFill" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
+visible = false
 position = Vector3(2.1, 1.82, 0.14)
 cast_shadow = 0
 material_override = SubResource("MatLeftHealthFill")
@@ -113,6 +116,7 @@ mesh = SubResource("MeshLeftHealthFill")
 
 [node name="RightHealthFill" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
+visible = false
 position = Vector3(5.1, 1.82, 0.14)
 cast_shadow = 0
 material_override = SubResource("MatRightHealthFill")
@@ -121,10 +125,10 @@ mesh = SubResource("MeshRightHealthFill")
 [node name="LeftHealthLabel" type="Label3D" parent="."]
 unique_name_in_owner = true
 position = Vector3(2.1, 1.82, 0.2)
-pixel_size = 0.008
+pixel_size = 0.01
 width = 288.0
-font_size = 48
-outline_size = 10
+font_size = 64
+outline_size = 12
 modulate = Color(1, 0.941176, 0.784314, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 alpha_cut = 0
@@ -132,10 +136,10 @@ alpha_cut = 0
 [node name="RightHealthLabel" type="Label3D" parent="."]
 unique_name_in_owner = true
 position = Vector3(5.1, 1.82, 0.2)
-pixel_size = 0.008
+pixel_size = 0.01
 width = 288.0
-font_size = 48
-outline_size = 10
+font_size = 64
+outline_size = 12
 modulate = Color(1, 0.941176, 0.784314, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 alpha_cut = 0

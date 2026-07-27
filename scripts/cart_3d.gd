@@ -15,13 +15,15 @@ var _mouse_drag_active: bool = false
 var _invincible_remaining: float = 0.0
 var _upgrade_feedback_remaining: float = 0.0
 var _upgrade_tween: Tween
+# 保存编辑器配置的基础尺寸，碰撞与反馈动画都以它为准。
+var _base_scale: Vector3 = Vector3.ONE
 @onready var _visual_root: Node3D = %PaperCartVisual
 
 
 func configure(run_state: RunState, field: Playfield) -> void:
 	state = run_state
 	playfield = field
-	position = Vector3(3.6, 0.0, Playfield.CART_Z)
+	_base_scale = scale
 	target_x = position.x
 
 
@@ -77,14 +79,18 @@ func take_damage(amount: float) -> bool:
 
 
 func collision_rect_xz() -> Rect2:
-	return Rect2(Vector2(position.x, position.z) + COLLISION_RECT.position, COLLISION_RECT.size)
+	var collision_scale: Vector2 = Vector2(absf(_base_scale.x), absf(_base_scale.z))
+	return Rect2(
+		Vector2(position.x, position.z) + COLLISION_RECT.position * collision_scale,
+		COLLISION_RECT.size * collision_scale
+	)
 
 
 func play_upgrade_feedback(_color: Color) -> void:
 	if _upgrade_tween != null and _upgrade_tween.is_valid():
 		_upgrade_tween.kill()
-	scale = Vector3.ONE
+	scale = _base_scale
 	_upgrade_feedback_remaining = 0.5
 	_upgrade_tween = create_tween()
-	_upgrade_tween.tween_property(self, "scale", Vector3.ONE * 1.16, 0.12)
-	_upgrade_tween.tween_property(self, "scale", Vector3.ONE, 0.22)
+	_upgrade_tween.tween_property(self, "scale", _base_scale * 1.16, 0.12)
+	_upgrade_tween.tween_property(self, "scale", _base_scale, 0.22)

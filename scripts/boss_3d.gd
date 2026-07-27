@@ -140,7 +140,7 @@ func _update_telegraph() -> void:
 	var progress: float = clampf(_state_time / maxf(0.001, data.telegraph_duration), 0.0, 1.0)
 	_telegraph_material.albedo_color = Color(0.91, 0.22, 0.06, 0.16 + progress * 0.3)
 	var target_offset_x: float = _locked_target_x - position.x
-	var cart_offset_z: float = Playfield.CART_Z - position.z
+	var cart_offset_z: float = run.cart_destination_z() - position.z
 	if _telegraph_line.visible:
 		_line_box.size = Vector3(1.08, 0.03, absf(cart_offset_z))
 		_telegraph_line.position = Vector3(target_offset_x, 0.02, cart_offset_z * 0.5)

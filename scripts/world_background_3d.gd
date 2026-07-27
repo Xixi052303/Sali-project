@@ -24,6 +24,8 @@ const DESIGN_ASPECT: float = 720.0 / 1280.0
 
 var _scroll_offset: float = 0.0
 var _street_props: Array[Sprite3D] = []
+# 由主流程注入实际餐车，供窄屏相机补偿跟随场景初始位置。
+var _cart: Cart3D
 
 
 func _ready() -> void:
@@ -47,6 +49,11 @@ func _process(delta: float) -> void:
 			prop.position.z -= STREET_WRAP_LENGTH
 
 
+func set_cart(source_cart: Cart3D) -> void:
+	_cart = source_cart
+	_apply_camera_aspect_compensation()
+
+
 # 长竖屏把新增纵向视野放到道路远端，保持餐车与横向玩法区域的屏幕尺度。
 func _apply_camera_aspect_compensation() -> void:
 	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
@@ -56,7 +63,11 @@ func _apply_camera_aspect_compensation() -> void:
 	if aspect >= DESIGN_ASPECT:
 		_camera.v_offset = 0.0
 		return
-	var cart_world_position: Vector3 = Vector3(Playfield.ROAD_LEFT + Playfield.ROAD_WIDTH * 0.5, 0.0, Playfield.CART_Z)
+	var cart_world_position: Vector3 = (
+		_cart.global_position
+		if is_instance_valid(_cart)
+		else Vector3(Playfield.ROAD_LEFT + Playfield.ROAD_WIDTH * 0.5, 0.0, Playfield.CART_Z)
+	)
 	var camera_to_cart: Vector3 = cart_world_position - _camera.global_position
 	var cart_depth: float = camera_to_cart.dot(-_camera.global_basis.z)
 	var horizontal_half_extent: float = cart_depth * tan(deg_to_rad(_camera.fov) * 0.5)

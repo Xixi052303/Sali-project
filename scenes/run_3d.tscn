@@ -42,6 +42,7 @@ unique_name_in_owner = true
 
 [node name="Cart3D" parent="." unique_id=1135865811 instance=ExtResource("3_cart")]
 unique_name_in_owner = true
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 3.6, 0, 14.95819)
 
 [node name="WeaponController3D" type="Node" parent="." unique_id=1931809242]
 unique_name_in_owner = true

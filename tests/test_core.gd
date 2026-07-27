@@ -50,19 +50,27 @@ func _test_customer_cart_collision() -> void:
 	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
 	var customer_scene: PackedScene = load("res://scenes/customer_3d.tscn") as PackedScene
 	var cart: Cart3D = cart_scene.instantiate() as Cart3D
+	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
+	cart.scale = Vector3.ONE * 0.5
 	cart.configure(state, field)
 	var basic_data: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
 	var customer: Customer3D = customer_scene.instantiate() as Customer3D
 	customer.configure(basic_data, null, 1, 32.0)
 	var appetite_back: MeshInstance3D = customer.get_node("PaperCustomerVisual/AppetiteBack") as MeshInstance3D
 	var appetite_fill: MeshInstance3D = customer.get_node("PaperCustomerVisual/AppetiteFill") as MeshInstance3D
-	_check(appetite_back.visible and appetite_fill.visible, "3D食客使用场景内纸条显示胃口")
-	customer.position = Vector3(1.6, 0.0, 9.0)
+	var appetite_label: Label3D = customer.get_node("PaperCustomerVisual/AppetiteLabel") as Label3D
+	_check(not appetite_back.visible and not appetite_fill.visible, "3D食客不显示胃口进度条")
+	_check(appetite_label.font_size >= 64, "3D食客使用显眼数字显示胃口")
+	var cart_collision: Rect2 = cart.collision_rect_xz()
+	_check(cart_collision.size.is_equal_approx(Vector2(0.96, 1.085)), "半尺寸餐车同步使用半尺寸碰撞矩形")
+	customer.position = Vector3(1.6, 0.0, 9.5)
 	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "食客纵向到达餐车但横向绕开时不算碰撞")
-	customer.position = Vector3(3.6, 0.0, 9.0)
+	customer.position = Vector3(3.6, 0.0, 9.5)
 	_check(customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "食客与餐车主体范围相交时算碰撞")
 	customer.position = Vector3(1.6, 0.0, Playfield.CUSTOMER_DESPAWN_Z)
 	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "绕开的食客到达道路后方时不算碰撞")
+	cart.play_upgrade_feedback(Color.WHITE)
+	_check(cart.scale.is_equal_approx(Vector3.ONE * 0.5), "餐车升级反馈保持编辑器配置的半尺寸基准")
 	customer.free()
 	cart.free()
 	field.free()
@@ -79,18 +87,25 @@ func _test_3d_plane_rules() -> void:
 	var drop_scene: PackedScene = load("res://scenes/upgrade_drop_3d.tscn") as PackedScene
 	var run_scene_instance: Node3D = run_scene.instantiate() as Node3D
 	_check(run_scene_instance.scale.is_equal_approx(Vector3.ONE), "3D主场景根节点保持标准单位缩放")
+	var scene_cart: Cart3D = run_scene_instance.get_node("Cart3D") as Cart3D
+	_check(scene_cart != null, "3D主场景保留可编辑餐车节点")
+	_check(scene_cart.scale.is_equal_approx(Vector3.ONE * 0.5), "3D主场景餐车长宽高均缩小为一半")
 	run_scene_instance.free()
 	var cart: Cart3D = cart_scene.instantiate() as Cart3D
+	var editor_position: Vector3 = Vector3(2.75, 0.25, 12.25)
+	cart.position = editor_position
+	cart.scale = Vector3.ONE * 0.5
 	cart.configure(state, field)
-	_check(is_equal_approx(cart.position.x, 3.6), "3D餐车直接使用米制横坐标")
-	_check(is_equal_approx(cart.position.z, Playfield.CART_Z), "3D餐车把前进坐标放在Z轴")
+	_check(cart.position.is_equal_approx(editor_position), "餐车配置不会覆盖编辑器设置的初始位置")
+	_check(is_equal_approx(cart.target_x, editor_position.x), "餐车横移目标从编辑器初始位置开始")
+	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
 	_check(Playfield.FORWARD_SPAWN_Z <= -32.0, "前方生成点覆盖四段道路可见距离")
 	var basic_data: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
 	var customer: Customer3D = customer_scene.instantiate() as Customer3D
 	customer.configure(basic_data, null, 1, 32.0)
-	customer.position = Vector3(1.6, 0.0, 9.0)
+	customer.position = Vector3(1.6, 0.0, 9.5)
 	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "3D食客横向绕开时不算碰撞")
-	customer.position = Vector3(3.6, 0.0, 9.0)
+	customer.position = Vector3(3.6, 0.0, 9.5)
 	_check(customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "3D食客在X/Z平面实际相交时碰撞")
 
 	var run: RunController3D = RunController3D.new()
@@ -126,17 +141,17 @@ func _test_3d_plane_rules() -> void:
 	var gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
 	gate.configure(null, left_upgrade, right_upgrade, false, 100.0, 1)
 	var left_health_label: Label3D = gate.get_node("LeftHealthLabel") as Label3D
+	var left_health_back: MeshInstance3D = gate.get_node("LeftHealthBack") as MeshInstance3D
 	var left_health_fill: MeshInstance3D = gate.get_node("LeftHealthFill") as MeshInstance3D
-	var left_health_fill_box: BoxMesh = left_health_fill.mesh as BoxMesh
-	var left_health_width_before: float = left_health_fill_box.size.x
 	var left_panel: MeshInstance3D = gate.get_node("LeftPanel") as MeshInstance3D
 	var left_material: StandardMaterial3D = left_panel.material_override as StandardMaterial3D
 	var gate_color_before: Color = left_material.albedo_color
 	_check(left_health_label.text.to_int() == ceili(gate.left_base_health), "3D普通门在门板上方独立显示公开基础胃口")
+	_check(not left_health_back.visible and not left_health_fill.visible, "3D普通门不显示胃口进度条")
+	_check(left_health_label.font_size >= 64, "3D普通门使用显眼数字显示公开胃口")
 	gate.receive_damage(true, gate.left_base_health)
 	gate.receive_damage(true, 50.0)
-	_check(left_health_label.text == "0", "3D门基础胃口耗尽后悬浮数字实时归零")
-	_check(left_health_fill_box.size.x < left_health_width_before, "3D普通门血条随公开基础胃口缩短")
+	_check(left_health_label.text == "0", "3D门额外升值血量保持隐藏，公开数字归零后不再显示")
 	_check(not left_material.albedo_color.is_equal_approx(gate_color_before), "3D普通门升值跨稀有度后实时换色")
 	gate.free()
 
@@ -145,7 +160,11 @@ func _test_3d_plane_rules() -> void:
 	var reward_gate: UpgradeDrop3D = drop_scene.instantiate() as UpgradeDrop3D
 	reward_gate.configure(null, reward_upgrade, Vector3.ZERO, 100.0, 2, 1)
 	var reward_health_label: Label3D = reward_gate.get_node("HealthLabel") as Label3D
+	var reward_health_back: MeshInstance3D = reward_gate.get_node("HealthBack") as MeshInstance3D
+	var reward_health_fill: MeshInstance3D = reward_gate.get_node("HealthFill") as MeshInstance3D
 	_check(reward_health_label.text.to_int() == ceili(reward_gate.upgrade_health), "3D食客奖励门显示唯一可攻击血量")
+	_check(not reward_health_back.visible and not reward_health_fill.visible, "3D食客奖励门不显示血量进度条")
+	_check(reward_health_label.font_size >= 64, "3D食客奖励门使用显眼数字显示血量")
 	var reward_panel: MeshInstance3D = reward_gate.get_node("Panel") as MeshInstance3D
 	var reward_material: StandardMaterial3D = reward_panel.material_override as StandardMaterial3D
 	var reward_color_before: Color = reward_material.albedo_color
@@ -288,6 +307,8 @@ func _test_weapon_fires_without_target() -> void:
 	var field: Playfield = Playfield.new()
 	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
 	var cart: Cart3D = cart_scene.instantiate() as Cart3D
+	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
+	cart.scale = Vector3.ONE * 0.5
 	var projectiles: Node3D = Node3D.new()
 	var gates: Node3D = Node3D.new()
 	var drops: Node3D = Node3D.new()
@@ -464,6 +485,11 @@ func _test_timeline() -> void:
 	run.ranged_guest_data = load("res://data/customers/ranged_guest.tres") as CustomerData
 	_check(run._customer_spawn_lead_seconds(run.basic_guest_data) > 10.0, "普通食客按新增可见路程提前生成")
 	_check(is_equal_approx(run._timeline_event_lead_seconds(&"gate_0"), 14.8), "普通门按原速度补偿新增路程和排队等待")
+	var scene_cart: Cart3D = Cart3D.new()
+	scene_cart.position.z = Playfield.CART_Z + 2.5
+	run.add_child(scene_cart)
+	run.cart = scene_cart
+	_check(is_equal_approx(run._timeline_event_lead_seconds(&"gate_0"), 15.8), "编辑器餐车位置同步调整普通门提前量")
 	run.free()
 	var post_elite_gate_index: int = timeline.event_ids.find("gate_6")
 	var elite_index: int = timeline.event_ids.find("elite")
