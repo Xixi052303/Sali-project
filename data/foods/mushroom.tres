@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="FoodData" format=3]
+[gd_resource type="Resource" script_class="FoodData" format=3 uid="uid://ct6d28ydagjg2"]
 
 [ext_resource type="Script" uid="uid://blbv2gfbbrm1l" path="res://scripts/data/food_data.gd" id="1_food"]
 
@@ -7,14 +7,9 @@ script = ExtResource("1_food")
 id = &"mushroom"
 display_name = "蘑菇"
 attack_kind = 2
-base_satisfaction = 7.0
 base_interval = 0.6
 projectile_speed = 0.0
 projectile_radius = 22.0
-base_lifetime = 2.4
-pierce_count = 1
+base_lifetime = 4.0
 visual_color = Color(0.45, 0.66, 0.31, 1)
-orbit_radius = 120.0
-orbit_angular_speed = 3.2
-breathing_period = 1.2
-breathing_outer_multiplier = 2.0
+orbit_radius = 100.0

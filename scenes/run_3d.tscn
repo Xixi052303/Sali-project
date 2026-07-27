@@ -14,7 +14,7 @@
 [ext_resource type="Resource" uid="uid://cxmke6xw32fsj" path="res://data/customers/elite_guest.tres" id="12_elite"]
 [ext_resource type="Resource" uid="uid://c6u31iw01pg66" path="res://data/bosses/prototype_boss.tres" id="13_boss"]
 [ext_resource type="Resource" uid="uid://88dew4uimxmv" path="res://data/timelines/vertical_slice.tres" id="14_timeline"]
-[ext_resource type="Resource" path="res://data/foods/mushroom.tres" id="15_mushroom"]
+[ext_resource type="Resource" uid="uid://ct6d28ydagjg2" path="res://data/foods/mushroom.tres" id="15_mushroom"]
 
 [node name="Run3D" type="Node3D" unique_id=1265626159]
 script = ExtResource("1_run")
