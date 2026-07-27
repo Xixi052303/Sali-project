@@ -1,4 +1,4 @@
-[gd_scene format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scripts/upgrade_gate_3d.gd" id="1_script"]
 
@@ -14,6 +14,34 @@ roughness = 0.94
 
 [sub_resource type="BoxMesh" id="MeshPanel"]
 size = Vector3(2.88, 1.44, 0.12)
+
+[sub_resource type="StandardMaterial3D" id="MatHealthBack"]
+albedo_color = Color(0.878431, 0.815686, 0.67451, 1)
+roughness = 0.96
+
+[sub_resource type="BoxMesh" id="MeshLeftHealthBack"]
+size = Vector3(2.2, 0.36, 0.05)
+
+[sub_resource type="BoxMesh" id="MeshRightHealthBack"]
+size = Vector3(2.2, 0.36, 0.05)
+
+[sub_resource type="StandardMaterial3D" id="MatLeftHealthFill"]
+resource_local_to_scene = true
+albedo_color = Color(0.788235, 0.235294, 0.176471, 1)
+roughness = 0.92
+
+[sub_resource type="StandardMaterial3D" id="MatRightHealthFill"]
+resource_local_to_scene = true
+albedo_color = Color(0.788235, 0.235294, 0.176471, 1)
+roughness = 0.92
+
+[sub_resource type="BoxMesh" id="MeshLeftHealthFill"]
+resource_local_to_scene = true
+size = Vector3(2.0, 0.15, 0.06)
+
+[sub_resource type="BoxMesh" id="MeshRightHealthFill"]
+resource_local_to_scene = true
+size = Vector3(2.0, 0.15, 0.06)
 
 [node name="UpgradeGate3D" type="Node3D"]
 script = ExtResource("1_script")
@@ -62,24 +90,52 @@ outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 autowrap_mode = 2
 alpha_cut = 0
 
+[node name="LeftHealthBack" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(2.1, 1.82, 0.08)
+cast_shadow = 0
+material_override = SubResource("MatHealthBack")
+mesh = SubResource("MeshLeftHealthBack")
+
+[node name="RightHealthBack" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(5.1, 1.82, 0.08)
+cast_shadow = 0
+material_override = SubResource("MatHealthBack")
+mesh = SubResource("MeshRightHealthBack")
+
+[node name="LeftHealthFill" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(2.1, 1.82, 0.14)
+cast_shadow = 0
+material_override = SubResource("MatLeftHealthFill")
+mesh = SubResource("MeshLeftHealthFill")
+
+[node name="RightHealthFill" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(5.1, 1.82, 0.14)
+cast_shadow = 0
+material_override = SubResource("MatRightHealthFill")
+mesh = SubResource("MeshRightHealthFill")
+
 [node name="LeftHealthLabel" type="Label3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(2.1, 1.8, 0.1)
+position = Vector3(2.1, 1.82, 0.2)
 pixel_size = 0.008
 width = 288.0
-font_size = 42
-outline_size = 9
-modulate = Color(1, 0.878431, 0.603922, 1)
+font_size = 48
+outline_size = 10
+modulate = Color(1, 0.941176, 0.784314, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 alpha_cut = 0
 
 [node name="RightHealthLabel" type="Label3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(5.1, 1.8, 0.1)
+position = Vector3(5.1, 1.82, 0.2)
 pixel_size = 0.008
 width = 288.0
-font_size = 42
-outline_size = 9
-modulate = Color(1, 0.878431, 0.603922, 1)
+font_size = 48
+outline_size = 10
+modulate = Color(1, 0.941176, 0.784314, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 alpha_cut = 0

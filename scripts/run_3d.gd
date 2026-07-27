@@ -22,9 +22,18 @@ class ForwardSpawnRequest:
 	var customer_data: CustomerData
 	var gate_index: int = 0
 	var start_food_gate: bool = false
+	# 提前生成只改变可见距离，胃口仍使用原定事件时刻的基准值。
+	var baseline_appetite: float = 0.0
 
 	func _init(request_kind: Kind) -> void:
 		kind = request_kind
+
+
+# 普通波次成员按各自速度保存独立预生成时刻，基准值仍来自同一原定波次。
+class ScheduledCustomerSpawn:
+	var customer_data: CustomerData
+	var trigger_time: float = 0.0
+	var baseline_appetite: float = 1.0
 
 const TIMELINE_WORKBOOK_PATH: String = "res://balance_tables/时间轴.xlsx"
 const CUSTOMER_SCENE: PackedScene = preload("res://scenes/customer_3d.tscn")
@@ -32,6 +41,13 @@ const BOSS_SCENE: PackedScene = preload("res://scenes/boss_3d.tscn")
 const PROJECTILE_SCENE: PackedScene = preload("res://scenes/projectile_3d.tscn")
 const GATE_SCENE: PackedScene = preload("res://scenes/upgrade_gate_3d.tscn")
 const REWARD_GATE_SCENE: PackedScene = preload("res://scenes/upgrade_drop_3d.tscn")
+const LEGACY_CUSTOMER_SPAWN_Z: float = -6.4
+const LEGACY_GATE_SPAWN_Z: float = 0.0
+const FORWARD_GATE_SPEED: float = 2.5
+# 远端生成队列还需吸收与食客/掉落门错峰产生的短暂等待。
+const FORWARD_GATE_QUEUE_LEAD_SECONDS: float = 2.0
+const REWARD_GATE_SEARCH_STEP: float = 0.1
+const REWARD_GATE_SEARCH_LIMIT: float = 4.0
 
 @export_group("Prototype data")
 @export var potato_data: FoodData
@@ -66,6 +82,7 @@ var _upgrade_pairs: Array[UpgradeData] = []
 var _drop_upgrades: Array[UpgradeData] = []
 var _normal_wave_index: int = 0
 var _next_normal_spawn_time: float = 8.0
+var _scheduled_normal_customers: Array[ScheduledCustomerSpawn] = []
 var _smoke_test: bool = false
 # 请求队列保留时间轴顺序，并在预测到纵向追尾时延迟生成。
 var _forward_spawn_requests: Array[ForwardSpawnRequest] = []
@@ -139,7 +156,7 @@ func _load_timeline_balance() -> void:
 func _process(delta: float) -> void:
 	if phase == Phase.FORWARD or phase == Phase.BOSS:
 		state.elapsed_seconds += delta
-		director.advance(state.elapsed_seconds)
+		director.advance(state.elapsed_seconds, _timeline_event_lead_seconds)
 		if phase == Phase.FORWARD:
 			_advance_normal_waves()
 			_process_spawn_requests()
@@ -335,11 +352,11 @@ func _on_timeline_event(event_id: StringName) -> void:
 	if event_id == &"start_gate":
 		_queue_gate(0, true)
 	elif event_id == &"basic":
-		_queue_customer(basic_guest_data)
+		_queue_customer(basic_guest_data, _scheduled_baseline_appetite(event_id))
 	elif event_id == &"fast":
-		_queue_customer(fast_guest_data)
+		_queue_customer(fast_guest_data, _scheduled_baseline_appetite(event_id))
 	elif event_id == &"ranged":
-		_queue_customer(ranged_guest_data)
+		_queue_customer(ranged_guest_data, _scheduled_baseline_appetite(event_id))
 	elif event_id == &"elite":
 		_normal_waves_suspended = true
 		_queue_elite()
@@ -347,13 +364,14 @@ func _on_timeline_event(event_id: StringName) -> void:
 		_start_boss()
 	elif String(event_id).begins_with("gate_"):
 		var gate_index: int = String(event_id).trim_prefix("gate_").to_int()
-		_queue_gate(gate_index, false)
+		_queue_gate(gate_index, false, _scheduled_baseline_appetite(event_id))
 
 
 # 将普通食客加入统一队列，避免同帧双生或与门产生视觉重叠。
-func _queue_customer(customer_data: CustomerData) -> void:
+func _queue_customer(customer_data: CustomerData, baseline_appetite: float = 0.0) -> void:
 	var request: ForwardSpawnRequest = ForwardSpawnRequest.new(ForwardSpawnRequest.Kind.CUSTOMER)
 	request.customer_data = customer_data
+	request.baseline_appetite = baseline_appetite
 	_forward_spawn_requests.append(request)
 
 
@@ -361,10 +379,11 @@ func _queue_elite() -> void:
 	_forward_spawn_requests.append(ForwardSpawnRequest.new(ForwardSpawnRequest.Kind.ELITE))
 
 
-func _queue_gate(index: int, is_start_gate: bool) -> void:
+func _queue_gate(index: int, is_start_gate: bool, baseline_appetite: float = 0.0) -> void:
 	var request: ForwardSpawnRequest = ForwardSpawnRequest.new(ForwardSpawnRequest.Kind.GATE)
 	request.gate_index = index
 	request.start_food_gate = is_start_gate
+	request.baseline_appetite = baseline_appetite
 	_forward_spawn_requests.append(request)
 
 
@@ -378,18 +397,18 @@ func _process_spawn_requests() -> void:
 		_forward_spawn_requests.pop_front()
 		match request.kind:
 			ForwardSpawnRequest.Kind.CUSTOMER:
-				_spawn_customer_now(request.customer_data)
+				_spawn_customer_now(request.customer_data, request.baseline_appetite)
 			ForwardSpawnRequest.Kind.ELITE:
 				_spawn_elite_now()
 			ForwardSpawnRequest.Kind.GATE:
-				_spawn_gate_now(request.gate_index, request.start_food_gate)
+				_spawn_gate_now(request.gate_index, request.start_food_gate, request.baseline_appetite)
 		spawned_this_frame += 1
 
 
 # 对候选对象与全部活动前进对象做匀速路径预测，追尾风险解除后才生成。
 func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 	var candidate_z: float = 0.0 if request.start_food_gate else Playfield.FORWARD_SPAWN_Z
-	var candidate_speed: float = 5.0 if request.kind == ForwardSpawnRequest.Kind.GATE else 2.5
+	var candidate_speed: float = FORWARD_GATE_SPEED if request.kind == ForwardSpawnRequest.Kind.GATE else 2.5
 	if request.kind == ForwardSpawnRequest.Kind.CUSTOMER:
 		if request.customer_data == null:
 			return false
@@ -423,7 +442,7 @@ func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 	return true
 
 
-func _spawn_customer_now(customer_data: CustomerData) -> void:
+func _spawn_customer_now(customer_data: CustomerData, scheduled_baseline_appetite: float = 0.0) -> void:
 	_spawn_counter += 1
 	var customer: Customer3D = CUSTOMER_SCENE.instantiate() as Customer3D
 	var max_start: int = Playfield.REGION_COUNT - customer_data.occupied_regions
@@ -434,7 +453,9 @@ func _spawn_customer_now(customer_data: CustomerData) -> void:
 		Playfield.FORWARD_SPAWN_Z
 	)
 	entities.add_child(customer)
-	var baseline_appetite: float = _current_baseline_appetite()
+	var baseline_appetite: float = scheduled_baseline_appetite
+	if baseline_appetite <= 0.0:
+		baseline_appetite = _current_baseline_appetite()
 	var reward_upgrade: UpgradeData = _roll_customer_reward()
 	var appetite: float = customer_data.appetite_at(baseline_appetite, reward_upgrade.value_ratio)
 	customer.configure(customer_data, self, _spawn_counter, appetite, reward_upgrade, baseline_appetite)
@@ -449,18 +470,47 @@ func _advance_normal_waves() -> void:
 	var elapsed: float = state.elapsed_seconds
 	if elapsed >= 132.0 or _normal_waves_suspended:
 		return
-	while elapsed >= _next_normal_spawn_time and _next_normal_spawn_time < 132.0:
+	_flush_scheduled_normal_customers(elapsed)
+	while _next_normal_spawn_time < 132.0:
 		var pattern: int = _normal_wave_index % 5
+		var wave_customers: Array[CustomerData] = []
 		var customer_data: CustomerData = basic_guest_data
 		if pattern == 2:
 			customer_data = fast_guest_data
 		elif pattern == 4:
 			customer_data = ranged_guest_data
-		_queue_customer(customer_data)
+		wave_customers.append(customer_data)
 		if _normal_wave_index % 4 == 3:
-			_queue_customer(basic_guest_data if pattern == 4 else fast_guest_data)
+			wave_customers.append(basic_guest_data if pattern == 4 else fast_guest_data)
+		var earliest_trigger_time: float = INF
+		for wave_customer: CustomerData in wave_customers:
+			earliest_trigger_time = minf(
+				earliest_trigger_time,
+				_next_normal_spawn_time - _customer_spawn_lead_seconds(wave_customer)
+			)
+		if elapsed < earliest_trigger_time:
+			break
+		var baseline_appetite: float = _baseline_appetite_at(_next_normal_spawn_time)
+		for wave_customer: CustomerData in wave_customers:
+			var scheduled: ScheduledCustomerSpawn = ScheduledCustomerSpawn.new()
+			scheduled.customer_data = wave_customer
+			scheduled.trigger_time = _next_normal_spawn_time - _customer_spawn_lead_seconds(wave_customer)
+			scheduled.baseline_appetite = baseline_appetite
+			_scheduled_normal_customers.append(scheduled)
 		_normal_wave_index += 1
 		_next_normal_spawn_time += 3.2 if _next_normal_spawn_time < 78.0 else 2.8
+		_flush_scheduled_normal_customers(elapsed)
+
+
+# 同一波不同速度的食客按各自新增路程提前量入队，避免快客被过早放出。
+func _flush_scheduled_normal_customers(elapsed: float) -> void:
+	var remaining: Array[ScheduledCustomerSpawn] = []
+	for scheduled: ScheduledCustomerSpawn in _scheduled_normal_customers:
+		if elapsed >= scheduled.trigger_time:
+			_queue_customer(scheduled.customer_data, scheduled.baseline_appetite)
+		else:
+			remaining.append(scheduled)
+	_scheduled_normal_customers = remaining
 
 
 func _spawn_elite_now() -> void:
@@ -480,17 +530,20 @@ func _spawn_elite_now() -> void:
 	hud.show_toast("六席贵客挡住整条路，尽快满足它！", Color("#f0c45f"))
 
 
-func _spawn_gate_now(index: int, is_start_gate: bool) -> void:
+func _spawn_gate_now(index: int, is_start_gate: bool, scheduled_baseline_appetite: float = 0.0) -> void:
 	_spawn_counter += 1
 	var gate: UpgradeGate3D = GATE_SCENE.instantiate() as UpgradeGate3D
 	gates.add_child(gate)
 	if is_start_gate:
 		gate.configure(self, _upgrade_pairs[0], _upgrade_pairs[0], true, _current_baseline_appetite(), _spawn_counter)
 		return
+	var baseline_appetite: float = scheduled_baseline_appetite
+	if baseline_appetite <= 0.0:
+		baseline_appetite = _current_baseline_appetite()
 	var pair_start: int = (index * 2) % _upgrade_pairs.size()
 	var left: UpgradeData = _roll_gate_upgrade(_upgrade_pairs[pair_start])
 	var right: UpgradeData = _roll_gate_upgrade(_upgrade_pairs[(pair_start + 1) % _upgrade_pairs.size()])
-	gate.configure(self, left, right, false, _current_baseline_appetite(), _spawn_counter)
+	gate.configure(self, left, right, false, baseline_appetite, _spawn_counter)
 
 
 func _start_boss() -> void:
@@ -570,44 +623,60 @@ func _spawn_customer_reward_gate(
 	drop.configure(self, upgrade, start_position, baseline_appetite, occupied_regions, _spawn_counter)
 
 
-# 奖励门优先留在食客位置；发生路径冲突时逐段前移，直到不会与现有前进对象追尾。
+# 奖励门以食客原位置为中心小步双向搜索，避免单向避让把门推到远处。
 func _find_reward_gate_spawn_z(preferred_z: float) -> float:
-	var candidate_z: float = preferred_z
-	var attempts: int = 0
-	while attempts < 64:
-		var conflict_z: float = INF
-		for customer: Customer3D in customers:
-			if not is_instance_valid(customer) or not customer.active:
-				continue
-			if not playfield.forward_paths_are_separated(
-				candidate_z,
-				2.5,
-				customer.position.z,
-				customer.travel_speed()
-			):
-				conflict_z = minf(conflict_z, customer.position.z)
-		for child: Node in gates.get_children():
-			if not child is UpgradeGate3D or child.is_queued_for_deletion():
-				continue
-			var gate: UpgradeGate3D = child as UpgradeGate3D
-			if not playfield.forward_paths_are_separated(candidate_z, 2.5, gate.position.z, gate.travel_speed()):
-				conflict_z = minf(conflict_z, gate.position.z)
-		for child: Node in drops.get_children():
-			if not child is UpgradeDrop3D or child.is_queued_for_deletion():
-				continue
-			var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
-			if not playfield.forward_paths_are_separated(
-				candidate_z,
-				2.5,
-				reward_gate.position.z,
-				reward_gate.travel_speed()
-			):
-				conflict_z = minf(conflict_z, reward_gate.position.z)
-		if conflict_z == INF:
-			return candidate_z
-		candidate_z = minf(candidate_z, conflict_z) - Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE
-		attempts += 1
-	return candidate_z
+	if _reward_gate_spawn_is_safe(preferred_z):
+		return preferred_z
+	var distance: float = REWARD_GATE_SEARCH_STEP
+	while distance <= REWARD_GATE_SEARCH_LIMIT + 0.001:
+		var toward_cart_z: float = preferred_z + distance
+		if toward_cart_z < Playfield.CART_Z - 0.5 and _reward_gate_spawn_is_safe(toward_cart_z):
+			return toward_cart_z
+		var toward_far_z: float = preferred_z - distance
+		if _reward_gate_spawn_is_safe(toward_far_z):
+			return toward_far_z
+		distance += REWARD_GATE_SEARCH_STEP
+	# 极密集时宁可保留掉落因果位置，也不把奖励门瞬移到远景。
+	return preferred_z
+
+
+func _reward_gate_spawn_is_safe(candidate_z: float) -> bool:
+	for customer: Customer3D in customers:
+		if not is_instance_valid(customer) or not customer.active:
+			continue
+		if not playfield.forward_paths_are_separated(
+			candidate_z,
+			2.5,
+			customer.position.z,
+			customer.travel_speed(),
+			Playfield.FORWARD_MIN_CENTER_DISTANCE
+		):
+			return false
+	for child: Node in gates.get_children():
+		if not child is UpgradeGate3D or child.is_queued_for_deletion():
+			continue
+		var gate: UpgradeGate3D = child as UpgradeGate3D
+		if not playfield.forward_paths_are_separated(
+			candidate_z,
+			2.5,
+			gate.position.z,
+			gate.travel_speed(),
+			Playfield.FORWARD_MIN_CENTER_DISTANCE
+		):
+			return false
+	for child: Node in drops.get_children():
+		if not child is UpgradeDrop3D or child.is_queued_for_deletion():
+			continue
+		var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
+		if not playfield.forward_paths_are_separated(
+			candidate_z,
+			2.5,
+			reward_gate.position.z,
+			reward_gate.travel_speed(),
+			Playfield.FORWARD_MIN_CENTER_DISTANCE
+		):
+			return false
+	return true
 
 
 func _on_customer_ranged_attack(_customer: Customer3D, amount: float) -> void:
@@ -637,6 +706,7 @@ func _on_special_choice_selected(choice_id: StringName) -> void:
 	hud.set_phase("继续前进 · 构筑已变化")
 	phase = Phase.FORWARD
 	_normal_waves_suspended = false
+	_scheduled_normal_customers.clear()
 	_next_normal_spawn_time = state.elapsed_seconds + 1.0
 
 
@@ -648,6 +718,15 @@ func _on_boss_satisfied() -> void:
 	var body: String = _build_results_text()
 	hud.show_results("Boss满意离场！", body)
 	if _smoke_test:
+		var expected_gate_count: int = 0
+		for event_text: String in director.timeline.event_ids:
+			if event_text.begins_with("gate_"):
+				expected_gate_count += 1
+		if state.gate_choices != expected_gate_count:
+			push_error("SMOKE_TEST_FAILED gates=%d expected=%d" % [state.gate_choices, expected_gate_count])
+			Engine.time_scale = 1.0
+			get_tree().quit(1)
+			return
 		if _smoke_minimum_gate_customer_gap < Playfield.FORWARD_MIN_CENTER_DISTANCE - 0.1:
 			push_error("SMOKE_TEST_FAILED forward_gap=%.2f" % _smoke_minimum_gate_customer_gap)
 			Engine.time_scale = 1.0
@@ -869,7 +948,40 @@ func _roll_special_choices() -> Array[StringName]:
 
 
 func _current_baseline_appetite() -> float:
+	return _baseline_appetite_at(state.elapsed_seconds)
+
+
+func _baseline_appetite_at(elapsed_seconds: float) -> float:
 	if director.timeline == null:
 		return 20.0
-	return director.timeline.baseline_appetite_at(state.elapsed_seconds)
+	return director.timeline.baseline_appetite_at(elapsed_seconds)
+
+
+# 远端生成只补偿新增可见路程，不改变食客原有接近速度。
+func _customer_spawn_lead_seconds(customer_data: CustomerData) -> float:
+	if customer_data == null:
+		return 0.0
+	var extra_distance: float = LEGACY_CUSTOMER_SPAWN_Z - Playfield.FORWARD_SPAWN_Z
+	var travel_speed: float = world_scroll_speed + Playfield.design_to_world(customer_data.move_speed)
+	return maxf(0.0, extra_distance / maxf(0.001, travel_speed))
+
+
+func _timeline_event_lead_seconds(event_id: StringName) -> float:
+	if String(event_id).begins_with("gate_"):
+		return (
+			(LEGACY_GATE_SPAWN_Z - Playfield.FORWARD_SPAWN_Z) / FORWARD_GATE_SPEED
+			+ FORWARD_GATE_QUEUE_LEAD_SECONDS
+		)
+	match event_id:
+		&"basic":
+			return _customer_spawn_lead_seconds(basic_guest_data)
+		&"fast":
+			return _customer_spawn_lead_seconds(fast_guest_data)
+		&"ranged":
+			return _customer_spawn_lead_seconds(ranged_guest_data)
+	return 0.0
+
+
+func _scheduled_baseline_appetite(event_id: StringName) -> float:
+	return _baseline_appetite_at(state.elapsed_seconds + _timeline_event_lead_seconds(event_id))
 

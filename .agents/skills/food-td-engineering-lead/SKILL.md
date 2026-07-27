@@ -61,6 +61,7 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 
 - 先做静态检查：引用路径、类型、信号参数、场景节点、资源 UID 和影响面搜索。
 - 再按 `AGENTS.md` 选择最小运行验证；无法启动 Godot 4.7 时明确列出未执行项。
+- 测试截图、录屏、音频、日志、渲染结果和其他中间产物从生成命令开始就使用 `tmp/` 下的路径；不得在项目根目录或资源目录使用临时输出路径，以免 Godot 将其扫描为项目资源。
 - 不运行可能批量写盘的 `@tool` 生成器，除非用户明确要求。
 - 验证失败时保留报错原文和复现条件，不把静态推断写成运行通过。
 
@@ -83,10 +84,11 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 - `RunController3D`（`scripts/run_3d.gd`）：拥有单局阶段、3D运行对象集合、生成、选择、Boss 和结算的跨系统编排。
 - `RunState`（`scripts/data/run_state.gd`）：拥有局内耐久、强化、食材、特殊能力和统计状态。
 - `Playfield`（`scripts/playfield.gd`）：定义道路边界、六个逻辑区域和餐车活动范围。
-- `EncounterDirector`与`EncounterTimeline`：按时间触发竖切片事件；`balance_tables/时间轴.xlsx`保存当前固定排程，`TimelineExcelLoader`生成运行时Resource，`data/timelines/vertical_slice.tres`负责失败回退，`RunController3D._advance_normal_waves()`另行补充普通食客波次。
+- `EncounterDirector`与`EncounterTimeline`：按时间触发竖切片事件，并允许表现层按事件类型提前预生成；`balance_tables/时间轴.xlsx`保存当前固定排程，`TimelineExcelLoader`生成运行时Resource，`data/timelines/vertical_slice.tres`负责失败回退，`RunController3D._advance_normal_waves()`另行补充普通食客波次。
 - `WeaponController3D`、`FoodRuntime` 与 `FoodProjectile3D`：负责武器冷却、目标获取后的发射、`X/Z`弹道和命中。
 - `Customer3D`、`PrototypeBoss3D` 与 `Cart3D`：分别负责食客、Boss 和餐车局部行为，并通过 `RunController3D` 协调伤害与流程。
-- `GameHud`：负责运行界面与选择、重开信号，不拥有玩法规则。
+- `road_segment_3d.tscn`持有马路、左右路沿与左右人行道的分层节点；`WorldBackground3D`只负责完整路段和街景面片的循环滚动。
+- `hud.tscn`保存可编辑的固定界面节点；`GameHud`负责内容刷新与选择、重开信号，不拥有玩法规则。
 - `scripts/data/*.gd`定义类型化Resource；`balance_tables/时间轴.xlsx`是时间轴运行主源，`data/**/*.tres`保存食材、食客、Boss和时间轴回退参数。
 
 当前普通强化候选和部分特殊选择由 `RunController3D` 在运行时构建，并非全部来自 `.tres`。修改数据前必须先确认事实源位于具体 Resource、脚本构建逻辑还是 GDD。

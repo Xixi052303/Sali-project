@@ -10,13 +10,15 @@ var left_upgrade: UpgradeData
 var right_upgrade: UpgradeData
 var start_food_gate: bool = false
 var resolved: bool = false
-# 远景门需要在既有时间轴窗口内抵达，速度高于普通道路滚动但不改变横向选择规则。
-var move_speed: float = 5.0
+# 道路延长只让门提前出现，接近速度继续保持原竖切片节奏。
+var move_speed: float = 2.5
 var spawn_index: int = 0
 var baseline_appetite: float = 1.0
 # 基础胃口负责撞门损伤并公开显示；隐藏胃口只负责基础层击破后的奖励升值。
 var left_base_health: float = 0.0
 var right_base_health: float = 0.0
+var left_maximum_base_health: float = 1.0
+var right_maximum_base_health: float = 1.0
 var left_upgrade_health: float = 0.0
 var right_upgrade_health: float = 0.0
 
@@ -28,6 +30,10 @@ var _right_hit_feedback: float = 0.0
 @onready var _right_label: Label3D = %RightLabel
 @onready var _left_health_label: Label3D = %LeftHealthLabel
 @onready var _right_health_label: Label3D = %RightHealthLabel
+@onready var _left_health_back: MeshInstance3D = %LeftHealthBack
+@onready var _right_health_back: MeshInstance3D = %RightHealthBack
+@onready var _left_health_fill: MeshInstance3D = %LeftHealthFill
+@onready var _right_health_fill: MeshInstance3D = %RightHealthFill
 @onready var _left_mesh: MeshInstance3D = %LeftPanel
 @onready var _right_mesh: MeshInstance3D = %RightPanel
 
@@ -52,6 +58,8 @@ func configure(
 	if not start_food_gate:
 		left_base_health = baseline_appetite * (1.0 + left_upgrade.value_ratio)
 		right_base_health = baseline_appetite * (1.0 + right_upgrade.value_ratio)
+		left_maximum_base_health = left_base_health
+		right_maximum_base_health = right_base_health
 		left_upgrade_health = baseline_appetite * (1.0 - left_upgrade.value_ratio)
 		right_upgrade_health = baseline_appetite * (1.0 - right_upgrade.value_ratio)
 	_refresh_labels()
@@ -152,6 +160,10 @@ func _resolve_visual_nodes() -> void:
 	_right_label = get_node("RightLabel") as Label3D
 	_left_health_label = get_node("LeftHealthLabel") as Label3D
 	_right_health_label = get_node("RightHealthLabel") as Label3D
+	_left_health_back = get_node("LeftHealthBack") as MeshInstance3D
+	_right_health_back = get_node("RightHealthBack") as MeshInstance3D
+	_left_health_fill = get_node("LeftHealthFill") as MeshInstance3D
+	_right_health_fill = get_node("RightHealthFill") as MeshInstance3D
 
 
 func _refresh_labels() -> void:
@@ -164,11 +176,33 @@ func _refresh_labels() -> void:
 	_right_label.modulate = Color.WHITE
 	_left_health_label.visible = not start_food_gate
 	_right_health_label.visible = not start_food_gate
+	_left_health_back.visible = not start_food_gate
+	_right_health_back.visible = not start_food_gate
+	_left_health_fill.visible = not start_food_gate
+	_right_health_fill.visible = not start_food_gate
 	_left_health_label.text = str(ceili(left_base_health))
 	_right_health_label.text = str(ceili(right_base_health))
-	_left_health_label.modulate = left_upgrade.rarity_color.lightened(0.18)
-	_right_health_label.modulate = right_upgrade.rarity_color.lightened(0.18)
+	_left_health_label.modulate = Color("#fff0c8")
+	_right_health_label.modulate = Color("#fff0c8")
+	_refresh_health_bar(_left_health_fill, left_base_health, left_maximum_base_health, 2.0, 2.1, left_upgrade.rarity_color)
+	_refresh_health_bar(_right_health_fill, right_base_health, right_maximum_base_health, 2.0, 5.1, right_upgrade.rarity_color)
 	_refresh_rarity_colors()
+
+
+func _refresh_health_bar(
+	fill: MeshInstance3D,
+	current: float,
+	maximum: float,
+	maximum_width: float,
+	center_x: float,
+	color: Color
+) -> void:
+	var fill_box: BoxMesh = fill.mesh as BoxMesh
+	var ratio: float = clampf(current / maxf(1.0, maximum), 0.0, 1.0)
+	fill_box.size.x = maxf(0.001, maximum_width * ratio)
+	fill.position.x = center_x - maximum_width * 0.5 + fill_box.size.x * 0.5
+	var fill_material: StandardMaterial3D = fill.material_override as StandardMaterial3D
+	fill_material.albedo_color = color.darkened(0.08)
 
 
 func _label_text(upgrade: UpgradeData, maximum_durability: float) -> String:

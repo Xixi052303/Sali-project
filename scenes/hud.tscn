@@ -1,0 +1,282 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/hud.gd" id="1_hud"]
+
+[sub_resource type="StyleBoxFlat" id="StyleDurabilityPanel"]
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+bg_color = Color(0.305882, 0.215686, 0.176471, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.839216, 0.682353, 0.333333, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBarBackground"]
+bg_color = Color(0.12549, 0.109804, 0.0941176, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBarFill"]
+bg_color = Color(0.815686, 0.415686, 0.247059, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleToast"]
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+bg_color = Color(0.08, 0.07, 0.06, 0.76)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.141176, 0.121569, 0.101961, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleRestartNormal"]
+bg_color = Color(0.427451, 0.262745, 0.207843, 1)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.882353, 0.729412, 0.384314, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleRestartHover"]
+bg_color = Color(0.509804, 0.321569, 0.247059, 1)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.94902, 0.831373, 0.482353, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="Hud" type="CanvasLayer"]
+layer = 100
+script = ExtResource("1_hud")
+
+[node name="Root" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="SafeMargin" type="MarginContainer" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="TopLayout" type="VBoxContainer" parent="Root/SafeMargin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="HBoxContainer" parent="Root/SafeMargin/TopLayout"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="PhaseLabel" type="Label" parent="Root/SafeMargin/TopLayout/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.827451, 0.717647, 0.498039, 1)
+theme_override_colors/font_outline_color = Color(0.141176, 0.121569, 0.101961, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 24
+text = "准备出餐"
+
+[node name="TimeLabel" type="Label" parent="Root/SafeMargin/TopLayout/Header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.141176, 0.121569, 0.101961, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 28
+text = "00:00"
+horizontal_alignment = 2
+
+[node name="DurabilityPanel" type="PanelContainer" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -106.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleDurabilityPanel")
+
+[node name="DurabilityStack" type="VBoxContainer" parent="Root/DurabilityPanel"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="DurabilityLabel" type="Label" parent="Root/DurabilityPanel/DurabilityStack"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.141176, 0.121569, 0.101961, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 20
+text = "餐车耐久  100 / 100"
+
+[node name="DurabilityBar" type="ProgressBar" parent="Root/DurabilityPanel/DurabilityStack"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 15)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBarBackground")
+theme_override_styles/fill = SubResource("StyleBarFill")
+value = 100.0
+show_percentage = false
+
+[node name="ToastLabel" type="Label" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 35.0
+offset_top = 190.0
+offset_right = 685.0
+offset_bottom = 270.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.94902, 0.831373, 0.482353, 1)
+theme_override_colors/font_outline_color = Color(0.141176, 0.121569, 0.101961, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 28
+theme_override_styles/normal = SubResource("StyleToast")
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="DebugLabel" type="Label" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -330.0
+offset_top = -174.0
+offset_right = -30.0
+offset_bottom = -116.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.95, 0.9, 0.75, 0.78)
+theme_override_colors/font_outline_color = Color(0.141176, 0.121569, 0.101961, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 15
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="ChoiceOverlay" type="ColorRect" parent="Root"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.07, 0.06, 0.05, 0.94)
+
+[node name="ChoiceStack" type="VBoxContainer" parent="Root/ChoiceOverlay"]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 250.0
+offset_right = 680.0
+offset_bottom = 950.0
+theme_override_constants/separation = 30
+
+[node name="ChoiceTitle" type="Label" parent="Root/ChoiceOverlay/ChoiceStack"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.956863, 0.823529, 0.478431, 1)
+theme_override_colors/font_outline_color = Color(0.141176, 0.121569, 0.101961, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 32
+text = "选择特别赏赐"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="ChoiceButtons" type="VBoxContainer" parent="Root/ChoiceOverlay/ChoiceStack"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="ResultsOverlay" type="ColorRect" parent="Root"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.07, 0.06, 0.05, 0.95)
+
+[node name="ResultsPanel" type="VBoxContainer" parent="Root/ResultsOverlay"]
+layout_mode = 0
+offset_left = 70.0
+offset_top = 250.0
+offset_right = 650.0
+offset_bottom = 970.0
+theme_override_constants/separation = 28
+
+[node name="ResultsLabel" type="Label" parent="Root/ResultsOverlay/ResultsPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.94902, 0.870588, 0.690196, 1)
+theme_override_colors/font_outline_color = Color(0.141176, 0.121569, 0.101961, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 27
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="RestartButton" type="Button" parent="Root/ResultsOverlay/ResultsPanel"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 86)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+theme_override_styles/normal = SubResource("StyleRestartNormal")
+theme_override_styles/hover = SubResource("StyleRestartHover")
+text = "再来一局"

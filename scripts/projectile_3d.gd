@@ -1,6 +1,8 @@
 class_name FoodProjectile3D
 extends Node3D
 
+const MISS_DISAPPEAR_DURATION: float = 0.2
+
 var run: RunController3D
 var velocity: Vector3 = Vector3.ZERO
 var satisfaction: float = 0.0
@@ -14,6 +16,7 @@ var homing_turn_speed: float = 0.0
 var _movement_speed: float = 0.0
 var _lifetime_remaining: float = 1.6
 var _hit_instances: Dictionary = {}
+var _miss_disappearing: bool = false
 @onready var _potato_visual: MeshInstance3D = %PotatoVisual
 @onready var _baguette_visual: MeshInstance3D = %BaguetteVisual
 @onready var _baguette_box: BoxMesh = _baguette_visual.mesh as BoxMesh
@@ -55,7 +58,7 @@ func _process(delta: float) -> void:
 		return
 	_lifetime_remaining -= delta
 	if _lifetime_remaining <= 0.0:
-		queue_free()
+		_begin_miss_disappear()
 		return
 	if homing_enabled and is_instance_valid(tracking_target) and not tracking_target.is_queued_for_deletion():
 		var desired: Vector3 = run.logic_position(tracking_target) - run.logic_position(self)
@@ -67,8 +70,10 @@ func _process(delta: float) -> void:
 	position += velocity * delta
 	rotation.y = atan2(velocity.x, -velocity.z)
 	run.resolve_projectile_hits(self)
+	if is_queued_for_deletion():
+		return
 	if position.z < Playfield.PROJECTILE_FORWARD_BOUNDARY_Z or position.z > 14.5 or position.x < -1.2 or position.x > 8.4:
-		queue_free()
+		_begin_miss_disappear()
 
 
 func can_hit(target: Node3D) -> bool:
@@ -86,6 +91,29 @@ func register_hit(target: Node3D) -> bool:
 
 func planar_position() -> Vector2:
 	return Vector2(position.x, position.z)
+
+
+# 未命中的食材保留短促退场反馈，命中次数耗尽仍立即回收以保持判定干净。
+func _begin_miss_disappear() -> void:
+	if _miss_disappearing:
+		return
+	_resolve_visual_nodes()
+	_miss_disappearing = true
+	tracking_target = null
+	homing_enabled = false
+	set_process(false)
+	var tween: Tween = create_tween()
+	tween.set_parallel(true)
+	tween.set_trans(Tween.TRANS_QUAD)
+	tween.set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "scale", Vector3.ONE * 0.05, MISS_DISAPPEAR_DURATION)
+	tween.tween_property(_potato_visual, "transparency", 1.0, MISS_DISAPPEAR_DURATION)
+	tween.tween_property(_baguette_visual, "transparency", 1.0, MISS_DISAPPEAR_DURATION)
+	tween.chain().tween_callback(queue_free)
+
+
+func is_miss_disappearing() -> bool:
+	return _miss_disappearing
 
 
 func _resolve_visual_nodes() -> void:

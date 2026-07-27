@@ -1,17 +1,26 @@
 [gd_scene format=3 uid="uid://dnvm7mnyih7j1"]
 
 [ext_resource type="Script" uid="uid://dfhg4rcybu4dl" path="res://scripts/world_background_3d.gd" id="1_script"]
-[ext_resource type="Texture2D" uid="uid://b0o01imo73kr8" path="res://assets/backgrounds/road_loop.png" id="2_road"]
 [ext_resource type="Texture2D" uid="uid://dcsbqmlqi7ucv" path="res://assets/image/街景.png" id="3_street"]
+[ext_resource type="PackedScene" uid="uid://ovhyat2qa7p6" path="res://scenes/road_segment_3d.tscn" id="4_road_segment"]
 
 [sub_resource type="Environment" id="EnvironmentPaper"]
 background_mode = 1
-background_color = Color(0.34902, 0.415686, 0.419608, 1)
-background_energy_multiplier = 0.72
+background_color = Color(0.545098, 0.505882, 0.435294, 1)
+background_energy_multiplier = 0.68
 ambient_light_source = 3
 ambient_light_color = Color(0.843137, 0.780392, 0.631373, 1)
 ambient_light_energy = 0.75
 tonemap_mode = 2
+fog_enabled = true
+fog_mode = 1
+fog_light_color = Color(0.560784, 0.529412, 0.458824, 1)
+fog_light_energy = 0.82
+fog_density = 1.0
+fog_sky_affect = 0.7
+fog_depth_curve = 1.35
+fog_depth_begin = 25.0
+fog_depth_end = 46.0
 
 [sub_resource type="StandardMaterial3D" id="MatGround"]
 albedo_color = Color(0.25098, 0.345098, 0.305882, 1)
@@ -20,20 +29,14 @@ roughness = 0.95
 [sub_resource type="PlaneMesh" id="MeshGround"]
 size = Vector2(22, 80)
 
-[sub_resource type="StandardMaterial3D" id="MatRoad"]
-albedo_texture = ExtResource("2_road")
-
-[sub_resource type="PlaneMesh" id="MeshRoad"]
-size = Vector2(9.96, 12.8)
-
 [node name="Background" type="Node3D" unique_id=988940240]
 script = ExtResource("1_script")
 
 [node name="PaperCamera" type="Camera3D" parent="." unique_id=375911804]
-transform = Transform3D(1, 0, 0, 0, 0.822192, 0.56921023, 0, -0.56921023, 0.822192, 3.6, 9.6, 15.8)
+transform = Transform3D(1, 0, 0, 0, 0.743145, 0.669131, 0, -0.669131, 0.743145, 3.6, 13.5, 18)
 keep_aspect = 0
 current = true
-fov = 46.0
+fov = 32.0
 far = 90.0
 
 [node name="PaperEnvironment" type="WorldEnvironment" parent="." unique_id=1242812738]
@@ -49,41 +52,29 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, -0.08, -12.8)
 material_override = SubResource("MatGround")
 mesh = SubResource("MeshGround")
 
-[node name="RoadTile0" type="MeshInstance3D" parent="." unique_id=2093380854]
+[node name="RoadSegment0" parent="." unique_id=2093380854 instance=ExtResource("4_road_segment")]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 0, -44.8)
-material_override = SubResource("MatRoad")
-mesh = SubResource("MeshRoad")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -44.8)
 
-[node name="RoadTile1" type="MeshInstance3D" parent="." unique_id=1925374271]
+[node name="RoadSegment1" parent="." unique_id=1925374271 instance=ExtResource("4_road_segment")]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 0, -32)
-material_override = SubResource("MatRoad")
-mesh = SubResource("MeshRoad")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -32)
 
-[node name="RoadTile2" type="MeshInstance3D" parent="." unique_id=1474118140]
+[node name="RoadSegment2" parent="." unique_id=1474118140 instance=ExtResource("4_road_segment")]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 0, -19.2)
-material_override = SubResource("MatRoad")
-mesh = SubResource("MeshRoad")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -19.2)
 
-[node name="RoadTile3" type="MeshInstance3D" parent="." unique_id=627021300]
+[node name="RoadSegment3" parent="." unique_id=627021300 instance=ExtResource("4_road_segment")]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 0, -6.4)
-material_override = SubResource("MatRoad")
-mesh = SubResource("MeshRoad")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -6.4)
 
-[node name="RoadTile4" type="MeshInstance3D" parent="." unique_id=1212017928]
+[node name="RoadSegment4" parent="." unique_id=1212017928 instance=ExtResource("4_road_segment")]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 0, 6.4)
-material_override = SubResource("MatRoad")
-mesh = SubResource("MeshRoad")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 6.4)
 
-[node name="RoadTile5" type="MeshInstance3D" parent="." unique_id=478849217]
+[node name="RoadSegment5" parent="." unique_id=478849217 instance=ExtResource("4_road_segment")]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 0, 19.2)
-material_override = SubResource("MatRoad")
-mesh = SubResource("MeshRoad")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 19.2)
 
 [node name="StreetProps" type="Node3D" parent="." unique_id=1167259546]
 unique_name_in_owner = true
@@ -142,7 +133,7 @@ region_rect = Rect2(1808, 157, 407, 384)
 
 [node name="PropLamp" type="Sprite3D" parent="StreetProps" unique_id=683674454]
 unique_name_in_owner = true
-transform = Transform3D(3.984779, 0, 0.34862295, 0, 4, 0, -0.34862295, 0, 3.984779, -0.35374492, 0, -22)
+transform = Transform3D(2.988584, 0, 0.2614672, 0, 3, 0, -0.2614672, 0, 2.988584, -0.35374492, 0, -22)
 cast_shadow = 0
 centered = false
 pixel_size = 0.0025

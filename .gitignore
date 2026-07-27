@@ -4,7 +4,8 @@
 /build/
 
 # Project-local temporary files
-/tmp/
+/tmp/*
+!/tmp/.gdignore
 
 # Excel lock files created while a workbook is open
 ~$*.xlsx

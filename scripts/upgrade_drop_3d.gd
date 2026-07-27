@@ -9,6 +9,7 @@ var baseline_appetite: float = 1.0
 var occupied_regions: int = 2
 var spawn_index: int = 0
 var upgrade_health: float = 0.0
+var maximum_upgrade_health: float = 1.0
 var move_speed: float = 2.5
 var resolved: bool = false
 @onready var _target: Node3D = %RewardTarget
@@ -16,6 +17,9 @@ var _hit_feedback_remaining: float = 0.0
 @onready var _panel_mesh: MeshInstance3D = %Panel
 @onready var _panel_box: BoxMesh = _panel_mesh.mesh as BoxMesh
 @onready var _label: Label3D = %DropLabel
+@onready var _health_back: MeshInstance3D = %HealthBack
+@onready var _health_fill: MeshInstance3D = %HealthFill
+@onready var _health_label: Label3D = %HealthLabel
 
 
 func configure(
@@ -33,6 +37,7 @@ func configure(
 	occupied_regions = clampi(gate_occupied_regions, 1, Playfield.REGION_COUNT)
 	spawn_index = index
 	upgrade_health = baseline_appetite * (1.0 - upgrade.value_ratio)
+	maximum_upgrade_health = maxf(1.0, upgrade_health)
 	position = start_position
 	_configure_visual()
 	_refresh_label()
@@ -102,12 +107,18 @@ func _resolve_visual_nodes() -> void:
 	_panel_mesh = get_node("Panel") as MeshInstance3D
 	_panel_box = _panel_mesh.mesh as BoxMesh
 	_label = get_node("DropLabel") as Label3D
+	_health_back = get_node("HealthBack") as MeshInstance3D
+	_health_fill = get_node("HealthFill") as MeshInstance3D
+	_health_label = get_node("HealthLabel") as Label3D
 
 
 func _configure_visual() -> void:
 	var width: float = _panel_width()
 	_panel_box.size.x = width
 	_label.width = maxf(180.0, Playfield.world_to_design(width) * 2.0)
+	var bar_width: float = clampf(width * 0.95, 1.25, 2.8)
+	var back_box: BoxMesh = _health_back.mesh as BoxMesh
+	back_box.size.x = bar_width
 
 
 func _refresh_label() -> void:
@@ -116,6 +127,15 @@ func _refresh_label() -> void:
 	var maximum_durability: float = 100.0 if run == null else run.state.maximum_durability
 	_label.text = "%s\n%s\n%s" % [upgrade.display_name, upgrade.effect_text(maximum_durability), upgrade.rarity_name]
 	_label.modulate = Color.WHITE
+	_health_label.text = str(ceili(upgrade_health))
+	var back_box: BoxMesh = _health_back.mesh as BoxMesh
+	var fill_box: BoxMesh = _health_fill.mesh as BoxMesh
+	var maximum_fill_width: float = maxf(0.1, back_box.size.x - 0.18)
+	var ratio: float = clampf(upgrade_health / maximum_upgrade_health, 0.0, 1.0)
+	fill_box.size.x = maxf(0.001, maximum_fill_width * ratio)
+	_health_fill.position.x = -maximum_fill_width * 0.5 + fill_box.size.x * 0.5
+	var health_material: StandardMaterial3D = _health_fill.material_override as StandardMaterial3D
+	health_material.albedo_color = upgrade.rarity_color.darkened(0.08)
 	var panel_material: StandardMaterial3D = _panel_mesh.material_override as StandardMaterial3D
 	panel_material.albedo_color = upgrade.rarity_color.darkened(0.22)
 

@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scripts/customer_3d.gd" id="1_script"]
 
@@ -28,6 +28,23 @@ roughness = 1.0
 radius = 0.5
 height = 1.0
 
+[sub_resource type="StandardMaterial3D" id="MatHealthBack"]
+albedo_color = Color(0.878431, 0.815686, 0.67451, 1)
+roughness = 0.96
+
+[sub_resource type="BoxMesh" id="MeshHealthBack"]
+resource_local_to_scene = true
+size = Vector3(1.7, 0.34, 0.05)
+
+[sub_resource type="StandardMaterial3D" id="MatHealthFill"]
+resource_local_to_scene = true
+albedo_color = Color(0.788235, 0.235294, 0.176471, 1)
+roughness = 0.92
+
+[sub_resource type="BoxMesh" id="MeshHealthFill"]
+resource_local_to_scene = true
+size = Vector3(1.48, 0.14, 0.06)
+
 [node name="Customer3D" type="Node3D"]
 script = ExtResource("1_script")
 
@@ -55,12 +72,26 @@ cast_shadow = 0
 material_override = SubResource("MatShadow")
 mesh = SubResource("MeshShadow")
 
-[node name="AppetiteLabel" type="Label3D" parent="PaperCustomerVisual"]
+[node name="AppetiteBack" type="MeshInstance3D" parent="PaperCustomerVisual"]
 unique_name_in_owner = true
 position = Vector3(0, 1.92, 0.08)
-pixel_size = 0.008
-font_size = 38
-outline_size = 8
-modulate = Color(1, 0.878431, 0.603922, 1)
+cast_shadow = 0
+material_override = SubResource("MatHealthBack")
+mesh = SubResource("MeshHealthBack")
+
+[node name="AppetiteFill" type="MeshInstance3D" parent="PaperCustomerVisual"]
+unique_name_in_owner = true
+position = Vector3(0, 1.92, 0.14)
+cast_shadow = 0
+material_override = SubResource("MatHealthFill")
+mesh = SubResource("MeshHealthFill")
+
+[node name="AppetiteLabel" type="Label3D" parent="PaperCustomerVisual"]
+unique_name_in_owner = true
+position = Vector3(0, 2.2, 0.18)
+pixel_size = 0.009
+font_size = 46
+outline_size = 10
+modulate = Color(1, 0.941176, 0.784314, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 alpha_cut = 0

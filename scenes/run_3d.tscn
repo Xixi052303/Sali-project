@@ -1,21 +1,21 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://domsx73lolcvt"]
 
-[ext_resource type="Script" path="res://scripts/run_3d.gd" id="1_run"]
-[ext_resource type="PackedScene" path="res://scenes/world_background_3d.tscn" id="2_background"]
+[ext_resource type="Script" uid="uid://dpxqbcqx1h5dj" path="res://scripts/run_3d.gd" id="1_run"]
+[ext_resource type="PackedScene" uid="uid://dnvm7mnyih7j1" path="res://scenes/world_background_3d.tscn" id="2_background"]
 [ext_resource type="PackedScene" path="res://scenes/cart_3d.tscn" id="3_cart"]
-[ext_resource type="Script" path="res://scripts/weapon_controller_3d.gd" id="4_weapon"]
+[ext_resource type="Script" uid="uid://cff5044r5e6v1" path="res://scripts/weapon_controller_3d.gd" id="4_weapon"]
 [ext_resource type="Script" uid="uid://b74tmjw3khsq6" path="res://scripts/encounter_director.gd" id="5_director"]
-[ext_resource type="Script" uid="uid://b4qgg4udti3mi" path="res://scripts/hud.gd" id="6_hud"]
-[ext_resource type="Resource" path="res://data/foods/potato.tres" id="7_potato"]
-[ext_resource type="Resource" path="res://data/foods/baguette.tres" id="8_baguette"]
+[ext_resource type="PackedScene" path="res://scenes/hud.tscn" id="6_hud"]
+[ext_resource type="Resource" uid="uid://b8phk8ionkg3w" path="res://data/foods/potato.tres" id="7_potato"]
+[ext_resource type="Resource" uid="uid://ff1agbbjkhr6" path="res://data/foods/baguette.tres" id="8_baguette"]
 [ext_resource type="Resource" path="res://data/customers/basic_guest.tres" id="9_basic"]
 [ext_resource type="Resource" path="res://data/customers/fast_guest.tres" id="10_fast"]
 [ext_resource type="Resource" path="res://data/customers/ranged_guest.tres" id="11_ranged"]
-[ext_resource type="Resource" path="res://data/customers/elite_guest.tres" id="12_elite"]
-[ext_resource type="Resource" path="res://data/bosses/prototype_boss.tres" id="13_boss"]
-[ext_resource type="Resource" path="res://data/timelines/vertical_slice.tres" id="14_timeline"]
+[ext_resource type="Resource" uid="uid://cxmke6xw32fsj" path="res://data/customers/elite_guest.tres" id="12_elite"]
+[ext_resource type="Resource" uid="uid://c6u31iw01pg66" path="res://data/bosses/prototype_boss.tres" id="13_boss"]
+[ext_resource type="Resource" uid="uid://88dew4uimxmv" path="res://data/timelines/vertical_slice.tres" id="14_timeline"]
 
-[node name="Run3D" type="Node3D"]
+[node name="Run3D" type="Node3D" unique_id=1265626159]
 script = ExtResource("1_run")
 potato_data = ExtResource("7_potato")
 baguette_data = ExtResource("8_baguette")
@@ -25,34 +25,32 @@ ranged_guest_data = ExtResource("11_ranged")
 elite_guest_data = ExtResource("12_elite")
 boss_data = ExtResource("13_boss")
 
-[node name="Background" parent="." instance=ExtResource("2_background")]
+[node name="Background" parent="." unique_id=202723656 instance=ExtResource("2_background")]
 unique_name_in_owner = true
 
-[node name="Gates" type="Node3D" parent="."]
+[node name="Gates" type="Node3D" parent="." unique_id=1588434469]
 unique_name_in_owner = true
 
-[node name="Entities" type="Node3D" parent="."]
+[node name="Entities" type="Node3D" parent="." unique_id=1831162849]
 unique_name_in_owner = true
 
-[node name="Projectiles" type="Node3D" parent="."]
+[node name="Projectiles" type="Node3D" parent="." unique_id=626060993]
 unique_name_in_owner = true
 
-[node name="Drops" type="Node3D" parent="."]
+[node name="Drops" type="Node3D" parent="." unique_id=134016073]
 unique_name_in_owner = true
 
-[node name="Cart3D" parent="." instance=ExtResource("3_cart")]
+[node name="Cart3D" parent="." unique_id=1135865811 instance=ExtResource("3_cart")]
 unique_name_in_owner = true
 
-[node name="WeaponController3D" type="Node" parent="."]
+[node name="WeaponController3D" type="Node" parent="." unique_id=1931809242]
 unique_name_in_owner = true
 script = ExtResource("4_weapon")
 
-[node name="EncounterDirector" type="Node" parent="."]
+[node name="EncounterDirector" type="Node" parent="." unique_id=730473396]
 unique_name_in_owner = true
 script = ExtResource("5_director")
 timeline = ExtResource("14_timeline")
 
-[node name="Hud" type="CanvasLayer" parent="."]
+[node name="Hud" parent="." unique_id=2138075045 instance=ExtResource("6_hud")]
 unique_name_in_owner = true
-layer = 100
-script = ExtResource("6_hud")

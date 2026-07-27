@@ -8,6 +8,7 @@ func _init() -> void:
 	_test_customer_cart_collision()
 	_test_3d_plane_rules()
 	_test_3d_background_and_hud()
+	_test_projectile_miss_disappear()
 	_test_run_state()
 	_test_weapon_fires_without_target()
 	_test_upgrade_gate()
@@ -53,6 +54,9 @@ func _test_customer_cart_collision() -> void:
 	var basic_data: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
 	var customer: Customer3D = customer_scene.instantiate() as Customer3D
 	customer.configure(basic_data, null, 1, 32.0)
+	var appetite_back: MeshInstance3D = customer.get_node("PaperCustomerVisual/AppetiteBack") as MeshInstance3D
+	var appetite_fill: MeshInstance3D = customer.get_node("PaperCustomerVisual/AppetiteFill") as MeshInstance3D
+	_check(appetite_back.visible and appetite_fill.visible, "3D食客使用场景内纸条显示胃口")
 	customer.position = Vector3(1.6, 0.0, 9.0)
 	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "食客纵向到达餐车但横向绕开时不算碰撞")
 	customer.position = Vector3(3.6, 0.0, 9.0)
@@ -122,6 +126,9 @@ func _test_3d_plane_rules() -> void:
 	var gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
 	gate.configure(null, left_upgrade, right_upgrade, false, 100.0, 1)
 	var left_health_label: Label3D = gate.get_node("LeftHealthLabel") as Label3D
+	var left_health_fill: MeshInstance3D = gate.get_node("LeftHealthFill") as MeshInstance3D
+	var left_health_fill_box: BoxMesh = left_health_fill.mesh as BoxMesh
+	var left_health_width_before: float = left_health_fill_box.size.x
 	var left_panel: MeshInstance3D = gate.get_node("LeftPanel") as MeshInstance3D
 	var left_material: StandardMaterial3D = left_panel.material_override as StandardMaterial3D
 	var gate_color_before: Color = left_material.albedo_color
@@ -129,6 +136,7 @@ func _test_3d_plane_rules() -> void:
 	gate.receive_damage(true, gate.left_base_health)
 	gate.receive_damage(true, 50.0)
 	_check(left_health_label.text == "0", "3D门基础胃口耗尽后悬浮数字实时归零")
+	_check(left_health_fill_box.size.x < left_health_width_before, "3D普通门血条随公开基础胃口缩短")
 	_check(not left_material.albedo_color.is_equal_approx(gate_color_before), "3D普通门升值跨稀有度后实时换色")
 	gate.free()
 
@@ -136,6 +144,8 @@ func _test_3d_plane_rules() -> void:
 	reward_upgrade.configure_value_range(0.05, 0.45, 0.1)
 	var reward_gate: UpgradeDrop3D = drop_scene.instantiate() as UpgradeDrop3D
 	reward_gate.configure(null, reward_upgrade, Vector3.ZERO, 100.0, 2, 1)
+	var reward_health_label: Label3D = reward_gate.get_node("HealthLabel") as Label3D
+	_check(reward_health_label.text.to_int() == ceili(reward_gate.upgrade_health), "3D食客奖励门显示唯一可攻击血量")
 	var reward_panel: MeshInstance3D = reward_gate.get_node("Panel") as MeshInstance3D
 	var reward_material: StandardMaterial3D = reward_panel.material_override as StandardMaterial3D
 	var reward_color_before: Color = reward_material.albedo_color
@@ -151,23 +161,48 @@ func _test_3d_plane_rules() -> void:
 func _test_3d_background_and_hud() -> void:
 	var background_scene: PackedScene = load("res://scenes/world_background_3d.tscn") as PackedScene
 	var background: WorldBackground3D = background_scene.instantiate() as WorldBackground3D
+	var camera: Camera3D = background.get_node("PaperCamera") as Camera3D
+	var world_environment: WorldEnvironment = background.get_node("PaperEnvironment") as WorldEnvironment
+	_check(is_equal_approx(camera.fov, 32.0) and camera.position.z >= 18.0, "固定相机采用参考图式远近透视构图")
+	_check(camera.keep_aspect == Camera3D.KEEP_WIDTH, "长竖屏保持横向玩法区域和单位尺寸")
+	_check(world_environment.environment.fog_enabled, "Mobile深度雾遮蔽远端生成区域")
 	for index: int in range(6):
-		_check(background.get_node_or_null("RoadTile%d" % index) != null, "道路包含第%d个循环路块" % index)
+		_check(background.get_node_or_null("RoadSegment%d" % index) != null, "道路包含第%d个分层循环路段" % index)
 	var street_props: Node3D = background.get_node("StreetProps") as Node3D
 	_check(street_props.get_child_count() == 6, "街景面片集中在可编辑节点组")
-	var road_tile: MeshInstance3D = background.get_node("RoadTile3") as MeshInstance3D
-	var road_mesh: PlaneMesh = road_tile.mesh as PlaneMesh
-	_check(road_mesh.size.is_equal_approx(Vector2(9.96, 12.8)), "背景子场景直接使用米制道路尺寸")
+	var road_segment: Node3D = background.get_node("RoadSegment3") as Node3D
+	var road_surface: MeshInstance3D = road_segment.get_node("RoadSurface") as MeshInstance3D
+	var left_curb: MeshInstance3D = road_segment.get_node("LeftCurb") as MeshInstance3D
+	var left_sidewalk: MeshInstance3D = road_segment.get_node("LeftSidewalk") as MeshInstance3D
+	var road_mesh: PlaneMesh = road_surface.mesh as PlaneMesh
+	var curb_mesh: BoxMesh = left_curb.mesh as BoxMesh
+	var sidewalk_mesh: BoxMesh = left_sidewalk.mesh as BoxMesh
+	_check(road_mesh.size.is_equal_approx(Vector2(6.041834, 12.8)), "中央马路宽度按拆分贴图比例装配")
+	_check(left_curb.position.y + curb_mesh.size.y * 0.5 > road_surface.position.y, "路沿顶面高于马路")
+	_check(left_sidewalk.position.y + sidewalk_mesh.size.y * 0.5 > road_surface.position.y, "人行道顶面高于马路")
 	for child: Node in street_props.get_children():
 		var prop: Sprite3D = child as Sprite3D
 		_check(prop != null and prop.region_enabled and prop.region_rect.size.x > 0.0, "%s使用节点自身裁剪区域" % child.name)
 	background.free()
 
-	var hud: GameHud = GameHud.new()
-	hud._build_interface()
-	_check(hud._durability_panel.anchor_top == 1.0, "餐车耐久固定在屏幕下方")
-	_check(hud._durability_panel.get_parent() == hud._root, "耐久条不再占用顶部信息布局")
+	var hud_scene: PackedScene = load("res://scenes/hud.tscn") as PackedScene
+	var hud: GameHud = hud_scene.instantiate() as GameHud
+	var durability_panel: PanelContainer = hud.get_node("Root/DurabilityPanel") as PanelContainer
+	_check(durability_panel.anchor_top == 1.0, "餐车耐久固定在屏幕下方")
+	_check(durability_panel.get_parent() == hud.get_node("Root"), "耐久条不再占用顶部信息布局")
+	_check(hud.get_node_or_null("Root/ChoiceOverlay/ChoiceStack/ChoiceButtons") != null, "HUD固定结构可以在编辑器预览和调整")
 	hud.free()
+
+
+func _test_projectile_miss_disappear() -> void:
+	var projectile_scene: PackedScene = load("res://scenes/projectile_3d.tscn") as PackedScene
+	var projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	get_root().add_child(projectile)
+	projectile._begin_miss_disappear()
+	_check(is_equal_approx(FoodProjectile3D.MISS_DISAPPEAR_DURATION, 0.2), "未命中退场持续0.2秒")
+	_check(projectile.is_miss_disappearing(), "未命中食材进入0.2秒退场状态")
+	_check(not projectile.is_processing(), "食材退场期间停止移动与碰撞")
+	projectile.free()
 
 
 func _test_run_state() -> void:
@@ -289,6 +324,7 @@ func _test_upgrade_gate() -> void:
 	var gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
 	gate.configure(null, left, right, false, 100.0, 1)
 	_check(is_equal_approx(gate.position.z, Playfield.FORWARD_SPAWN_Z), "普通门从四段道路的远端生成")
+	_check(is_equal_approx(gate.travel_speed(), 2.5), "道路延长不改变普通门接近速度")
 	_check(is_equal_approx(gate.left_base_health, 134.0), "左门基础血量按1加百分位乘基准胃口")
 	_check(is_equal_approx(gate.right_base_health, 180.0), "稀有门拥有更高基础血量与撞门风险")
 	_check(is_equal_approx(gate.left_upgrade_health, 66.0), "34%门的隐藏升值血量为基准胃口的66%")
@@ -355,13 +391,14 @@ func _test_reward_gate_spacing() -> void:
 	drops.add_child(existing_drop)
 	var safe_z: float = run._find_reward_gate_spawn_z(5.0)
 	_check(
-		field.forward_paths_are_separated(safe_z, 2.5, gate.position.z, gate.travel_speed()),
+		field.forward_paths_are_separated(safe_z, 2.5, gate.position.z, gate.travel_speed(), Playfield.FORWARD_MIN_CENTER_DISTANCE),
 		"新奖励门不会与原普通门重叠或追尾"
 	)
 	_check(
-		field.forward_paths_are_separated(safe_z, 2.5, existing_drop.position.z, existing_drop.travel_speed()),
+		field.forward_paths_are_separated(safe_z, 2.5, existing_drop.position.z, existing_drop.travel_speed(), Playfield.FORWARD_MIN_CENTER_DISTANCE),
 		"食客奖励门之间不会重叠或追尾"
 	)
+	_check(absf(safe_z - 5.0) <= 4.001, "奖励门只在食客原位置附近小范围避让")
 	run.free()
 
 
@@ -421,6 +458,13 @@ func _test_timeline() -> void:
 	_check(gate_count == 12, "竖切片包含12道普通强化门")
 	_check(timeline.event_ids.has("elite"), "时间轴包含精英")
 	_check(timeline.event_ids.has("boss"), "时间轴包含Boss")
+	var run: RunController3D = RunController3D.new()
+	run.basic_guest_data = load("res://data/customers/basic_guest.tres") as CustomerData
+	run.fast_guest_data = load("res://data/customers/fast_guest.tres") as CustomerData
+	run.ranged_guest_data = load("res://data/customers/ranged_guest.tres") as CustomerData
+	_check(run._customer_spawn_lead_seconds(run.basic_guest_data) > 10.0, "普通食客按新增可见路程提前生成")
+	_check(is_equal_approx(run._timeline_event_lead_seconds(&"gate_0"), 14.8), "普通门按原速度补偿新增路程和排队等待")
+	run.free()
 	var post_elite_gate_index: int = timeline.event_ids.find("gate_6")
 	var elite_index: int = timeline.event_ids.find("elite")
 	_check(

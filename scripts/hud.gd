@@ -6,29 +6,30 @@ signal restart_requested
 
 const INK: Color = Color("#241f1a")
 const PAPER: Color = Color("#d3b77f")
-const PANEL: Color = Color(0.12, 0.1, 0.08, 0.88)
 
-var _root: Control
-var _safe_margin: MarginContainer
-var _durability_panel: PanelContainer
-var _durability_bar: ProgressBar
-var _durability_label: Label
-var _phase_label: Label
-var _time_label: Label
-var _toast_label: Label
-var _debug_label: Label
-var _choice_overlay: ColorRect
-var _choice_title: Label
-var _choice_buttons: VBoxContainer
-var _results_overlay: ColorRect
-var _results_label: Label
+@onready var _root: Control = %Root
+@onready var _safe_margin: MarginContainer = %SafeMargin
+@onready var _durability_panel: PanelContainer = %DurabilityPanel
+@onready var _durability_bar: ProgressBar = %DurabilityBar
+@onready var _durability_label: Label = %DurabilityLabel
+@onready var _phase_label: Label = %PhaseLabel
+@onready var _time_label: Label = %TimeLabel
+@onready var _toast_label: Label = %ToastLabel
+@onready var _debug_label: Label = %DebugLabel
+@onready var _choice_overlay: ColorRect = %ChoiceOverlay
+@onready var _choice_title: Label = %ChoiceTitle
+@onready var _choice_buttons: VBoxContainer = %ChoiceButtons
+@onready var _results_overlay: ColorRect = %ResultsOverlay
+@onready var _results_label: Label = %ResultsLabel
+@onready var _restart_button: Button = %RestartButton
+
 var _toast_tween: Tween
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	_build_interface()
 	get_viewport().size_changed.connect(_apply_safe_area)
+	_restart_button.pressed.connect(_on_restart_pressed)
 	_apply_safe_area()
 
 
@@ -63,7 +64,7 @@ func show_toast(text: String, color: Color = PAPER) -> void:
 	_toast_tween.tween_property(_toast_label, "modulate:a", 0.0, 0.45)
 
 
-# 每次展示时按本轮候选重建按钮，保持特殊奖励始终是有效三选一。
+# 每次展示时只按本轮候选重建按钮，固定界面结构均保留在 hud.tscn 中。
 func show_special_choices(choice_ids: Array[StringName]) -> void:
 	for child: Node in _choice_buttons.get_children():
 		child.free()
@@ -80,102 +81,6 @@ func hide_special_choices() -> void:
 func show_results(title: String, body: String) -> void:
 	_results_overlay.visible = true
 	_results_label.text = "%s\n\n%s" % [title, body]
-
-
-func _build_interface() -> void:
-	_root = Control.new()
-	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_root)
-
-	_safe_margin = MarginContainer.new()
-	_safe_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_safe_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(_safe_margin)
-
-	var layout: VBoxContainer = VBoxContainer.new()
-	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layout.add_theme_constant_override(&"separation", 8)
-	_safe_margin.add_child(layout)
-
-	var header: HBoxContainer = HBoxContainer.new()
-	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layout.add_child(header)
-
-	_phase_label = _make_label("准备出餐", 24, PAPER)
-	_phase_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(_phase_label)
-	_time_label = _make_label("00:00", 28, Color.WHITE)
-	_time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_time_label.custom_minimum_size.x = 120.0
-	header.add_child(_time_label)
-
-	_durability_panel = PanelContainer.new()
-	_durability_panel.anchor_right = 1.0
-	_durability_panel.anchor_top = 1.0
-	_durability_panel.anchor_bottom = 1.0
-	_durability_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_durability_panel.add_theme_stylebox_override(&"panel", _make_panel_style(Color("#4e372d"), Color("#d6ae55"), 4))
-	_root.add_child(_durability_panel)
-	var durability_stack: VBoxContainer = VBoxContainer.new()
-	durability_stack.add_theme_constant_override(&"separation", 1)
-	_durability_panel.add_child(durability_stack)
-	_durability_label = _make_label("餐车耐久  100 / 100", 20, Color.WHITE)
-	durability_label_margins(_durability_label)
-	durability_stack.add_child(_durability_label)
-	_durability_bar = ProgressBar.new()
-	_durability_bar.custom_minimum_size.y = 15.0
-	_durability_bar.show_percentage = false
-	_durability_bar.add_theme_stylebox_override(&"background", _make_panel_style(Color("#201c18"), INK, 0))
-	_durability_bar.add_theme_stylebox_override(&"fill", _make_panel_style(Color("#d06a3f"), Color("#d06a3f"), 0))
-	durability_stack.add_child(_durability_bar)
-
-	_toast_label = _make_label("", 28, Color("#f2d47b"))
-	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_toast_label.position = Vector2(35.0, 190.0)
-	_toast_label.size = Vector2(650.0, 80.0)
-	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_toast_label.add_theme_stylebox_override(&"normal", _make_panel_style(Color(0.08, 0.07, 0.06, 0.76), INK, 4))
-	_root.add_child(_toast_label)
-
-	_debug_label = _make_label("", 15, Color(0.95, 0.9, 0.75, 0.78))
-	_debug_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_debug_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	_debug_label.anchor_left = 1.0
-	_debug_label.anchor_right = 1.0
-	_debug_label.anchor_top = 1.0
-	_debug_label.anchor_bottom = 1.0
-	_root.add_child(_debug_label)
-
-	_build_choice_overlay()
-	_build_results_overlay()
-
-
-func durability_label_margins(label: Label) -> void:
-	label.add_theme_constant_override(&"outline_size", 3)
-	label.add_theme_color_override(&"font_outline_color", INK)
-
-
-func _build_choice_overlay() -> void:
-	_choice_overlay = ColorRect.new()
-	_choice_overlay.color = Color(0.07, 0.06, 0.05, 0.94)
-	_choice_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_choice_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	_choice_overlay.visible = false
-	_root.add_child(_choice_overlay)
-	var stack: VBoxContainer = VBoxContainer.new()
-	stack.position = Vector2(40.0, 250.0)
-	stack.size = Vector2(640.0, 700.0)
-	stack.add_theme_constant_override(&"separation", 30)
-	_choice_overlay.add_child(stack)
-	_choice_title = _make_label("选择特别赏赐", 32, Color("#f4d27a"))
-	_choice_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_choice_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	stack.add_child(_choice_title)
-	_choice_buttons = VBoxContainer.new()
-	_choice_buttons.add_theme_constant_override(&"separation", 20)
-	stack.add_child(_choice_buttons)
 
 
 func _special_choice_text(choice_id: StringName) -> String:
@@ -204,52 +109,15 @@ func _add_choice_button(parent: VBoxContainer, choice_id: StringName, text: Stri
 	parent.add_child(button)
 
 
-func _build_results_overlay() -> void:
-	_results_overlay = ColorRect.new()
-	_results_overlay.color = Color(0.07, 0.06, 0.05, 0.95)
-	_results_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_results_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	_results_overlay.visible = false
-	_root.add_child(_results_overlay)
-	var panel: VBoxContainer = VBoxContainer.new()
-	panel.position = Vector2(70.0, 250.0)
-	panel.size = Vector2(580.0, 720.0)
-	panel.add_theme_constant_override(&"separation", 28)
-	_results_overlay.add_child(panel)
-	_results_label = _make_label("", 27, Color("#f2deb0"))
-	_results_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_results_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_results_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	panel.add_child(_results_label)
-	var restart: Button = Button.new()
-	restart.text = "再来一局"
-	restart.custom_minimum_size.y = 86.0
-	restart.add_theme_font_size_override(&"font_size", 28)
-	restart.add_theme_stylebox_override(&"normal", _make_panel_style(Color("#6d4335"), Color("#e1ba62"), 5))
-	restart.pressed.connect(_on_restart_pressed)
-	panel.add_child(restart)
-
-
-func _make_label(text: String, font_size: int, color: Color) -> Label:
-	var label: Label = Label.new()
-	label.text = text
-	label.add_theme_font_size_override(&"font_size", font_size)
-	label.add_theme_color_override(&"font_color", color)
-	label.add_theme_color_override(&"font_outline_color", INK)
-	label.add_theme_constant_override(&"outline_size", 4)
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return label
-
-
 func _make_panel_style(background: Color, border: Color, border_width: int) -> StyleBoxFlat:
 	var style: StyleBoxFlat = StyleBoxFlat.new()
 	style.bg_color = background
 	style.border_color = border
 	style.set_border_width_all(border_width)
-	style.corner_radius_top_left = 10
-	style.corner_radius_top_right = 10
-	style.corner_radius_bottom_left = 10
-	style.corner_radius_bottom_right = 10
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_left = 8
+	style.corner_radius_bottom_right = 8
 	style.content_margin_left = 14.0
 	style.content_margin_right = 14.0
 	style.content_margin_top = 10.0
@@ -257,6 +125,7 @@ func _make_panel_style(background: Color, border: Color, border_width: int) -> S
 	return style
 
 
+# 节点保留编辑器中的设计位置，运行时仅叠加设备安全区边距。
 func _apply_safe_area() -> void:
 	var top_margin: int = 24
 	var bottom_margin: int = 24

@@ -9,6 +9,8 @@ signal ranged_attack(customer: Customer3D, amount: float)
 var data: CustomerData
 var run: RunController3D
 var remaining_appetite: float = 0.0
+# 满胃口只在生成时锁定，用于场景内血条比例，不参与后续数值规则。
+var maximum_appetite: float = 1.0
 var spawn_index: int = 0
 # 普通食客生成时锁定奖励及其基准胃口，满足后原样交给奖励门。
 var reward_upgrade: UpgradeData
@@ -20,6 +22,8 @@ var _hit_feedback_remaining: float = 0.0
 @onready var _body_mesh: MeshInstance3D = %Body
 @onready var _head_mesh: MeshInstance3D = %Head
 @onready var _shadow_mesh: MeshInstance3D = %ContactShadow
+@onready var _appetite_back: MeshInstance3D = %AppetiteBack
+@onready var _appetite_fill: MeshInstance3D = %AppetiteFill
 @onready var _appetite_label: Label3D = %AppetiteLabel
 
 
@@ -36,6 +40,7 @@ func configure(
 	run = run_controller
 	spawn_index = index
 	remaining_appetite = maxf(1.0, spawn_appetite)
+	maximum_appetite = remaining_appetite
 	reward_upgrade = spawn_reward_upgrade
 	reward_baseline_appetite = maxf(1.0, baseline_appetite)
 	_attack_remaining = data.attack_interval
@@ -109,6 +114,8 @@ func _resolve_visual_nodes() -> void:
 	_body_mesh = get_node("PaperCustomerVisual/Body") as MeshInstance3D
 	_head_mesh = get_node("PaperCustomerVisual/Head") as MeshInstance3D
 	_shadow_mesh = get_node("PaperCustomerVisual/ContactShadow") as MeshInstance3D
+	_appetite_back = get_node("PaperCustomerVisual/AppetiteBack") as MeshInstance3D
+	_appetite_fill = get_node("PaperCustomerVisual/AppetiteFill") as MeshInstance3D
 	_appetite_label = get_node("PaperCustomerVisual/AppetiteLabel") as Label3D
 
 
@@ -123,11 +130,22 @@ func _configure_visual() -> void:
 	var head_material: StandardMaterial3D = _head_mesh.material_override as StandardMaterial3D
 	head_material.albedo_color = color.lightened(0.12)
 	_shadow_mesh.scale.x = width
-	_appetite_label.width = Playfield.world_to_design(width) * 2.0
+	var bar_width: float = clampf(width * 0.95, 1.35, 2.8)
+	var back_box: BoxMesh = _appetite_back.mesh as BoxMesh
+	back_box.size.x = bar_width
+	_appetite_label.width = maxf(180.0, Playfield.world_to_design(bar_width) * 1.3)
 
 
 func _refresh_label() -> void:
 	if _appetite_label == null:
 		return
 	_appetite_label.text = str(ceili(remaining_appetite))
-	_appetite_label.modulate = Color("#ffe09a") if reward_upgrade == null else reward_upgrade.rarity_color.lightened(0.18)
+	_appetite_label.modulate = Color("#fff0c8")
+	var back_box: BoxMesh = _appetite_back.mesh as BoxMesh
+	var fill_box: BoxMesh = _appetite_fill.mesh as BoxMesh
+	var maximum_fill_width: float = maxf(0.1, back_box.size.x - 0.18)
+	var ratio: float = clampf(remaining_appetite / maximum_appetite, 0.0, 1.0)
+	fill_box.size.x = maxf(0.001, maximum_fill_width * ratio)
+	_appetite_fill.position.x = -maximum_fill_width * 0.5 + fill_box.size.x * 0.5
+	var fill_material: StandardMaterial3D = _appetite_fill.material_override as StandardMaterial3D
+	fill_material.albedo_color = Color("#c93c2d") if reward_upgrade == null else reward_upgrade.rarity_color.darkened(0.08)
