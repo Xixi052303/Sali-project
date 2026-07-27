@@ -37,8 +37,6 @@ func _tick_food(runtime: FoodRuntime, delta: float) -> void:
 	if not runtime.ready:
 		return
 	var target: Node2D = run.get_priority_target()
-	if target == null:
-		return
 	runtime.ready = false
 	runtime.cooldown_remaining = state.effective_interval(runtime.data)
 	_fire(runtime.data, target)
@@ -50,7 +48,10 @@ func _fire(food: FoodData, target: Node2D) -> void:
 	var radius: float = state.effective_projectile_radius(food)
 	var count: int = maxi(1, state.servings)
 	var base_direction: Vector2 = Vector2.UP
-	if food.initial_aim_mode == FoodData.AimMode.TARGET_SNAPSHOT or state.is_food_target_aimed(food.id):
+	if target != null and (
+		food.initial_aim_mode == FoodData.AimMode.TARGET_SNAPSHOT
+		or state.is_food_target_aimed(food.id)
+	):
 		base_direction = (target.global_position - cart.global_position).normalized()
 	for index: int in range(count):
 		var direction: Vector2 = base_direction

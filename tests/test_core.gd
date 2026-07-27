@@ -7,8 +7,11 @@ func _init() -> void:
 	_test_playfield()
 	_test_customer_cart_collision()
 	_test_run_state()
+	_test_weapon_fires_without_target()
 	_test_upgrade_gate()
 	_test_customer_reward_gate()
+	_test_reward_gate_spacing()
+	_test_customer_reward_randomness()
 	_test_timeline()
 	_test_resources()
 	if _failures == 0:
@@ -112,6 +115,55 @@ func _test_run_state() -> void:
 	state.apply_upgrade(sugar, false)
 	_check(state.gate_choices == previous_gate_count, "食客奖励门不计入普通双选门")
 	_check(state.dropped_upgrades == 1, "食客奖励门单独计数")
+	state.add_pierce_bonus()
+	_check(state.effective_pierce_count(potato) == 2, "酱油让土豆额外命中一个目标")
+
+	var distance_state: RunState = RunState.new()
+	var wine: UpgradeData = UpgradeData.new()
+	wine.kind = UpgradeData.Kind.WINE
+	wine.value = 0.25
+	distance_state.apply_upgrade(wine)
+	var starch: UpgradeData = UpgradeData.new()
+	starch.kind = UpgradeData.Kind.STARCH
+	starch.value = 0.5
+	distance_state.apply_upgrade(starch)
+	_check(
+		is_equal_approx(
+			distance_state.effective_projectile_distance(potato),
+			potato.projectile_speed * 1.25 * potato.base_lifetime * 1.5
+		),
+		"弹速与持续时间共同决定投射距离"
+	)
+
+
+func _test_weapon_fires_without_target() -> void:
+	var run: RunController = RunController.new()
+	var state: RunState = RunState.new()
+	var field: Playfield = Playfield.new()
+	var cart: Cart = Cart.new()
+	var projectiles: Node2D = Node2D.new()
+	var gates: Node2D = Node2D.new()
+	var drops: Node2D = Node2D.new()
+	var weapon: WeaponController = WeaponController.new()
+	run.state = state
+	run.playfield = field
+	run.cart = cart
+	run.projectiles = projectiles
+	run.gates = gates
+	run.drops = drops
+	run.add_child(field)
+	run.add_child(cart)
+	run.add_child(projectiles)
+	run.add_child(gates)
+	run.add_child(drops)
+	run.add_child(weapon)
+	cart.configure(state, field)
+	weapon.configure(run, cart, state)
+	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
+	weapon.add_food(potato)
+	weapon._tick_food(weapon.foods[0], 0.0)
+	_check(projectiles.get_child_count() == 1, "没有目标时食材仍按冷却朝前发射")
+	run.free()
 
 
 func _test_upgrade_gate() -> void:
@@ -165,6 +217,52 @@ func _test_customer_reward_gate() -> void:
 	reward_gate.receive_damage(33.0)
 	_check(is_equal_approx(reward.value_ratio, 0.67), "攻击奖励门继续提高同一份奖励")
 	reward_gate.free()
+
+
+func _test_reward_gate_spacing() -> void:
+	var run: RunController = RunController.new()
+	var field: Playfield = Playfield.new()
+	var gates: Node2D = Node2D.new()
+	var drops: Node2D = Node2D.new()
+	run.playfield = field
+	run.gates = gates
+	run.drops = drops
+	run.add_child(field)
+	run.add_child(gates)
+	run.add_child(drops)
+	var gate: UpgradeGate = UpgradeGate.new()
+	gate.position.y = 400.0
+	gates.add_child(gate)
+	var existing_drop: UpgradeDrop = UpgradeDrop.new()
+	existing_drop.position.y = 650.0
+	drops.add_child(existing_drop)
+	var safe_y: float = run._find_reward_gate_spawn_y(500.0)
+	_check(
+		field.forward_paths_are_separated(safe_y, 250.0, gate.position.y, gate.travel_speed()),
+		"新奖励门不会与原普通门重叠或追尾"
+	)
+	_check(
+		field.forward_paths_are_separated(safe_y, 250.0, existing_drop.position.y, existing_drop.travel_speed()),
+		"食客奖励门之间不会重叠或追尾"
+	)
+	run.free()
+
+
+func _test_customer_reward_randomness() -> void:
+	var run: RunController = RunController.new()
+	run._build_drop_upgrades()
+	var first_kinds: Dictionary = {}
+	for seed_value: int in range(1, 17):
+		run._upgrade_rng.seed = seed_value
+		var reward: UpgradeData = run._roll_customer_reward()
+		first_kinds[reward.kind] = true
+	_check(first_kinds.size() > 1, "首个食客奖励类型由随机数抽取而非固定为糖")
+	run.state = RunState.new()
+	run._upgrade_rng.seed = 1701
+	var special_choices: Array[StringName] = run._roll_special_choices()
+	_check(special_choices.size() == 3, "特殊奖励池每次提供三个不同候选")
+	_check(run._special_choice_pool.has(&"soy_sauce"), "酱油已进入特殊奖励候选池")
+	run.free()
 
 
 func _test_timeline() -> void:
@@ -224,13 +322,17 @@ func _test_resources() -> void:
 	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
 	var baguette: FoodData = load("res://data/foods/baguette.tres") as FoodData
 	var elite: CustomerData = load("res://data/customers/elite_guest.tres") as CustomerData
+	var boss: BossPatternData = load("res://data/bosses/prototype_boss.tres") as BossPatternData
 	_check(potato != null and is_equal_approx(potato.base_satisfaction, 10.0), "土豆基线")
 	_check(potato.initial_aim_mode == FoodData.AimMode.FIXED_FORWARD, "土豆初始固定竖直发射")
 	_check(potato.initial_tracking_mode == FoodData.TrackingMode.NONE, "土豆初始为直线非追踪弹道")
 	_check(baguette != null and baguette.pierce_count == 3, "法棍穿透数")
 	_check(baguette.initial_tracking_mode == FoodData.TrackingMode.NONE, "法棍初始不追踪")
+	_check(is_equal_approx(potato.projectile_speed * potato.base_lifetime / 1280.0, 0.8), "土豆基础持续约0.8屏")
+	_check(is_equal_approx(baguette.projectile_speed * baguette.base_lifetime / 1280.0, 0.6), "法棍基础持续约0.6屏")
 	_check(elite != null and elite.occupied_regions == 6, "精英横跨六区")
-	_check(elite != null and is_equal_approx(elite.appetite_multiplier, 5.625), "精英按食客基准胃口倍率生成")
+	_check(elite != null and is_equal_approx(elite.appetite_multiplier, 1.5), "精英默认使用1.5倍基准胃口")
+	_check(boss != null and is_equal_approx(boss.appetite_at(100.0), 300.0), "Boss默认使用3倍基准胃口")
 	var state: RunState = RunState.new()
 	_check(not state.is_food_target_aimed(&"potato"), "特殊强化前土豆不跟随目标角度")
 	state.enable_target_aim(&"potato")

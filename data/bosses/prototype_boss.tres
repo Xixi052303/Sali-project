@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_boss")
 display_name = "临时主厨（原型）"
-appetite = 2000.0
+appetite_multiplier = 3.0
 move_speed = 110.0
 telegraph_duration = 1.15
 recovery_duration = 1.0

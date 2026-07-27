@@ -18,6 +18,8 @@ const INK: Color = Color("#241f1a")
 var data: BossPatternData
 var run: RunController
 var remaining_appetite: float = 0.0
+# 登场时锁定最大胃口，避免基准曲线在 Boss 战中继续改变血量与显示上限。
+var maximum_appetite: float = 0.0
 var active: bool = false
 var _state: State = State.ENTER
 var _state_time: float = 0.0
@@ -26,15 +28,17 @@ var _locked_target_x: float = 360.0
 var _direction: float = 1.0
 
 
-func configure(source_data: BossPatternData, run_controller: RunController) -> void:
+# Boss 登场时把当前基准胃口与资源倍率结算为本场固定胃口。
+func configure(source_data: BossPatternData, run_controller: RunController, baseline_appetite: float) -> void:
 	data = source_data
 	run = run_controller
-	remaining_appetite = data.appetite
+	maximum_appetite = data.appetite_at(baseline_appetite)
+	remaining_appetite = maximum_appetite
 	position = Vector2(360.0, -120.0)
 	active = true
 	_state = State.ENTER
 	_state_time = 0.0
-	appetite_changed.emit(remaining_appetite, data.appetite)
+	appetite_changed.emit(remaining_appetite, maximum_appetite)
 	queue_redraw()
 
 
@@ -77,7 +81,7 @@ func receive_satisfaction(amount: float) -> void:
 	if not active or amount <= 0.0:
 		return
 	remaining_appetite = maxf(0.0, remaining_appetite - amount)
-	appetite_changed.emit(remaining_appetite, data.appetite)
+	appetite_changed.emit(remaining_appetite, maximum_appetite)
 	if remaining_appetite <= 0.0:
 		active = false
 		_change_state(State.DONE)

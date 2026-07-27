@@ -16,6 +16,8 @@ var range_multiplier: float = 1.0
 var duration_multiplier: float = 1.0
 var cart_speed_bonus: float = 0.0
 var servings: int = 1
+# 酱油按层提高所有当前与未来食材可命中的目标数量。
+var pierce_bonus: int = 0
 var foods: Array[StringName] = []
 var specials: Array[StringName] = []
 var target_aim_foods: Array[StringName] = []
@@ -50,6 +52,12 @@ func has_food(food_id: StringName) -> bool:
 
 func add_special(special_id: StringName) -> void:
 	specials.append(special_id)
+	inventory_changed.emit()
+
+
+# 叠加全局穿透层数，并由投射物生成时读取最终命中次数。
+func add_pierce_bonus(amount: int = 1) -> void:
+	pierce_bonus += maxi(0, amount)
 	inventory_changed.emit()
 
 
@@ -134,6 +142,15 @@ func effective_projectile_radius(food: FoodData) -> float:
 
 func effective_duration(food: FoodData) -> float:
 	return food.base_lifetime * duration_multiplier
+
+
+func effective_pierce_count(food: FoodData) -> int:
+	return maxi(1, food.pierce_count + pierce_bonus)
+
+
+# 投射物射程由弹速与持续时间共同决定，两类强化会分别放大同一结果。
+func effective_projectile_distance(food: FoodData) -> float:
+	return effective_projectile_speed(food) * effective_duration(food)
 
 
 func cumulative_effect_text(kind: UpgradeData.Kind) -> String:

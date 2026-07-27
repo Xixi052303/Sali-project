@@ -19,6 +19,7 @@ var _toast_label: Label
 var _debug_label: Label
 var _choice_overlay: ColorRect
 var _choice_title: Label
+var _choice_buttons: VBoxContainer
 var _results_overlay: ColorRect
 var _results_label: Label
 var _toast_tween: Tween
@@ -55,6 +56,8 @@ func set_inventory(state: RunState) -> void:
 		extra += "  加量×%d" % state.servings
 	if state.is_food_target_aimed(&"potato"):
 		extra += "  土豆瞄准"
+	if state.pierce_bonus > 0:
+		extra += "  穿透+%d" % state.pierce_bonus
 	_food_label.text = "食材  %s%s" % [" · ".join(names), extra]
 
 
@@ -74,7 +77,12 @@ func show_toast(text: String, color: Color = PAPER) -> void:
 	_toast_tween.tween_property(_toast_label, "modulate:a", 0.0, 0.45)
 
 
-func show_special_choices() -> void:
+# 每次展示时按本轮候选重建按钮，保持特殊奖励始终是有效三选一。
+func show_special_choices(choice_ids: Array[StringName]) -> void:
+	for child: Node in _choice_buttons.get_children():
+		child.free()
+	for choice_id: StringName in choice_ids:
+		_add_choice_button(_choice_buttons, choice_id, _special_choice_text(choice_id))
 	_choice_overlay.visible = true
 	_choice_title.text = "六席贵客满意了！挑一份特别赏赐"
 
@@ -180,12 +188,22 @@ func _build_choice_overlay() -> void:
 	_choice_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_choice_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stack.add_child(_choice_title)
-	var buttons: VBoxContainer = VBoxContainer.new()
-	buttons.add_theme_constant_override(&"separation", 20)
-	stack.add_child(buttons)
-	_add_choice_button(buttons, &"baguette", "法棍\n获得穿透最多3名食客的新食材")
-	_add_choice_button(buttons, &"serving", "全局加量\n当前与未来食材各多发一份")
-	_add_choice_button(buttons, &"potato_aim", "瞄准投喂\n土豆发射时朝向当前目标")
+	_choice_buttons = VBoxContainer.new()
+	_choice_buttons.add_theme_constant_override(&"separation", 20)
+	stack.add_child(_choice_buttons)
+
+
+func _special_choice_text(choice_id: StringName) -> String:
+	match choice_id:
+		&"baguette":
+			return "法棍\n获得穿透最多3名食客的新食材"
+		&"serving":
+			return "全局加量\n当前与未来食材各多发一份"
+		&"potato_aim":
+			return "瞄准投喂\n土豆发射时朝向当前目标"
+		&"soy_sauce":
+			return "酱油\n所有当前与未来食材穿透次数 +1"
+	return String(choice_id)
 
 
 func _add_choice_button(parent: VBoxContainer, choice_id: StringName, text: String) -> void:

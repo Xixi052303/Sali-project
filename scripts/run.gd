@@ -59,7 +59,6 @@ var _boss_started_at: float = 0.0
 var _debug_accumulator: float = 0.0
 var _upgrade_pairs: Array[UpgradeData] = []
 var _drop_upgrades: Array[UpgradeData] = []
-var _drop_counter: int = 0
 var _normal_wave_index: int = 0
 var _next_normal_spawn_time: float = 8.0
 var _smoke_test: bool = false
@@ -68,6 +67,13 @@ var _forward_spawn_requests: Array[ForwardSpawnRequest] = []
 var _normal_waves_suspended: bool = false
 var _upgrade_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _smoke_minimum_gate_customer_gap: float = INF
+# 特殊池保留可重复的全局强化，并在展示前过滤已经取得的一次性能力。
+var _special_choice_pool: Array[StringName] = [
+	&"baguette",
+	&"serving",
+	&"potato_aim",
+	&"soy_sauce",
+]
 
 
 func _ready() -> void:
@@ -240,7 +246,8 @@ func spawn_projectile(
 		or state.is_food_homing(food.id)
 	)
 	var lifetime: float = state.effective_duration(food)
-	projectile.configure(self, start_position, direction, food, amount, speed, radius, lifetime, target, should_home)
+	var hit_count: int = state.effective_pierce_count(food)
+	projectile.configure(self, start_position, direction, food, amount, speed, radius, lifetime, hit_count, target, should_home)
 
 
 func resolve_projectile_hits(projectile: FoodProjectile) -> void:
@@ -391,6 +398,17 @@ func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 		var gate: UpgradeGate = child as UpgradeGate
 		if not playfield.forward_paths_are_separated(candidate_y, candidate_speed, gate.position.y, gate.travel_speed()):
 			return false
+	for child: Node in drops.get_children():
+		if not child is UpgradeDrop or child.is_queued_for_deletion():
+			continue
+		var reward_gate: UpgradeDrop = child as UpgradeDrop
+		if not playfield.forward_paths_are_separated(
+			candidate_y,
+			candidate_speed,
+			reward_gate.position.y,
+			reward_gate.travel_speed()
+		):
+			return false
 	return true
 
 
@@ -474,7 +492,7 @@ func _start_boss() -> void:
 	boss = PrototypeBoss.new()
 	boss.z_index = 30
 	entities.add_child(boss)
-	boss.configure(boss_data, self)
+	boss.configure(boss_data, self, _current_baseline_appetite())
 	boss.satisfied.connect(_on_boss_satisfied)
 	hud.set_phase("Boss服务 · 躲开预警并自动反击")
 	hud.show_toast("前进停止！危险预警后会出现反击窗口", Color("#ff7957"))
@@ -514,7 +532,7 @@ func _finish_customer(customer: Customer, collided: bool) -> void:
 		phase = Phase.CHOICE
 		hud.set_phase("特别赏赐 · 三选一")
 		hud.show_toast("撞击也算击败！" if collided else "精英已击败！", Color("#f0c45f"))
-		hud.show_special_choices()
+		hud.show_special_choices(_roll_special_choices())
 		if _smoke_test:
 			_on_special_choice_selected(&"baguette")
 		else:
@@ -537,8 +555,49 @@ func _spawn_customer_reward_gate(
 	_spawn_counter += 1
 	var drop: UpgradeDrop = UpgradeDrop.new()
 	drop.z_index = 25
+	start_position.y = _find_reward_gate_spawn_y(start_position.y)
 	drops.add_child(drop)
 	drop.configure(self, upgrade, start_position, baseline_appetite, occupied_regions, _spawn_counter)
+
+
+# 奖励门优先留在食客位置；发生路径冲突时逐段前移，直到不会与现有前进对象追尾。
+func _find_reward_gate_spawn_y(preferred_y: float) -> float:
+	var candidate_y: float = preferred_y
+	var attempts: int = 0
+	while attempts < 64:
+		var conflict_y: float = INF
+		for customer: Customer in customers:
+			if not is_instance_valid(customer) or not customer.active:
+				continue
+			if not playfield.forward_paths_are_separated(
+				candidate_y,
+				250.0,
+				customer.position.y,
+				customer.travel_speed()
+			):
+				conflict_y = minf(conflict_y, customer.position.y)
+		for child: Node in gates.get_children():
+			if not child is UpgradeGate or child.is_queued_for_deletion():
+				continue
+			var gate: UpgradeGate = child as UpgradeGate
+			if not playfield.forward_paths_are_separated(candidate_y, 250.0, gate.position.y, gate.travel_speed()):
+				conflict_y = minf(conflict_y, gate.position.y)
+		for child: Node in drops.get_children():
+			if not child is UpgradeDrop or child.is_queued_for_deletion():
+				continue
+			var reward_gate: UpgradeDrop = child as UpgradeDrop
+			if not playfield.forward_paths_are_separated(
+				candidate_y,
+				250.0,
+				reward_gate.position.y,
+				reward_gate.travel_speed()
+			):
+				conflict_y = minf(conflict_y, reward_gate.position.y)
+		if conflict_y == INF:
+			return candidate_y
+		candidate_y = minf(candidate_y, conflict_y) - Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE
+		attempts += 1
+	return candidate_y
 
 
 func _on_customer_ranged_attack(_customer: Customer, amount: float) -> void:
@@ -560,6 +619,10 @@ func _on_special_choice_selected(choice_id: StringName) -> void:
 			state.enable_target_aim(&"potato")
 			state.add_special(&"potato_aim")
 			hud.show_toast("瞄准投喂：土豆发射时朝向当前目标")
+		&"soy_sauce":
+			state.add_pierce_bonus()
+			state.add_special(&"soy_sauce")
+			hud.show_toast("酱油：所有食材穿透次数 +1")
 	hud.hide_special_choices()
 	hud.set_phase("继续前进 · 构筑已变化")
 	hud.set_inventory(state)
@@ -671,6 +734,32 @@ func _track_smoke_gate_customer_gap() -> void:
 				_smoke_minimum_gate_customer_gap,
 				absf(customer.position.y - gate.position.y)
 			)
+		for child: Node in drops.get_children():
+			if not child is UpgradeDrop or child.is_queued_for_deletion():
+				continue
+			var reward_gate: UpgradeDrop = child as UpgradeDrop
+			_smoke_minimum_gate_customer_gap = minf(
+				_smoke_minimum_gate_customer_gap,
+				absf(customer.position.y - reward_gate.position.y)
+			)
+	var reward_gates: Array[UpgradeDrop] = []
+	for child: Node in drops.get_children():
+		if child is UpgradeDrop and not child.is_queued_for_deletion():
+			var reward_gate: UpgradeDrop = child as UpgradeDrop
+			reward_gates.append(reward_gate)
+			for gate_child: Node in gates.get_children():
+				if not gate_child is UpgradeGate or gate_child.is_queued_for_deletion():
+					continue
+				_smoke_minimum_gate_customer_gap = minf(
+					_smoke_minimum_gate_customer_gap,
+					absf(reward_gate.position.y - (gate_child as UpgradeGate).position.y)
+				)
+	for first_index: int in range(reward_gates.size()):
+		for second_index: int in range(first_index + 1, reward_gates.size()):
+			_smoke_minimum_gate_customer_gap = minf(
+				_smoke_minimum_gate_customer_gap,
+				absf(reward_gates[first_index].position.y - reward_gates[second_index].position.y)
+			)
 
 
 func _build_results_text() -> String:
@@ -751,11 +840,27 @@ func _roll_gate_upgrade(template: UpgradeData) -> UpgradeData:
 	return rolled
 
 
-# 普通食客生成时就锁定奖励类型与百分位，胃口和奖励门共享这一结果。
+# 普通食客生成时随机锁定奖励类型与百分位，胃口和奖励门共享这一结果。
 func _roll_customer_reward() -> UpgradeData:
-	var template: UpgradeData = _drop_upgrades[_drop_counter % _drop_upgrades.size()]
-	_drop_counter += 1
+	var template_index: int = _upgrade_rng.randi_range(0, _drop_upgrades.size() - 1)
+	var template: UpgradeData = _drop_upgrades[template_index]
 	return _roll_gate_upgrade(template)
+
+
+# 从当前仍有效的特殊池随机抽出三个不同选项，避免一次性奖励重复占位。
+func _roll_special_choices() -> Array[StringName]:
+	var available: Array[StringName] = _special_choice_pool.duplicate()
+	if state.has_food(&"baguette"):
+		available.erase(&"baguette")
+	if state.is_food_target_aimed(&"potato"):
+		available.erase(&"potato_aim")
+	var choices: Array[StringName] = []
+	var choice_count: int = mini(3, available.size())
+	while choices.size() < choice_count:
+		var index: int = _upgrade_rng.randi_range(0, available.size() - 1)
+		choices.append(available[index])
+		available.remove_at(index)
+	return choices
 
 
 func _current_baseline_appetite() -> float:

@@ -25,6 +25,7 @@ func configure(
 	speed: float,
 	hit_radius_value: float,
 	lifetime: float,
+	hit_count: int,
 	target: Node2D,
 	should_home: bool
 ) -> void:
@@ -35,7 +36,7 @@ func configure(
 	satisfaction = amount
 	radius = hit_radius_value
 	_lifetime_remaining = lifetime
-	remaining_hits = maxi(1, food.pierce_count)
+	remaining_hits = maxi(1, hit_count)
 	food_id = food.id
 	visual_color = food.visual_color
 	tracking_target = target if should_home else null
