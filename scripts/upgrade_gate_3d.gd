@@ -173,7 +173,7 @@ func _refresh_labels() -> void:
 
 func _label_text(upgrade: UpgradeData, maximum_durability: float) -> String:
 	if start_food_gate:
-		return "土豆 Lv.1\n选择开局食材"
+		return "%s Lv.1\n选择开局食材" % upgrade.display_name
 	return "%s\n%s\n%s" % [
 		upgrade.display_name,
 		upgrade.effect_text(maximum_durability),

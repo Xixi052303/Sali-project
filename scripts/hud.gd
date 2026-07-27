@@ -120,7 +120,7 @@ func _special_choice_text(
 		&"baguette_sweep":
 			return "横扫法棍\n旋转扫过道路，同一目标每根只结算一次"
 		&"mushroom_breath":
-			return "呼吸菌圈\n蘑菇环绕半径每1.2秒在一至两倍间扩缩"
+			return "呼吸菌圈\n蘑菇外扩半径每1.2秒在一至两倍间呼吸"
 		&"soy_sauce":
 			return "酱油\n所有当前与未来食材穿透次数 +1"
 	return String(choice_id)

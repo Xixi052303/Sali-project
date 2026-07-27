@@ -7,12 +7,14 @@ func _init() -> void:
 	_test_playfield()
 	_test_customer_cart_collision()
 	_test_3d_plane_rules()
+	_test_baguette_targeting()
 	_test_3d_background_and_hud()
 	_test_projectile_miss_disappear()
 	_test_projectile_evolutions()
 	_test_run_state()
 	_test_weapon_fires_without_target()
 	_test_upgrade_gate()
+	_test_start_food_selection()
 	_test_customer_reward_gate()
 	_test_reward_gate_spacing()
 	_test_customer_reward_randomness()
@@ -177,6 +179,55 @@ func _test_3d_plane_rules() -> void:
 	field.free()
 
 
+# 法棍按餐车到目标的X/Z平面真实距离瞄准，不按单一纵向距离抢目标。
+func _test_baguette_targeting() -> void:
+	var run: RunController3D = RunController3D.new()
+	var state: RunState = RunState.new()
+	var cart: Cart3D = Cart3D.new()
+	var projectiles: Node3D = Node3D.new()
+	var gates: Node3D = Node3D.new()
+	var drops: Node3D = Node3D.new()
+	var weapon: WeaponController3D = WeaponController3D.new()
+	run.state = state
+	run.cart = cart
+	run.projectiles = projectiles
+	run.gates = gates
+	run.drops = drops
+	run.phase = RunController3D.Phase.FORWARD
+	run.add_child(cart)
+	run.add_child(projectiles)
+	run.add_child(gates)
+	run.add_child(drops)
+	run.add_child(weapon)
+	cart.position = Vector3(3.6, 0.0, 10.0)
+	weapon.configure(run, cart, state)
+
+	var forward_but_farther: Customer3D = Customer3D.new()
+	forward_but_farther.position = Vector3(6.1, 0.0, 9.5)
+	forward_but_farther.active = true
+	forward_but_farther.spawn_index = 1
+	var actual_nearest: Customer3D = Customer3D.new()
+	actual_nearest.position = Vector3(3.6, 0.0, 8.0)
+	actual_nearest.active = true
+	actual_nearest.spawn_index = 2
+	run.add_child(forward_but_farther)
+	run.add_child(actual_nearest)
+	run.customers = [forward_but_farther, actual_nearest]
+	_check(run.get_priority_target() == actual_nearest, "自动瞄准使用餐车到单位的X/Z平面真实距离")
+
+	var baguette: FoodData = load("res://data/foods/baguette.tres") as FoodData
+	weapon.add_food(baguette)
+	weapon._tick_food(weapon.foods[0], 0.0)
+	_check(projectiles.get_child_count() == 1, "法棍存在目标时正常发射")
+	if projectiles.get_child_count() == 1:
+		var projectile: FoodProjectile3D = projectiles.get_child(0) as FoodProjectile3D
+		_check(
+			is_zero_approx(projectile.velocity.x) and projectile.velocity.z < 0.0,
+			"法棍发射方向指向距离餐车最近的单位"
+		)
+	run.free()
+
+
 # 背景资源保持节点化装配，街景裁剪和尺寸都能直接在编辑器检查器中调整。
 func _test_3d_background_and_hud() -> void:
 	var background_scene: PackedScene = load("res://scenes/world_background_3d.tscn") as PackedScene
@@ -304,15 +355,72 @@ func _test_projectile_evolutions() -> void:
 		false,
 		0.0,
 		false,
-		true
+		false
 	)
 	orbit._process_orbit(0.0)
-	var inner_radius: float = orbit.position.distance_to(cart.position)
+	var initial_radius: float = orbit.position.distance_to(cart.position)
+	orbit._lifetime_remaining = orbit._initial_lifetime - mushroom.base_lifetime * 0.5
+	orbit._process_orbit(0.0)
+	var middle_radius: float = orbit.position.distance_to(cart.position)
+	_check(is_zero_approx(initial_radius), "蘑菇从餐车中心开始环绕")
+	_check(is_equal_approx(middle_radius, 0.6), "蘑菇在基础持续中段扩张到一半基础半径")
+	orbit._breathing_enabled = true
 	orbit._lifetime_remaining = orbit._initial_lifetime - mushroom.breathing_period * 0.5
 	orbit._process_orbit(0.0)
-	var outer_radius: float = orbit.position.distance_to(cart.position)
-	_check(is_equal_approx(inner_radius, 1.2), "呼吸蘑菇从基础环绕半径开始")
-	_check(is_equal_approx(outer_radius, 2.4), "呼吸蘑菇半周期扩到两倍环绕半径")
+	_check(
+		is_equal_approx(orbit.position.distance_to(cart.position), 0.6),
+		"呼吸进化在持续外扩半径上叠加周期倍率"
+	)
+
+	var faster_orbit: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	run.add_child(faster_orbit)
+	faster_orbit.configure(
+		run,
+		cart.position,
+		Vector3.FORWARD,
+		mushroom,
+		7.0,
+		mushroom.orbit_angular_speed * 1.5,
+		0.22,
+		mushroom.base_lifetime,
+		1,
+		null,
+		false,
+		0.0,
+		false,
+		false
+	)
+	faster_orbit._lifetime_remaining = faster_orbit._initial_lifetime - mushroom.base_lifetime * 0.5
+	faster_orbit._process_orbit(0.0)
+	_check(
+		is_equal_approx(faster_orbit.position.distance_to(cart.position), 0.9),
+		"弹速倍率同时提高蘑菇旋转与外扩速度"
+	)
+
+	var longer_orbit: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	run.add_child(longer_orbit)
+	longer_orbit.configure(
+		run,
+		cart.position,
+		Vector3.FORWARD,
+		mushroom,
+		7.0,
+		mushroom.orbit_angular_speed,
+		0.22,
+		mushroom.base_lifetime * 1.5,
+		1,
+		null,
+		false,
+		0.0,
+		false,
+		false
+	)
+	longer_orbit._lifetime_remaining = 0.001
+	longer_orbit._process_orbit(0.0)
+	_check(
+		absf(longer_orbit.position.distance_to(cart.position) - 1.7995) < 0.001,
+		"持续时间倍率允许蘑菇继续扩张到更远半径"
+	)
 	run.free()
 
 
@@ -487,6 +595,33 @@ func _test_upgrade_gate() -> void:
 	start_gate.free()
 
 
+func _test_start_food_selection() -> void:
+	var run_scene: PackedScene = load("res://scenes/run_3d.tscn") as PackedScene
+	var run: RunController3D = run_scene.instantiate() as RunController3D
+	var unlocked: Array[FoodData] = run._available_start_foods()
+	_check(unlocked.size() == 3, "当前原型默认解锁全部三种食材")
+	run._upgrade_rng.seed = 20260728
+	var options: Array[UpgradeData] = run._roll_start_food_options()
+	_check(options.size() == 2, "开局食材门生成两个候选")
+	_check(options[0].id != options[1].id, "多种已解锁食材中无放回抽取开局候选")
+	var unlocked_ids: Array[StringName] = []
+	for food: FoodData in unlocked:
+		unlocked_ids.append(food.id)
+	_check(
+		unlocked_ids.has(options[0].id) and unlocked_ids.has(options[1].id),
+		"开局候选只来自已解锁食材"
+	)
+	run.unlocked_foods = [run.mushroom_data]
+	var single_food_options: Array[UpgradeData] = run._roll_start_food_options()
+	_check(
+		single_food_options.size() == 2
+		and single_food_options[0].id == &"mushroom"
+		and single_food_options[1].id == &"mushroom",
+		"仅解锁一种食材时两侧都提供该食材"
+	)
+	run.free()
+
+
 func _test_customer_reward_gate() -> void:
 	var reward: UpgradeData = UpgradeData.new()
 	reward.kind = UpgradeData.Kind.SUGAR
@@ -650,7 +785,7 @@ func _test_resources() -> void:
 	_check(potato != null and is_equal_approx(potato.base_satisfaction, 10.0), "土豆基线")
 	_check(potato.initial_aim_mode == FoodData.AimMode.FIXED_FORWARD, "土豆初始固定竖直发射")
 	_check(potato.initial_tracking_mode == FoodData.TrackingMode.NONE, "土豆初始为直线非追踪弹道")
-	_check(baguette != null and baguette.pierce_count == 3, "法棍穿透数")
+	_check(baguette != null and baguette.pierce_count == 2, "法棍默认额外穿透一个目标")
 	_check(baguette.initial_tracking_mode == FoodData.TrackingMode.NONE, "法棍初始不追踪")
 	_check(
 		mushroom != null

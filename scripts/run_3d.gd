@@ -57,6 +57,8 @@ const PLAYTEST_RECORD_PATH: String = "user://playtest_runs.jsonl"
 @export var potato_data: FoodData
 @export var baguette_data: FoodData
 @export var mushroom_data: FoodData
+# 空数组表示当前原型默认解锁全部食材；后续局外解锁可在场景中显式配置子集。
+@export var unlocked_foods: Array[FoodData] = []
 @export var basic_guest_data: CustomerData
 @export var fast_guest_data: CustomerData
 @export var ranged_guest_data: CustomerData
@@ -146,7 +148,6 @@ func _ready() -> void:
 	cart.configure(state, playfield)
 	background.set_cart(cart)
 	weapon_controller.configure(self, cart, state)
-	weapon_controller.add_food(potato_data)
 	_build_prototype_upgrades()
 	_build_drop_upgrades()
 	director.event_triggered.connect(_on_timeline_event)
@@ -415,7 +416,15 @@ func on_gate_selected(
 	remaining_base_health: float = 0.0
 ) -> void:
 	if start_food_gate:
-		hud.show_toast("土豆装车！自动寻找最近的食客")
+		if upgrade == null:
+			push_error("START_FOOD_SELECTION_MISSING")
+			return
+		var selected_food: FoodData = _food_data_for_id(upgrade.id)
+		if selected_food == null:
+			push_error("START_FOOD_NOT_UNLOCKED food=%s" % String(upgrade.id))
+			return
+		weapon_controller.add_food(selected_food)
+		hud.show_toast("%s装车！自动寻找最近的食客" % selected_food.display_name)
 		return
 	state.apply_upgrade(upgrade)
 	cart.play_upgrade_feedback(upgrade.rarity_color)
@@ -669,7 +678,19 @@ func _spawn_gate_now(index: int, is_start_gate: bool, scheduled_baseline_appetit
 	var gate: UpgradeGate3D = GATE_SCENE.instantiate() as UpgradeGate3D
 	gates.add_child(gate)
 	if is_start_gate:
-		gate.configure(self, _upgrade_pairs[0], _upgrade_pairs[0], true, _current_baseline_appetite(), _spawn_counter)
+		var start_options: Array[UpgradeData] = _roll_start_food_options()
+		if start_options.size() != 2:
+			push_error("START_FOOD_POOL_EMPTY")
+			gate.queue_free()
+			return
+		gate.configure(
+			self,
+			start_options[0],
+			start_options[1],
+			true,
+			_current_baseline_appetite(),
+			_spawn_counter
+		)
 		return
 	var baseline_appetite: float = scheduled_baseline_appetite
 	if baseline_appetite <= 0.0:
@@ -1072,9 +1093,13 @@ func _target_is_better(
 	best_horizontal: float,
 	best_spawn_index: int
 ) -> bool:
-	if forward < best_forward - 0.0001:
+	var distance_squared: float = forward * forward + horizontal * horizontal
+	var best_distance_squared: float = (
+		best_forward * best_forward + best_horizontal * best_horizontal
+	)
+	if distance_squared < best_distance_squared - 0.0001:
 		return true
-	if absf(forward - best_forward) > 0.0001:
+	if absf(distance_squared - best_distance_squared) > 0.0001:
 		return false
 	if horizontal < best_horizontal - 0.0001:
 		return true
@@ -1285,6 +1310,48 @@ func _roll_gate_upgrade(template: UpgradeData) -> UpgradeData:
 	var rolled: UpgradeData = template.duplicate() as UpgradeData
 	rolled.set_value_ratio(_upgrade_rng.randf())
 	return rolled
+
+
+# 开局门从已解锁池无放回抽取；只有一种食材时两侧显示同一候选。
+func _roll_start_food_options() -> Array[UpgradeData]:
+	var available: Array[FoodData] = _available_start_foods()
+	var options: Array[UpgradeData] = []
+	while not available.is_empty() and options.size() < 2:
+		var index: int = _upgrade_rng.randi_range(0, available.size() - 1)
+		options.append(_make_start_food_option(available[index]))
+		available.remove_at(index)
+	if options.size() == 1:
+		options.append(_make_start_food_option(_food_data_for_id(options[0].id)))
+	return options
+
+
+# 当前原型未配置解锁子集时，三种已装配食材共同构成默认解锁池。
+func _available_start_foods() -> Array[FoodData]:
+	var configured_foods: Array[FoodData] = unlocked_foods
+	if configured_foods.is_empty():
+		configured_foods = [potato_data, baguette_data, mushroom_data]
+	var available: Array[FoodData] = []
+	var seen_ids: Dictionary[StringName, bool] = {}
+	for food: FoodData in configured_foods:
+		if food == null or seen_ids.has(food.id):
+			continue
+		seen_ids[food.id] = true
+		available.append(food)
+	return available
+
+
+func _make_start_food_option(food: FoodData) -> UpgradeData:
+	var option: UpgradeData = UpgradeData.new()
+	option.id = food.id
+	option.display_name = food.display_name
+	return option
+
+
+func _food_data_for_id(food_id: StringName) -> FoodData:
+	for food: FoodData in _available_start_foods():
+		if food.id == food_id:
+			return food
+	return null
 
 
 # 普通食客生成时随机锁定奖励类型与百分位，胃口和奖励门共享这一结果。
