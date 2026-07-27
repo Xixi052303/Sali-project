@@ -339,39 +339,39 @@ func _test_run_state() -> void:
 
 	var quick_prep: UpgradeData = UpgradeData.new()
 	quick_prep.kind = UpgradeData.Kind.QUICK_PREP
-	quick_prep.value = 3.0
+	quick_prep.value = 100.0
 	state.apply_upgrade(quick_prep)
 	_check(is_equal_approx(state.effective_interval(potato), RunState.MINIMUM_INTERVAL), "攻击间隔限制为每帧一次")
 	quick_prep.value = 0.08
-	_check(quick_prep.effect_text() == "间隔 -8%", "门使用简洁攻击间隔描述")
+	_check(quick_prep.effect_text() == "攻速 +8%", "门使用正向攻击速度描述")
 
-	var multiplicative_state: RunState = RunState.new()
+	var additive_state: RunState = RunState.new()
 	var half_more: UpgradeData = UpgradeData.new()
 	half_more.kind = UpgradeData.Kind.SUGAR
 	half_more.value = 0.5
-	multiplicative_state.apply_upgrade(half_more)
-	multiplicative_state.apply_upgrade(half_more, false)
+	additive_state.apply_upgrade(half_more)
+	additive_state.apply_upgrade(half_more, false)
 	_check(
-		is_equal_approx(multiplicative_state.effective_satisfaction(potato), 22.5),
-		"两次满足值加成按1.5乘1.5累计"
+		is_equal_approx(additive_state.effective_satisfaction(potato), 20.0),
+		"两次满足值加成在线性倍率池内加算"
 	)
 	var faster: UpgradeData = UpgradeData.new()
 	faster.kind = UpgradeData.Kind.QUICK_PREP
 	faster.value = 0.2
-	multiplicative_state.apply_upgrade(faster)
-	multiplicative_state.apply_upgrade(faster)
+	additive_state.apply_upgrade(faster)
+	additive_state.apply_upgrade(faster)
 	_check(
-		is_equal_approx(multiplicative_state.effective_interval(potato), potato.base_interval * 0.64),
-		"两次间隔缩短按0.8乘0.8累计"
+		is_equal_approx(additive_state.effective_interval(potato), potato.base_interval / 1.4),
+		"两次攻速加成线性累计后反推攻击间隔"
 	)
-	_check(multiplicative_state.dropped_upgrades == 1, "掉落百分比强化使用同一乘算链并单独计数")
+	_check(additive_state.dropped_upgrades == 1, "掉落百分比强化使用同一加算链并单独计数")
 
 	var sturdy: UpgradeData = UpgradeData.new()
 	sturdy.kind = UpgradeData.Kind.STURDY_CART
 	sturdy.value = 10.0
 	state.apply_upgrade(sturdy)
 	_check(is_equal_approx(state.maximum_durability, 110.0), "最大耐久提高")
-	_check(is_equal_approx(state.current_durability, 110.0), "坚固餐车同步提高当前耐久")
+	_check(is_equal_approx(state.current_durability, 110.0), "餐车改造同步提高当前耐久")
 
 	state.take_durability_damage(40.0)
 	var repair: UpgradeData = UpgradeData.new()
@@ -379,7 +379,18 @@ func _test_run_state() -> void:
 	repair.value = 0.2
 	state.apply_upgrade(repair)
 	_check(is_equal_approx(state.current_durability, 92.0), "维修按最大耐久比例恢复")
-	_check(repair.effect_text(state.maximum_durability) == "修复 +22点", "维修门显示简洁实际点数")
+	state.apply_upgrade(repair)
+	_check(is_equal_approx(state.current_durability, 110.0), "紧急维修优先补满当前耐久")
+	_check(is_equal_approx(state.temporary_shield, 4.0), "溢出维修完整转化为临时护盾")
+	var damage_applied: float = state.take_durability_damage(10.0)
+	_check(is_equal_approx(damage_applied, 10.0), "临时护盾与耐久共同承受一次伤害")
+	_check(is_equal_approx(state.temporary_shield, 0.0), "受击优先消耗临时护盾")
+	_check(is_equal_approx(state.current_durability, 104.0), "护盾耗尽后剩余伤害扣除耐久")
+	_check(is_equal_approx(state.durability_lost, 46.0), "护盾吸收量不计入实际耐久损失")
+	_check(
+		repair.effect_text(state.maximum_durability) == "恢复/护盾 +22点",
+		"紧急维修门同时说明恢复与溢出护盾"
+	)
 	var previous_gate_count: int = state.gate_choices
 	state.apply_upgrade(sugar, false)
 	_check(state.gate_choices == previous_gate_count, "食客奖励门不计入普通双选门")

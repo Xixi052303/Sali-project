@@ -62,7 +62,7 @@ func effect_text(maximum_durability: float = 100.0) -> String:
 		Kind.SUGAR:
 			return "满足 %s" % formatted_value()
 		Kind.QUICK_PREP:
-			return "间隔 -%.0f%%" % (value * 100.0)
+			return "攻速 %s" % formatted_value()
 		Kind.WINE:
 			return "弹速 %s" % formatted_value()
 		Kind.SCALLION:
@@ -74,7 +74,7 @@ func effect_text(maximum_durability: float = 100.0) -> String:
 		Kind.STURDY_CART:
 			return "耐久 %s" % formatted_value()
 		Kind.REPAIR:
-			return "修复 +%.0f点" % (maximum_durability * value)
+			return "恢复/护盾 +%.0f点" % (maximum_durability * value)
 	return formatted_value()
 
 

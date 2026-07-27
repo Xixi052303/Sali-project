@@ -33,10 +33,17 @@ func _ready() -> void:
 	_apply_safe_area()
 
 
-func set_durability(current: float, maximum: float) -> void:
+func set_durability(current: float, maximum: float, temporary_shield: float) -> void:
 	_durability_bar.max_value = maximum
 	_durability_bar.value = current
-	_durability_label.text = "餐车耐久  %.0f / %.0f" % [current, maximum]
+	if temporary_shield > 0.0:
+		_durability_label.text = "餐车耐久  %.0f / %.0f   临时护盾 +%.0f" % [
+			current,
+			maximum,
+			temporary_shield,
+		]
+	else:
+		_durability_label.text = "餐车耐久  %.0f / %.0f" % [current, maximum]
 
 
 func set_phase(text: String) -> void:

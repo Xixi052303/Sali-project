@@ -155,7 +155,11 @@ func _ready() -> void:
 	state.durability_changed.connect(hud.set_durability)
 	hud.special_choice_selected.connect(_on_special_choice_selected)
 	hud.restart_requested.connect(_on_restart_requested)
-	hud.set_durability(state.current_durability, state.maximum_durability)
+	hud.set_durability(
+		state.current_durability,
+		state.maximum_durability,
+		state.temporary_shield
+	)
 	hud.set_phase("准备出餐 · 横向拖动餐车")
 	hud.show_toast("按住并横向拖动，松手后餐车留在原位")
 	phase = Phase.FORWARD
@@ -441,8 +445,20 @@ func on_customer_reward_gate_collected(upgrade: UpgradeData) -> void:
 
 
 func damage_cart(amount: float, source: String) -> void:
+	var durability_before: float = state.current_durability
+	var shield_before: float = state.temporary_shield
 	if cart.take_damage(amount):
-		hud.show_toast("%s：耐久 -%.0f" % [source, amount], Color("#ff7858"))
+		var durability_damage: float = durability_before - state.current_durability
+		var shield_damage: float = shield_before - state.temporary_shield
+		if shield_damage > 0.0 and durability_damage > 0.0:
+			hud.show_toast(
+				"%s：护盾 -%.0f · 耐久 -%.0f" % [source, shield_damage, durability_damage],
+				Color("#ffb45e")
+			)
+		elif shield_damage > 0.0:
+			hud.show_toast("%s：护盾 -%.0f" % [source, shield_damage], Color("#78d8ff"))
+		else:
+			hud.show_toast("%s：耐久 -%.0f" % [source, durability_damage], Color("#ff7858"))
 
 
 func _on_timeline_event(event_id: StringName) -> void:
@@ -1226,8 +1242,8 @@ func _build_prototype_upgrades() -> void:
 		_make_upgrade_range(&"sugar", "糖", UpgradeData.Kind.SUGAR, 0.05, 0.45, "%"),
 		_make_upgrade_range(&"quick_prep", "快速备餐", UpgradeData.Kind.QUICK_PREP, 0.02, 0.20, "%"),
 		_make_upgrade_range(&"light_cart", "轻便餐车", UpgradeData.Kind.LIGHT_CART, 50.0, 300.0, "速度"),
-		_make_upgrade_range(&"sturdy_cart", "坚固餐车", UpgradeData.Kind.STURDY_CART, 5.0, 32.0, "点"),
-		_make_upgrade_range(&"repair", "现场修理", UpgradeData.Kind.REPAIR, 0.05, 0.40, "%"),
+		_make_upgrade_range(&"sturdy_cart", "餐车改造", UpgradeData.Kind.STURDY_CART, 5.0, 32.0, "点"),
+		_make_upgrade_range(&"repair", "紧急维修", UpgradeData.Kind.REPAIR, 0.05, 0.40, "%"),
 		_make_upgrade_range(&"wine", "酒", UpgradeData.Kind.WINE, 0.10, 0.50, "%"),
 		_make_upgrade_range(&"scallion", "葱", UpgradeData.Kind.SCALLION, 0.10, 0.60, "%"),
 		_make_upgrade_range(&"starch", "淀粉", UpgradeData.Kind.STARCH, 0.15, 0.75, "%"),
@@ -1242,8 +1258,8 @@ func _build_drop_upgrades() -> void:
 		_make_upgrade_range(&"drop_scallion", "葱", UpgradeData.Kind.SCALLION, 0.10, 0.60, "%"),
 		_make_upgrade_range(&"drop_starch", "淀粉", UpgradeData.Kind.STARCH, 0.15, 0.75, "%"),
 		_make_upgrade_range(&"drop_light", "轻车", UpgradeData.Kind.LIGHT_CART, 50.0, 300.0, "速度"),
-		_make_upgrade_range(&"drop_sturdy", "坚固", UpgradeData.Kind.STURDY_CART, 5.0, 32.0, "点"),
-		_make_upgrade_range(&"drop_repair", "修理", UpgradeData.Kind.REPAIR, 0.05, 0.40, "%"),
+		_make_upgrade_range(&"drop_sturdy", "餐车改造", UpgradeData.Kind.STURDY_CART, 5.0, 32.0, "点"),
+		_make_upgrade_range(&"drop_repair", "紧急维修", UpgradeData.Kind.REPAIR, 0.05, 0.40, "%"),
 	]
 
 
