@@ -48,10 +48,15 @@ const FORWARD_GATE_SPEED: float = 2.5
 const FORWARD_GATE_QUEUE_LEAD_SECONDS: float = 2.0
 const REWARD_GATE_SEARCH_STEP: float = 0.1
 const REWARD_GATE_SEARCH_LIMIT: float = 4.0
+const NORMAL_WAVE_END_TIME: float = 360.0
+const POST_BOSS_MINIMUM_DURATION: float = 40.0
+const SMOKE_TEST_TIMEOUT: float = 450.0
+const PLAYTEST_RECORD_PATH: String = "user://playtest_runs.jsonl"
 
 @export_group("Prototype data")
 @export var potato_data: FoodData
 @export var baguette_data: FoodData
+@export var mushroom_data: FoodData
 @export var basic_guest_data: CustomerData
 @export var fast_guest_data: CustomerData
 @export var ranged_guest_data: CustomerData
@@ -77,6 +82,7 @@ var boss: PrototypeBoss3D
 var _spawn_counter: int = 0
 var _elite_started_at: float = 0.0
 var _boss_started_at: float = 0.0
+var _post_boss_started_at: float = 0.0
 var _debug_accumulator: float = 0.0
 var _upgrade_pairs: Array[UpgradeData] = []
 var _drop_upgrades: Array[UpgradeData] = []
@@ -89,13 +95,26 @@ var _forward_spawn_requests: Array[ForwardSpawnRequest] = []
 var _normal_waves_suspended: bool = false
 # Boss事件到达时若仍有强化门，先保留前进阶段让该门完成结算。
 var _boss_pending: bool = false
+var _boss_reward_pending: bool = false
+var _post_boss_active: bool = false
+var _playtest_record_saved: bool = false
+var _post_boss_satisfaction_start: Dictionary[StringName, float] = {}
+var _post_boss_durability_lost_start: float = 0.0
+var _post_boss_gate_choices_start: int = 0
 var _upgrade_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _run_seed: int = 0
+var _active_special_choices: Array[StringName] = []
+var _special_choice_source: StringName = &""
 var _smoke_minimum_gate_customer_gap: float = INF
-# 特殊池保留可重复的全局强化，并在展示前过滤已经取得的一次性能力。
+# 食材卡取得后转为等级卡；进化按持有状态进入池，全局效果可以重复取得。
 var _special_choice_pool: Array[StringName] = [
+	&"potato",
 	&"baguette",
+	&"mushroom",
 	&"serving",
 	&"potato_aim",
+	&"baguette_sweep",
+	&"mushroom_breath",
 	&"soy_sauce",
 ]
 
@@ -103,14 +122,24 @@ var _special_choice_pool: Array[StringName] = [
 func _ready() -> void:
 	_load_timeline_balance()
 	_smoke_test = OS.get_cmdline_user_args().has("--smoke-test")
+	var requested_seed: int = _requested_run_seed()
 	if _smoke_test:
-		_upgrade_rng.seed = 1701
+		_run_seed = requested_seed if requested_seed >= 0 else 1701
+		_upgrade_rng.seed = _run_seed
 	else:
-		_upgrade_rng.randomize()
+		if requested_seed >= 0:
+			_run_seed = requested_seed
+			_upgrade_rng.seed = _run_seed
+		else:
+			_upgrade_rng.randomize()
+			_run_seed = _upgrade_rng.seed
 	state = RunState.new()
+	state.run_seed = _run_seed
+	print("PLAYTEST_RUN_SEED value=%d" % _run_seed)
 	if _smoke_test:
-		state.maximum_durability = 10000.0
-		state.current_durability = 10000.0
+		# 烟雾测试只验证流程闭环，不让扩展后的普通波次提前终止自动跑局。
+		state.maximum_durability = 1000000.0
+		state.current_durability = 1000000.0
 		Engine.time_scale = 20.0
 	playfield = Playfield.new()
 	add_child(playfield)
@@ -165,11 +194,18 @@ func _process(delta: float) -> void:
 			_process_spawn_requests()
 			if _boss_pending and not _has_pending_gate():
 				_begin_boss()
+			if _post_boss_active:
+				_try_finish_post_boss()
 			if _smoke_test:
 				_track_smoke_gate_customer_gap()
 		hud.set_time(state.elapsed_seconds)
 		if _smoke_test:
-			cart.target_x = 3.6 + sin(state.elapsed_seconds * 1.7) * 2.45
+			if phase == Phase.BOSS and boss != null and is_instance_valid(boss):
+				# 自动跑局在Boss阶段跟随目标横坐标，避免把“固定发射角”误判为流程卡死。
+				cart.target_x = boss.position.x
+			else:
+				cart.target_x = 3.6 + sin(state.elapsed_seconds * 1.7) * 2.45
+			_check_smoke_timeout()
 	_debug_accumulator += delta
 	if _debug_accumulator >= 0.25:
 		_debug_accumulator = 0.0
@@ -191,6 +227,29 @@ func is_world_scrolling() -> bool:
 
 func can_weapons_fire() -> bool:
 	return phase == Phase.FORWARD or phase == Phase.BOSS
+
+
+func _check_smoke_timeout() -> void:
+	if state.elapsed_seconds <= SMOKE_TEST_TIMEOUT:
+		return
+	_save_playtest_record(&"smoke_timeout")
+	push_error(
+		"SMOKE_TEST_FAILED timeout phase=%d gates=%d requests=%d customers=%d drops=%d specials=%d boss_active=%s boss_remaining=%.1f boss_position=%s boss_state=%d projectiles=%d" % [
+			phase,
+			state.gate_choices,
+			_forward_spawn_requests.size(),
+			customers.size(),
+			drops.get_child_count(),
+			state.special_choice_records.size(),
+			str(boss != null and is_instance_valid(boss) and boss.active),
+			boss.remaining_appetite if boss != null and is_instance_valid(boss) else -1.0,
+			str(boss.position if boss != null and is_instance_valid(boss) else Vector3.ZERO),
+			boss._state if boss != null and is_instance_valid(boss) else -1,
+			projectiles.get_child_count(),
+		]
+	)
+	Engine.time_scale = 1.0
+	get_tree().quit(1)
 
 
 # 正常运行读取场景节点；脱离主场景的规则验证继续使用设计回退值。
@@ -277,7 +336,8 @@ func spawn_projectile(
 	amount: float,
 	speed: float,
 	radius: float,
-	target: Node3D
+	target: Node3D,
+	orbit_phase: float = 0.0
 ) -> void:
 	var projectile: FoodProjectile3D = PROJECTILE_SCENE.instantiate() as FoodProjectile3D
 	projectiles.add_child(projectile)
@@ -287,7 +347,30 @@ func spawn_projectile(
 	)
 	var lifetime: float = state.effective_duration(food)
 	var hit_count: int = state.effective_pierce_count(food)
-	projectile.configure(self, start_position, direction, food, amount, speed, radius, lifetime, hit_count, target, should_home)
+	var sweep_enabled: bool = (
+		food.id == &"baguette"
+		and state.has_food_evolution(&"baguette_sweep")
+	)
+	var breathing_enabled: bool = (
+		food.id == &"mushroom"
+		and state.has_food_evolution(&"mushroom_breath")
+	)
+	projectile.configure(
+		self,
+		start_position,
+		direction,
+		food,
+		amount,
+		speed,
+		radius,
+		lifetime,
+		hit_count,
+		target,
+		should_home,
+		orbit_phase,
+		sweep_enabled,
+		breathing_enabled
+	)
 
 
 func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
@@ -296,9 +379,10 @@ func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active or not projectile.can_hit(customer):
 			continue
-		var distance: float = logic_position(projectile).distance_to(logic_position(customer))
-		if distance <= projectile.radius + customer.hit_radius():
+		if projectile.overlaps_target(logic_position(customer), customer.hit_radius()):
+			var applied: float = minf(projectile.satisfaction, customer.remaining_appetite)
 			customer.receive_satisfaction(projectile.satisfaction)
+			state.record_food_satisfaction(projectile.food_id, applied)
 			if projectile.register_hit(customer):
 				return
 	for child: Node in gates.get_children():
@@ -314,9 +398,10 @@ func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 		if reward_gate.try_receive_projectile(projectile):
 			return
 	if boss != null and is_instance_valid(boss) and boss.active and projectile.can_hit(boss):
-		var boss_distance: float = logic_position(projectile).distance_to(logic_position(boss))
-		if boss_distance <= projectile.radius + boss.hit_radius():
+		if projectile.overlaps_target(logic_position(boss), boss.hit_radius()):
+			var applied: float = minf(projectile.satisfaction, boss.remaining_appetite)
 			boss.receive_satisfaction(projectile.satisfaction)
+			state.record_food_satisfaction(projectile.food_id, applied)
 			projectile.register_hit(boss)
 
 
@@ -496,10 +581,10 @@ func _spawn_customer_now(customer_data: CustomerData, scheduled_baseline_appetit
 
 func _advance_normal_waves() -> void:
 	var elapsed: float = state.elapsed_seconds
-	if elapsed >= 132.0 or _normal_waves_suspended:
+	if elapsed >= NORMAL_WAVE_END_TIME or _normal_waves_suspended:
 		return
 	_flush_scheduled_normal_customers(elapsed)
-	while _next_normal_spawn_time < 132.0:
+	while _next_normal_spawn_time < NORMAL_WAVE_END_TIME:
 		var pattern: int = _normal_wave_index % 5
 		var wave_customers: Array[CustomerData] = []
 		var customer_data: CustomerData = basic_guest_data
@@ -526,7 +611,12 @@ func _advance_normal_waves() -> void:
 			scheduled.baseline_appetite = baseline_appetite
 			_scheduled_normal_customers.append(scheduled)
 		_normal_wave_index += 1
-		_next_normal_spawn_time += 3.2 if _next_normal_spawn_time < 78.0 else 2.8
+		if _next_normal_spawn_time < 78.0:
+			_next_normal_spawn_time += 3.2
+		elif _next_normal_spawn_time < 135.0:
+			_next_normal_spawn_time += 2.8
+		else:
+			_next_normal_spawn_time += 4.0
 		_flush_scheduled_normal_customers(elapsed)
 
 
@@ -641,14 +731,11 @@ func _finish_customer(customer: Customer3D, collided: bool) -> void:
 		return
 	if was_elite:
 		state.elite_duration = state.elapsed_seconds - _elite_started_at
+		state.elite_durations.append(state.elite_duration)
 		phase = Phase.CHOICE
 		hud.set_phase("特别赏赐 · 三选一")
 		hud.show_toast("撞击也算击败！" if collided else "精英已击败！", Color("#f0c45f"))
-		hud.show_special_choices(_roll_special_choices())
-		if _smoke_test:
-			_on_special_choice_selected(&"baguette")
-		else:
-			get_tree().paused = true
+		_show_special_choices(&"elite", "六席贵客满意了！挑一份特别赏赐")
 	else:
 		state.normal_defeats += 1
 		_spawn_customer_reward_gate(defeat_position, reward_upgrade, reward_baseline_appetite, occupied_regions)
@@ -735,12 +822,18 @@ func _on_customer_ranged_attack(_customer: Customer3D, amount: float) -> void:
 
 
 func _on_special_choice_selected(choice_id: StringName) -> void:
+	if not _active_special_choices.has(choice_id):
+		push_error("SPECIAL_CHOICE_REJECTED choice=%s" % String(choice_id))
+		return
 	get_tree().paused = false
+	state.record_special_choice(choice_id)
 	match choice_id:
+		&"potato":
+			_apply_food_card(potato_data)
 		&"baguette":
-			weapon_controller.add_food(baguette_data)
-			state.add_special(&"baguette_reward")
-			hud.show_toast("获得法棍：直线穿透最多3名食客")
+			_apply_food_card(baguette_data)
+		&"mushroom":
+			_apply_food_card(mushroom_data)
 		&"serving":
 			state.servings += 1
 			state.add_special(&"serving")
@@ -749,32 +842,114 @@ func _on_special_choice_selected(choice_id: StringName) -> void:
 			state.enable_target_aim(&"potato")
 			state.add_special(&"potato_aim")
 			hud.show_toast("瞄准投喂：土豆发射时朝向当前目标")
+		&"baguette_sweep":
+			state.enable_food_evolution(&"baguette_sweep")
+			state.add_special(&"baguette_sweep")
+			hud.show_toast("横扫法棍：每根法棍旋转扫过道路，同一目标只结算一次")
+		&"mushroom_breath":
+			state.enable_food_evolution(&"mushroom_breath")
+			state.add_special(&"mushroom_breath")
+			hud.show_toast("呼吸菌圈：蘑菇环绕半径每1.2秒扩缩一次")
 		&"soy_sauce":
 			state.add_pierce_bonus()
 			state.add_special(&"soy_sauce")
 			hud.show_toast("酱油：所有食材穿透次数 +1")
+	_active_special_choices.clear()
 	hud.hide_special_choices()
-	hud.set_phase("继续前进 · 构筑已变化")
 	phase = Phase.FORWARD
 	_normal_waves_suspended = false
 	_scheduled_normal_customers.clear()
 	_next_normal_spawn_time = state.elapsed_seconds + 1.0
+	if _boss_reward_pending:
+		_boss_reward_pending = false
+		_post_boss_active = true
+		_post_boss_started_at = state.elapsed_seconds
+		_post_boss_satisfaction_start = state.satisfaction_by_food.duplicate()
+		_post_boss_durability_lost_start = state.durability_lost
+		_post_boss_gate_choices_start = state.gate_choices
+		background.scrolling = true
+		if boss != null and is_instance_valid(boss):
+			boss.queue_free()
+		hud.set_phase("胜后复跑 · 立即体验第四次强化")
+	else:
+		hud.set_phase("继续前进 · 构筑已变化")
 
 
 func _on_boss_satisfied() -> void:
 	state.boss_duration = state.elapsed_seconds - _boss_started_at
 	state.customers_satisfied += 1
-	phase = Phase.RESULTS
-	hud.set_phase("服务完成")
-	var body: String = _build_results_text()
-	hud.show_results("Boss满意离场！", body)
+	phase = Phase.CHOICE
+	_boss_reward_pending = true
+	hud.set_phase("Boss赏赐 · 第四次三选一")
+	hud.show_toast("Boss满意离场！选择强化后继续验证40秒", Color("#f0c45f"))
+	_show_special_choices(&"boss", "Boss满意了！选择胜后强化")
+
+
+func _show_special_choices(source: StringName, title: String) -> void:
+	_special_choice_source = source
+	_active_special_choices = _roll_special_choices()
+	if _active_special_choices.size() != 3:
+		push_error(
+			"SPECIAL_CHOICE_POOL_INVALID source=%s count=%d" % [
+				String(source),
+				_active_special_choices.size(),
+			]
+		)
+		return
+	state.record_special_offer(source, _active_special_choices)
+	hud.show_special_choices(_active_special_choices, state.food_levels, title)
 	if _smoke_test:
-		var expected_gate_count: int = 0
-		for event_text: String in director.timeline.event_ids:
-			if event_text.begins_with("gate_"):
-				expected_gate_count += 1
-		if state.gate_choices != expected_gate_count:
-			push_error("SMOKE_TEST_FAILED gates=%d expected=%d" % [state.gate_choices, expected_gate_count])
+		_on_special_choice_selected(_active_special_choices[0])
+	else:
+		get_tree().paused = true
+
+
+func _apply_food_card(food: FoodData) -> void:
+	if food == null:
+		return
+	if state.has_food(food.id):
+		var next_level: int = state.level_food(food.id)
+		state.add_special(StringName("%s_level_%d" % [String(food.id), next_level]))
+		hud.show_toast(
+			"%s升至 Lv.%d：自身基础满足值 ×1.5" % [
+				food.display_name,
+				next_level,
+			]
+		)
+		return
+	weapon_controller.add_food(food)
+	state.add_special(StringName("%s_acquired" % String(food.id)))
+	hud.show_toast("获得%s：加入自动投喂构筑" % food.display_name)
+
+
+func _try_finish_post_boss() -> void:
+	var minimum_finish_time: float = maxf(
+		_post_boss_started_at + POST_BOSS_MINIMUM_DURATION,
+		_last_timeline_gate_time()
+	)
+	if state.elapsed_seconds < minimum_finish_time:
+		return
+	if _has_pending_gate() or state.gate_choices < _expected_gate_count():
+		return
+	_finish_run()
+
+
+func _finish_run() -> void:
+	if phase == Phase.RESULTS:
+		return
+	_post_boss_active = false
+	phase = Phase.RESULTS
+	_save_playtest_record(&"completed")
+	hud.set_phase("构筑验证完成")
+	hud.show_results("Boss满意离场，胜后强化已验证！", _build_results_text())
+	if _smoke_test:
+		if state.gate_choices != _expected_gate_count():
+			push_error(
+				"SMOKE_TEST_FAILED gates=%d expected=%d" % [
+					state.gate_choices,
+					_expected_gate_count(),
+				]
+			)
 			Engine.time_scale = 1.0
 			get_tree().quit(1)
 			return
@@ -784,14 +959,29 @@ func _on_boss_satisfied() -> void:
 			get_tree().quit(1)
 			return
 		if state.upgrade_drops_spawned != state.normal_defeats:
-			push_error("SMOKE_TEST_FAILED drops=%d normal_defeats=%d" % [state.upgrade_drops_spawned, state.normal_defeats])
+			push_error(
+				"SMOKE_TEST_FAILED drops=%d normal_defeats=%d" % [
+					state.upgrade_drops_spawned,
+					state.normal_defeats,
+				]
+			)
+			Engine.time_scale = 1.0
+			get_tree().quit(1)
+			return
+		if state.special_choice_records.size() != 4:
+			push_error(
+				"SMOKE_TEST_FAILED special_choices=%d expected=4"
+				% state.special_choice_records.size()
+			)
 			Engine.time_scale = 1.0
 			get_tree().quit(1)
 			return
 		print(
-			"SMOKE_TEST_OK elapsed=%.2f gates=%d defeated=%d collisions=%d reward_gates=%d collected=%d min_gap=%.2f" % [
+			"SMOKE_TEST_OK elapsed=%.2f gates=%d elites=%d specials=%d defeated=%d collisions=%d reward_gates=%d collected=%d min_gap=%.2f" % [
 				state.elapsed_seconds,
 				state.gate_choices,
+				state.elite_durations.size(),
+				state.special_choice_records.size(),
 				state.customers_satisfied,
 				state.collided_defeats,
 				state.upgrade_drops_spawned,
@@ -805,6 +995,26 @@ func _on_boss_satisfied() -> void:
 		get_tree().paused = true
 
 
+func _expected_gate_count() -> int:
+	var count: int = 0
+	if director.timeline == null:
+		return count
+	for event_text: String in director.timeline.event_ids:
+		if event_text.begins_with("gate_"):
+			count += 1
+	return count
+
+
+func _last_timeline_gate_time() -> float:
+	var latest: float = 0.0
+	if director.timeline == null:
+		return latest
+	for event_index: int in range(director.timeline.event_ids.size()):
+		if director.timeline.event_ids[event_index].begins_with("gate_"):
+			latest = maxf(latest, director.timeline.event_times[event_index])
+	return latest
+
+
 func _on_cart_damaged(_amount: float) -> void:
 	pass
 
@@ -813,6 +1023,7 @@ func _on_cart_destroyed() -> void:
 	if phase == Phase.RESULTS or phase == Phase.FAILED:
 		return
 	phase = Phase.FAILED
+	_save_playtest_record(&"failed")
 	hud.set_phase("餐车失控 · 本局结束")
 	hud.show_results("服务失败", _build_results_text())
 	get_tree().paused = true
@@ -898,18 +1109,33 @@ func _track_smoke_gate_customer_gap() -> void:
 
 
 func _build_results_text() -> String:
+	var food_lines: PackedStringArray = []
+	for food_id: StringName in state.foods:
+		food_lines.append(
+			"%s Lv.%d 贡献 %.0f" % [
+				String(food_id),
+				state.food_level(food_id),
+				state.satisfaction_by_food.get(food_id, 0.0),
+			]
+		)
+	var elite_lines: PackedStringArray = []
+	for duration: float in state.elite_durations:
+		elite_lines.append("%.1fs" % duration)
 	return (
-		"用时：%02d:%02d\n"
+		"随机种子：%d\n"
+		+ "用时：%02d:%02d\n"
 		+ "强化门：%d\n"
 		+ "取得奖励门：%d\n"
 		+ "击败敌人：%d\n"
 		+ "撞击击败：%d\n"
 		+ "受击次数：%d\n"
 		+ "耐久损失：%.0f\n"
-		+ "精英耗时：%.1fs\n"
+		+ "精英耗时：%s\n"
 		+ "Boss耗时：%.1fs\n"
+		+ "构筑：%s\n"
 		+ "剩余耐久：%.0f / %.0f"
 	) % [
+		state.run_seed,
 		floori(state.elapsed_seconds / 60.0),
 		floori(state.elapsed_seconds) % 60,
 		state.gate_choices,
@@ -918,11 +1144,81 @@ func _build_results_text() -> String:
 		state.collided_defeats,
 		state.hits_taken,
 		state.durability_lost,
-		state.elite_duration,
+		" / ".join(elite_lines),
 		state.boss_duration,
+		"；".join(food_lines),
 		state.current_durability,
 		state.maximum_durability,
 	]
+
+
+func _save_playtest_record(outcome: StringName) -> void:
+	if _playtest_record_saved:
+		return
+	_playtest_record_saved = true
+	var food_levels_record: Dictionary = {}
+	var food_satisfaction_record: Dictionary = {}
+	for food_id: StringName in state.foods:
+		food_levels_record[String(food_id)] = state.food_level(food_id)
+		food_satisfaction_record[String(food_id)] = state.satisfaction_by_food.get(food_id, 0.0)
+	var record: Dictionary = {
+		"schema": "xiaochuxi.playtest_run.v1",
+		"seed": state.run_seed,
+		"outcome": String(outcome),
+		"elapsed_seconds": state.elapsed_seconds,
+		"food_levels": food_levels_record,
+		"food_evolutions": _string_name_array_to_strings(state.food_evolutions),
+		"special_choices": state.special_choice_records_as_array(),
+		"common_gate_choices": state.gate_choices,
+		"reward_gate_choices": state.dropped_upgrades,
+		"satisfaction_by_food": food_satisfaction_record,
+		"elite_durations": state.elite_durations,
+		"boss_duration": state.boss_duration,
+		"durability_lost": state.durability_lost,
+		"hits_taken": state.hits_taken,
+		"normal_defeats": state.normal_defeats,
+		"collided_defeats": state.collided_defeats,
+		"post_boss_performance": _build_post_boss_performance_record(),
+	}
+	var file: FileAccess
+	if FileAccess.file_exists(PLAYTEST_RECORD_PATH):
+		file = FileAccess.open(PLAYTEST_RECORD_PATH, FileAccess.READ_WRITE)
+		if file != null:
+			file.seek_end()
+	else:
+		file = FileAccess.open(PLAYTEST_RECORD_PATH, FileAccess.WRITE)
+	if file == null:
+		push_error("PLAYTEST_RECORD_SAVE_FAILED error=%d" % FileAccess.get_open_error())
+		return
+	file.store_line(JSON.stringify(record))
+	file.close()
+	print("PLAYTEST_RECORD_SAVED path=%s seed=%d" % [PLAYTEST_RECORD_PATH, state.run_seed])
+
+
+func _build_post_boss_performance_record() -> Dictionary:
+	var satisfaction_delta: Dictionary = {}
+	for food_id: StringName in state.foods:
+		satisfaction_delta[String(food_id)] = (
+			state.satisfaction_by_food.get(food_id, 0.0)
+			- _post_boss_satisfaction_start.get(food_id, 0.0)
+		)
+	var boss_reward: String = ""
+	if not state.special_choice_records.is_empty():
+		boss_reward = String(state.special_choice_records.back().selected)
+	return {
+		"reward": boss_reward,
+		"duration_seconds": maxf(0.0, state.elapsed_seconds - _post_boss_started_at),
+		"common_gates_collected": maxi(0, state.gate_choices - _post_boss_gate_choices_start),
+		"durability_lost": maxf(0.0, state.durability_lost - _post_boss_durability_lost_start),
+		"satisfaction_by_food": satisfaction_delta,
+	}
+
+
+func _string_name_array_to_strings(values: Array[StringName]) -> Array[String]:
+	var result: Array[String] = []
+	for value: StringName in values:
+		result.append(String(value))
+	return result
 
 
 func _build_prototype_upgrades() -> void:
@@ -982,13 +1278,12 @@ func _roll_customer_reward() -> UpgradeData:
 	return _roll_gate_upgrade(template)
 
 
-# 从当前仍有效的特殊池随机抽出三个不同选项，避免一次性奖励重复占位。
+# 从当前有效池完全随机抽出三个不同选项；不做新食材或进化保底。
 func _roll_special_choices() -> Array[StringName]:
-	var available: Array[StringName] = _special_choice_pool.duplicate()
-	if state.has_food(&"baguette"):
-		available.erase(&"baguette")
-	if state.is_food_target_aimed(&"potato"):
-		available.erase(&"potato_aim")
+	var available: Array[StringName] = []
+	for choice_id: StringName in _special_choice_pool:
+		if _special_choice_is_valid(choice_id):
+			available.append(choice_id)
 	var choices: Array[StringName] = []
 	var choice_count: int = mini(3, available.size())
 	while choices.size() < choice_count:
@@ -996,6 +1291,27 @@ func _roll_special_choices() -> Array[StringName]:
 		choices.append(available[index])
 		available.remove_at(index)
 	return choices
+
+
+func _special_choice_is_valid(choice_id: StringName) -> bool:
+	match choice_id:
+		&"potato", &"baguette", &"mushroom":
+			return state.food_level(choice_id) < RunState.FOOD_MAX_LEVEL
+		&"potato_aim":
+			return state.has_food(&"potato") and not state.is_food_target_aimed(&"potato")
+		&"baguette_sweep":
+			return (
+				state.has_food(&"baguette")
+				and not state.has_food_evolution(&"baguette_sweep")
+			)
+		&"mushroom_breath":
+			return (
+				state.has_food(&"mushroom")
+				and not state.has_food_evolution(&"mushroom_breath")
+			)
+		&"serving", &"soy_sauce":
+			return true
+	return false
 
 
 func _current_baseline_appetite() -> float:
@@ -1046,3 +1362,12 @@ func _timeline_event_lead_seconds(event_id: StringName) -> float:
 func _scheduled_baseline_appetite(event_id: StringName) -> float:
 	return _baseline_appetite_at(state.elapsed_seconds + _timeline_event_lead_seconds(event_id))
 
+
+func _requested_run_seed() -> int:
+	for argument: String in OS.get_cmdline_user_args():
+		if not argument.begins_with("--run-seed="):
+			continue
+		var value: String = argument.trim_prefix("--run-seed=")
+		if value.is_valid_int():
+			return maxi(0, value.to_int())
+	return -1

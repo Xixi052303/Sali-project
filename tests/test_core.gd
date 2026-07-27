@@ -9,6 +9,7 @@ func _init() -> void:
 	_test_3d_plane_rules()
 	_test_3d_background_and_hud()
 	_test_projectile_miss_disappear()
+	_test_projectile_evolutions()
 	_test_run_state()
 	_test_weapon_fires_without_target()
 	_test_upgrade_gate()
@@ -224,14 +225,117 @@ func _test_projectile_miss_disappear() -> void:
 	projectile.free()
 
 
+func _test_projectile_evolutions() -> void:
+	var projectile_scene: PackedScene = load("res://scenes/projectile_3d.tscn") as PackedScene
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var run: RunController3D = RunController3D.new()
+	var cart: Cart3D = cart_scene.instantiate() as Cart3D
+	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
+	run.add_child(cart)
+	run.cart = cart
+	var baguette: FoodData = load("res://data/foods/baguette.tres") as FoodData
+	var sweep: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	run.add_child(sweep)
+	sweep.configure(
+		run,
+		Vector3(3.6, 0.0, 5.0),
+		Vector3.FORWARD,
+		baguette,
+		8.0,
+		7.0,
+		0.16,
+		1.2,
+		3,
+		null,
+		false,
+		0.0,
+		true,
+		false
+	)
+	sweep.rotation.y = PI * 0.5
+	var target: Node3D = Node3D.new()
+	target.position = Vector3(5.0, 0.0, 5.0)
+	_check(sweep.overlaps_target(target.position, 0.2), "横扫法棍使用道路平面横向线段判定")
+	sweep.register_hit(target)
+	_check(not sweep.can_hit(target), "横扫法棍单个实例对同一目标最多结算一次")
+	target.free()
+	sweep.free()
+
+	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
+	var fast_projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	run.add_child(fast_projectile)
+	fast_projectile.configure(
+		run,
+		Vector3(3.6, 0.0, 10.0),
+		Vector3.FORWARD,
+		potato,
+		10.0,
+		30.0,
+		0.17,
+		2.0,
+		1,
+		null,
+		false,
+		0.0,
+		false,
+		false
+	)
+	fast_projectile._process_forward_motion(0.333)
+	_check(
+		fast_projectile.overlaps_target(Vector3(3.6, 0.0, 5.0), 0.2),
+		"高弹速投射物使用上一位置到当前位置的连续线段防止穿透"
+	)
+	fast_projectile.free()
+
+	var mushroom: FoodData = load("res://data/foods/mushroom.tres") as FoodData
+	var orbit: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	run.add_child(orbit)
+	orbit.configure(
+		run,
+		cart.position,
+		Vector3.FORWARD,
+		mushroom,
+		7.0,
+		mushroom.orbit_angular_speed,
+		0.22,
+		mushroom.base_lifetime,
+		1,
+		null,
+		false,
+		0.0,
+		false,
+		true
+	)
+	orbit._process_orbit(0.0)
+	var inner_radius: float = orbit.position.distance_to(cart.position)
+	orbit._lifetime_remaining = orbit._initial_lifetime - mushroom.breathing_period * 0.5
+	orbit._process_orbit(0.0)
+	var outer_radius: float = orbit.position.distance_to(cart.position)
+	_check(is_equal_approx(inner_radius, 1.2), "呼吸蘑菇从基础环绕半径开始")
+	_check(is_equal_approx(outer_radius, 2.4), "呼吸蘑菇半周期扩到两倍环绕半径")
+	run.free()
+
+
 func _test_run_state() -> void:
 	var state: RunState = RunState.new()
 	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
+	state.add_food(&"potato")
+	_check(state.food_level(&"potato") == 1, "首次取得食材时登记为Lv.1")
 	var sugar: UpgradeData = UpgradeData.new()
 	sugar.kind = UpgradeData.Kind.SUGAR
 	sugar.value = 0.2
 	state.apply_upgrade(sugar)
 	_check(is_equal_approx(state.effective_satisfaction(potato), 12.0), "满足值按基础值加算")
+	state.level_food(&"potato")
+	_check(
+		is_equal_approx(state.effective_satisfaction(potato), 18.0),
+		"食材Lv.2的1.5倍自身倍率与全局倍率相乘"
+	)
+	state.level_food(&"potato")
+	_check(state.food_level(&"potato") == 3, "食材等级最高为Lv.3")
+	_check(not state.can_level_food(&"potato"), "满级食材不再进入升级候选")
+	state.enable_food_evolution(&"potato_aim")
+	_check(state.has_food_evolution(&"potato_aim"), "签名进化状态可独立记录")
 
 	var quick_prep: UpgradeData = UpgradeData.new()
 	quick_prep.kind = UpgradeData.Kind.QUICK_PREP
@@ -436,7 +540,24 @@ func _test_customer_reward_randomness() -> void:
 	run._upgrade_rng.seed = 1701
 	var special_choices: Array[StringName] = run._roll_special_choices()
 	_check(special_choices.size() == 3, "特殊奖励池每次提供三个不同候选")
+	_check(
+		special_choices[0] != special_choices[1]
+		and special_choices[0] != special_choices[2]
+		and special_choices[1] != special_choices[2],
+		"特殊奖励同一次三选一不重复"
+	)
+	for choice_id: StringName in special_choices:
+		_check(run._special_choice_is_valid(choice_id), "未持有进化不会混入有效候选")
+	_check(run._special_choice_pool.size() == 8, "特殊奖励池包含三食材、三进化与两项全局牌")
 	_check(run._special_choice_pool.has(&"soy_sauce"), "酱油已进入特殊奖励候选池")
+	_check(not run._special_choice_is_valid(&"mushroom_breath"), "蘑菇进化在取得蘑菇前无效")
+	run.state.add_food(&"mushroom")
+	_check(run._special_choice_is_valid(&"mushroom_breath"), "取得蘑菇后呼吸扩圈进入有效池")
+	run.state.enable_food_evolution(&"mushroom_breath")
+	_check(not run._special_choice_is_valid(&"mushroom_breath"), "已取得进化会移出有效池")
+	run.state.level_food(&"mushroom")
+	run.state.level_food(&"mushroom")
+	_check(not run._special_choice_is_valid(&"mushroom"), "满级食材卡会移出有效池")
 	run.free()
 
 
@@ -473,12 +594,16 @@ func _test_timeline() -> void:
 		"基准胃口曲线使用 Excel 增长指数"
 	)
 	var gate_count: int = 0
+	var elite_count: int = 0
 	for event_text: String in timeline.event_ids:
 		if event_text.begins_with("gate_"):
 			gate_count += 1
-	_check(gate_count == 12, "竖切片包含12道普通强化门")
-	_check(timeline.event_ids.has("elite"), "时间轴包含精英")
+		elif event_text == "elite":
+			elite_count += 1
+	_check(gate_count == 24, "构筑验证切片包含24道普通强化门")
+	_check(elite_count == 3, "时间轴包含3次精英检查")
 	_check(timeline.event_ids.has("boss"), "时间轴包含Boss")
+	_check(timeline.event_ids.find("gate_20") > timeline.event_ids.find("boss"), "Boss后保留4道复跑门")
 	var run: RunController3D = RunController3D.new()
 	run.basic_guest_data = load("res://data/customers/basic_guest.tres") as CustomerData
 	run.fast_guest_data = load("res://data/customers/fast_guest.tres") as CustomerData
@@ -491,7 +616,7 @@ func _test_timeline() -> void:
 	run.cart = scene_cart
 	_check(is_equal_approx(run._timeline_event_lead_seconds(&"gate_0"), 15.8), "编辑器餐车位置同步调整普通门提前量")
 	run.free()
-	var post_elite_gate_index: int = timeline.event_ids.find("gate_6")
+	var post_elite_gate_index: int = timeline.event_ids.find("gate_4")
 	var elite_index: int = timeline.event_ids.find("elite")
 	_check(
 		post_elite_gate_index > elite_index
@@ -508,6 +633,7 @@ func _test_timeline() -> void:
 func _test_resources() -> void:
 	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
 	var baguette: FoodData = load("res://data/foods/baguette.tres") as FoodData
+	var mushroom: FoodData = load("res://data/foods/mushroom.tres") as FoodData
 	var elite: CustomerData = load("res://data/customers/elite_guest.tres") as CustomerData
 	var boss: BossPatternData = load("res://data/bosses/prototype_boss.tres") as BossPatternData
 	_check(potato != null and is_equal_approx(potato.base_satisfaction, 10.0), "土豆基线")
@@ -515,11 +641,35 @@ func _test_resources() -> void:
 	_check(potato.initial_tracking_mode == FoodData.TrackingMode.NONE, "土豆初始为直线非追踪弹道")
 	_check(baguette != null and baguette.pierce_count == 3, "法棍穿透数")
 	_check(baguette.initial_tracking_mode == FoodData.TrackingMode.NONE, "法棍初始不追踪")
+	_check(
+		mushroom != null
+		and mushroom.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM,
+		"蘑菇使用环绕攻击类型"
+	)
+	_check(is_equal_approx(mushroom.breathing_period, 1.2), "蘑菇呼吸扩圈固定为1.2秒周期")
+	_check(is_equal_approx(mushroom.breathing_outer_multiplier, 2.0), "蘑菇呼吸扩圈外沿为两倍基础半径")
 	_check(is_equal_approx(potato.projectile_speed * potato.base_lifetime / 1280.0, 0.8), "土豆基础持续约0.8屏")
 	_check(is_equal_approx(baguette.projectile_speed * baguette.base_lifetime / 1280.0, 0.6), "法棍基础持续约0.6屏")
 	_check(elite != null and elite.occupied_regions == 6, "精英横跨六区")
 	_check(elite != null and is_equal_approx(elite.appetite_multiplier, 1.5), "精英默认使用1.5倍基准胃口")
 	_check(boss != null and is_equal_approx(boss.appetite_at(100.0), 300.0), "Boss默认使用3倍基准胃口")
+	var boss_scene: PackedScene = load("res://scenes/boss_3d.tscn") as PackedScene
+	var boss_instance: PrototypeBoss3D = boss_scene.instantiate() as PrototypeBoss3D
+	var boss_run: RunController3D = RunController3D.new()
+	var boss_cart: Cart3D = Cart3D.new()
+	boss_cart.position.z = 14.95819
+	boss_run.cart = boss_cart
+	boss_instance.configure(boss, boss_run, 100.0)
+	_check(
+		is_equal_approx(
+			boss_instance.position.z + PrototypeBoss3D.ENTRY_TRAVEL_DISTANCE,
+			boss_cart.position.z - PrototypeBoss3D.COMBAT_DISTANCE_FROM_CART
+		),
+		"Boss战位随餐车纵坐标调整并保持基础食材可达"
+	)
+	boss_instance.free()
+	boss_cart.free()
+	boss_run.free()
 	var state: RunState = RunState.new()
 	_check(not state.is_food_target_aimed(&"potato"), "特殊强化前土豆不跟随目标角度")
 	state.enable_target_aim(&"potato")

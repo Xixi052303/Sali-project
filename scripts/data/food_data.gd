@@ -4,6 +4,7 @@ extends Resource
 enum AttackKind {
 	PROJECTILE,
 	PIERCING_PROJECTILE,
+	ORBITING_MUSHROOM,
 }
 
 enum TrackingMode {
@@ -29,6 +30,11 @@ enum AimMode {
 @export var base_lifetime: float = 1.6
 @export var pierce_count: int = 1
 @export var visual_color: Color = Color("#e2b650")
+@export_group("Orbiting attack")
+@export var orbit_radius: float = 120.0
+@export var orbit_angular_speed: float = 3.2
+@export var breathing_period: float = 1.2
+@export var breathing_outer_multiplier: float = 2.0
 
 
 func _init() -> void:

@@ -20,6 +20,15 @@ roughness = 0.9
 resource_local_to_scene = true
 size = Vector3(0.24, 0.18, 0.8)
 
+[sub_resource type="StandardMaterial3D" id="MatMushroom"]
+resource_local_to_scene = true
+albedo_color = Color(0.454902, 0.658824, 0.309804, 1)
+roughness = 0.95
+
+[sub_resource type="SphereMesh" id="MeshMushroom"]
+radius = 0.5
+height = 0.72
+
 [node name="FoodProjectile3D" type="Node3D"]
 script = ExtResource("1_script")
 
@@ -35,3 +44,9 @@ unique_name_in_owner = true
 position = Vector3(0, 0.82, 0)
 material_override = SubResource("MatBaguette")
 mesh = SubResource("MeshBaguette")
+
+[node name="MushroomVisual" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 0.82, 0)
+material_override = SubResource("MatMushroom")
+mesh = SubResource("MeshMushroom")

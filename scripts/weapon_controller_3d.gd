@@ -45,6 +45,8 @@ func _tick_food(runtime: FoodRuntime, delta: float) -> void:
 func _fire(food: FoodData, target: Node3D) -> void:
 	var amount: float = state.effective_satisfaction(food)
 	var speed: float = Playfield.design_to_world(state.effective_projectile_speed(food))
+	if food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
+		speed = state.effective_orbit_angular_speed(food)
 	var radius: float = Playfield.design_to_world(state.effective_projectile_radius(food))
 	var count: int = maxi(1, state.servings)
 	var base_direction: Vector3 = Vector3.FORWARD
@@ -61,4 +63,14 @@ func _fire(food: FoodData, target: Node3D) -> void:
 		var direction: Vector3 = base_direction
 		var spread: float = (float(index) - float(count - 1) * 0.5) * 0.075
 		direction = direction.rotated(Vector3.UP, spread)
-		run.spawn_projectile(cart_position + Vector3(0.0, 0.0, -1.35), direction, food, amount, speed, radius, target)
+		var orbit_phase: float = TAU * float(index) / float(count)
+		run.spawn_projectile(
+			cart_position + Vector3(0.0, 0.0, -1.35),
+			direction,
+			food,
+			amount,
+			speed,
+			radius,
+			target,
+			orbit_phase
+		)

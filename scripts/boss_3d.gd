@@ -13,6 +13,9 @@ enum State {
 	DONE,
 }
 
+const COMBAT_DISTANCE_FROM_CART: float = 8.0
+const ENTRY_TRAVEL_DISTANCE: float = 4.2
+
 var data: BossPatternData
 var run: RunController3D
 var remaining_appetite: float = 0.0
@@ -24,6 +27,7 @@ var _state_time: float = 0.0
 var _attack_index: int = 0
 var _locked_target_x: float = 3.6
 var _direction: float = 1.0
+var _combat_z: float = 3.0
 @onready var _body_mesh: MeshInstance3D = %Body
 @onready var _head_mesh: MeshInstance3D = %Head
 @onready var _appetite_label: Label3D = %AppetiteLabel
@@ -40,7 +44,9 @@ func configure(source_data: BossPatternData, run_controller: RunController3D, ba
 	run = run_controller
 	maximum_appetite = data.appetite_at(baseline_appetite)
 	remaining_appetite = maximum_appetite
-	position = Vector3(3.6, 0.0, -1.2)
+	# 战位跟随编辑器中的餐车纵坐标，确保当前土豆与法棍基础射程都能参与满足。
+	_combat_z = run.cart_destination_z() - COMBAT_DISTANCE_FROM_CART
+	position = Vector3(3.6, 0.0, _combat_z - ENTRY_TRAVEL_DISTANCE)
 	active = true
 	_state = State.ENTER
 	_state_time = 0.0
@@ -54,8 +60,8 @@ func _process(delta: float) -> void:
 	_state_time += delta
 	match _state:
 		State.ENTER:
-			position.z = move_toward(position.z, 3.0, 3.0 * delta)
-			if position.z >= 2.99:
+			position.z = move_toward(position.z, _combat_z, 3.0 * delta)
+			if position.z >= _combat_z - 0.01:
 				_change_state(State.MOVE)
 		State.MOVE:
 			position.x += _direction * Playfield.design_to_world(data.move_speed) * delta
