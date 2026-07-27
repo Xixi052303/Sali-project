@@ -162,13 +162,13 @@ func _test_3d_plane_rules() -> void:
 	var reward_health_label: Label3D = reward_gate.get_node("HealthLabel") as Label3D
 	var reward_health_back: MeshInstance3D = reward_gate.get_node("HealthBack") as MeshInstance3D
 	var reward_health_fill: MeshInstance3D = reward_gate.get_node("HealthFill") as MeshInstance3D
-	_check(reward_health_label.text.to_int() == ceili(reward_gate.upgrade_health), "3D食客奖励门显示唯一可攻击血量")
-	_check(not reward_health_back.visible and not reward_health_fill.visible, "3D食客奖励门不显示血量进度条")
-	_check(reward_health_label.font_size >= 64, "3D食客奖励门使用显眼数字显示血量")
+	_check(not reward_health_label.visible, "3D食客奖励门隐藏全部升值血量数字")
+	_check(not reward_health_back.visible and not reward_health_fill.visible, "3D食客奖励门隐藏全部升值血量纸条")
 	var reward_panel: MeshInstance3D = reward_gate.get_node("Panel") as MeshInstance3D
 	var reward_material: StandardMaterial3D = reward_panel.material_override as StandardMaterial3D
 	var reward_color_before: Color = reward_material.albedo_color
 	reward_gate.receive_damage(50.0)
+	_check(not reward_health_label.visible, "3D食客奖励门受击升值后仍不显示血量")
 	_check(not reward_material.albedo_color.is_equal_approx(reward_color_before), "3D食客奖励门升值跨稀有度后实时换色")
 	reward_gate.free()
 	run.free()
