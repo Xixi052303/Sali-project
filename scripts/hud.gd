@@ -10,11 +10,11 @@ const PANEL: Color = Color(0.12, 0.1, 0.08, 0.88)
 
 var _root: Control
 var _safe_margin: MarginContainer
+var _durability_panel: PanelContainer
 var _durability_bar: ProgressBar
 var _durability_label: Label
 var _phase_label: Label
 var _time_label: Label
-var _food_label: Label
 var _toast_label: Label
 var _debug_label: Label
 var _choice_overlay: ColorRect
@@ -45,20 +45,6 @@ func set_phase(text: String) -> void:
 func set_time(seconds: float) -> void:
 	var total: int = maxi(0, floori(seconds))
 	_time_label.text = "%02d:%02d" % [floori(float(total) / 60.0), total % 60]
-
-
-func set_inventory(state: RunState) -> void:
-	var names: PackedStringArray = PackedStringArray()
-	for food_id: StringName in state.foods:
-		names.append("土豆" if food_id == &"potato" else "法棍")
-	var extra: String = ""
-	if state.servings > 1:
-		extra += "  加量×%d" % state.servings
-	if state.is_food_target_aimed(&"potato"):
-		extra += "  土豆瞄准"
-	if state.pierce_bonus > 0:
-		extra += "  穿透+%d" % state.pierce_bonus
-	_food_label.text = "食材  %s%s" % [" · ".join(names), extra]
 
 
 func set_debug_text(text: String) -> void:
@@ -124,12 +110,16 @@ func _build_interface() -> void:
 	_time_label.custom_minimum_size.x = 120.0
 	header.add_child(_time_label)
 
-	var durability_panel: PanelContainer = PanelContainer.new()
-	durability_panel.add_theme_stylebox_override(&"panel", _make_panel_style(Color("#4e372d"), Color("#d6ae55"), 4))
-	layout.add_child(durability_panel)
+	_durability_panel = PanelContainer.new()
+	_durability_panel.anchor_right = 1.0
+	_durability_panel.anchor_top = 1.0
+	_durability_panel.anchor_bottom = 1.0
+	_durability_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_durability_panel.add_theme_stylebox_override(&"panel", _make_panel_style(Color("#4e372d"), Color("#d6ae55"), 4))
+	_root.add_child(_durability_panel)
 	var durability_stack: VBoxContainer = VBoxContainer.new()
 	durability_stack.add_theme_constant_override(&"separation", 1)
-	durability_panel.add_child(durability_stack)
+	_durability_panel.add_child(durability_stack)
 	_durability_label = _make_label("餐车耐久  100 / 100", 20, Color.WHITE)
 	durability_label_margins(_durability_label)
 	durability_stack.add_child(_durability_label)
@@ -139,13 +129,6 @@ func _build_interface() -> void:
 	_durability_bar.add_theme_stylebox_override(&"background", _make_panel_style(Color("#201c18"), INK, 0))
 	_durability_bar.add_theme_stylebox_override(&"fill", _make_panel_style(Color("#d06a3f"), Color("#d06a3f"), 0))
 	durability_stack.add_child(_durability_bar)
-
-	_food_label = _make_label("食材  土豆", 20, PAPER)
-	_food_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_food_label.position = Vector2(30.0, 1194.0)
-	_food_label.size = Vector2(660.0, 44.0)
-	_food_label.add_theme_stylebox_override(&"normal", _make_panel_style(Color(0.08, 0.07, 0.06, 0.76), INK, 3))
-	_root.add_child(_food_label)
 
 	_toast_label = _make_label("", 28, Color("#f2d47b"))
 	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -159,8 +142,10 @@ func _build_interface() -> void:
 	_debug_label = _make_label("", 15, Color(0.95, 0.9, 0.75, 0.78))
 	_debug_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_debug_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	_debug_label.position = Vector2(390.0, 1110.0)
-	_debug_label.size = Vector2(300.0, 60.0)
+	_debug_label.anchor_left = 1.0
+	_debug_label.anchor_right = 1.0
+	_debug_label.anchor_top = 1.0
+	_debug_label.anchor_bottom = 1.0
 	_root.add_child(_debug_label)
 
 	_build_choice_overlay()
@@ -286,6 +271,14 @@ func _apply_safe_area() -> void:
 	_safe_margin.add_theme_constant_override(&"margin_bottom", bottom_margin)
 	_safe_margin.add_theme_constant_override(&"margin_left", 24)
 	_safe_margin.add_theme_constant_override(&"margin_right", 24)
+	_durability_panel.offset_left = 24.0
+	_durability_panel.offset_right = -24.0
+	_durability_panel.offset_top = -float(bottom_margin) - 82.0
+	_durability_panel.offset_bottom = -float(bottom_margin)
+	_debug_label.offset_left = -330.0
+	_debug_label.offset_right = -30.0
+	_debug_label.offset_top = -float(bottom_margin) - 150.0
+	_debug_label.offset_bottom = -float(bottom_margin) - 92.0
 
 
 func _on_choice_pressed(choice_id: StringName) -> void:

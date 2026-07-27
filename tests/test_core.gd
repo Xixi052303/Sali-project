@@ -7,6 +7,7 @@ func _init() -> void:
 	_test_playfield()
 	_test_customer_cart_collision()
 	_test_3d_plane_rules()
+	_test_3d_background_and_hud()
 	_test_run_state()
 	_test_weapon_fires_without_target()
 	_test_upgrade_gate()
@@ -44,17 +45,19 @@ func _test_playfield() -> void:
 func _test_customer_cart_collision() -> void:
 	var field: Playfield = Playfield.new()
 	var state: RunState = RunState.new()
-	var cart: Cart = Cart.new()
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var customer_scene: PackedScene = load("res://scenes/customer_3d.tscn") as PackedScene
+	var cart: Cart3D = cart_scene.instantiate() as Cart3D
 	cart.configure(state, field)
 	var basic_data: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
-	var customer: Customer = Customer.new()
+	var customer: Customer3D = customer_scene.instantiate() as Customer3D
 	customer.configure(basic_data, null, 1, 32.0)
-	customer.position = Vector2(160.0, 900.0)
-	_check(not customer.collision_rect().intersects(cart.collision_rect()), "食客纵向到达餐车但横向绕开时不算碰撞")
-	customer.position = Vector2(360.0, 900.0)
-	_check(customer.collision_rect().intersects(cart.collision_rect()), "食客与餐车绘制范围相交时算碰撞")
-	customer.position = Vector2(160.0, Playfield.CUSTOMER_DESPAWN_Y)
-	_check(not customer.collision_rect().intersects(cart.collision_rect()), "绕开的食客到达屏幕底部时不算碰撞")
+	customer.position = Vector3(160.0, 0.0, 900.0)
+	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "食客纵向到达餐车但横向绕开时不算碰撞")
+	customer.position = Vector3(360.0, 0.0, 900.0)
+	_check(customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "食客与餐车主体范围相交时算碰撞")
+	customer.position = Vector3(160.0, 0.0, Playfield.CUSTOMER_DESPAWN_Z)
+	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "绕开的食客到达道路后方时不算碰撞")
 	customer.free()
 	cart.free()
 	field.free()
@@ -75,7 +78,8 @@ func _test_3d_plane_rules() -> void:
 	var cart: Cart3D = cart_scene.instantiate() as Cart3D
 	cart.configure(state, field)
 	_check(is_equal_approx(cart.position.x, 360.0), "3D餐车沿用逻辑横坐标")
-	_check(is_equal_approx(cart.position.z, Playfield.CART_Y), "3D餐车把前进坐标放在Z轴")
+	_check(is_equal_approx(cart.position.z, Playfield.CART_Z), "3D餐车把前进坐标放在Z轴")
+	_check(Playfield.FORWARD_SPAWN_Z <= -3200.0, "前方生成点覆盖四段道路可见距离")
 	var basic_data: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
 	var customer: Customer3D = customer_scene.instantiate() as Customer3D
 	customer.configure(basic_data, null, 1, 32.0)
@@ -140,6 +144,26 @@ func _test_3d_plane_rules() -> void:
 	run.free()
 	customer.free()
 	field.free()
+
+
+# 背景资源保持节点化装配，街景裁剪和尺寸都能直接在编辑器检查器中调整。
+func _test_3d_background_and_hud() -> void:
+	var background_scene: PackedScene = load("res://scenes/world_background_3d.tscn") as PackedScene
+	var background: WorldBackground3D = background_scene.instantiate() as WorldBackground3D
+	for index: int in range(6):
+		_check(background.get_node_or_null("RoadTile%d" % index) != null, "道路包含第%d个循环路块" % index)
+	var street_props: Node3D = background.get_node("StreetProps") as Node3D
+	_check(street_props.get_child_count() == 6, "街景面片集中在可编辑节点组")
+	for child: Node in street_props.get_children():
+		var prop: Sprite3D = child as Sprite3D
+		_check(prop != null and prop.region_enabled and prop.region_rect.size.x > 0.0, "%s使用节点自身裁剪区域" % child.name)
+	background.free()
+
+	var hud: GameHud = GameHud.new()
+	hud._build_interface()
+	_check(hud._durability_panel.anchor_top == 1.0, "餐车耐久固定在屏幕下方")
+	_check(hud._durability_panel.get_parent() == hud._root, "耐久条不再占用顶部信息布局")
+	hud.free()
 
 
 func _test_run_state() -> void:
@@ -220,14 +244,15 @@ func _test_run_state() -> void:
 
 
 func _test_weapon_fires_without_target() -> void:
-	var run: RunController = RunController.new()
+	var run: RunController3D = RunController3D.new()
 	var state: RunState = RunState.new()
 	var field: Playfield = Playfield.new()
-	var cart: Cart = Cart.new()
-	var projectiles: Node2D = Node2D.new()
-	var gates: Node2D = Node2D.new()
-	var drops: Node2D = Node2D.new()
-	var weapon: WeaponController = WeaponController.new()
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var cart: Cart3D = cart_scene.instantiate() as Cart3D
+	var projectiles: Node3D = Node3D.new()
+	var gates: Node3D = Node3D.new()
+	var drops: Node3D = Node3D.new()
+	var weapon: WeaponController3D = WeaponController3D.new()
 	run.state = state
 	run.playfield = field
 	run.cart = cart
@@ -256,8 +281,10 @@ func _test_upgrade_gate() -> void:
 	var right: UpgradeData = UpgradeData.new()
 	right.kind = UpgradeData.Kind.WINE
 	right.configure_value_range(0.10, 0.50, 0.80)
-	var gate: UpgradeGate = UpgradeGate.new()
+	var gate_scene: PackedScene = load("res://scenes/upgrade_gate_3d.tscn") as PackedScene
+	var gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
 	gate.configure(null, left, right, false, 100.0, 1)
+	_check(is_equal_approx(gate.position.z, Playfield.FORWARD_SPAWN_Z), "普通门从四段道路的远端生成")
 	_check(is_equal_approx(gate.left_base_health, 134.0), "左门基础血量按1加百分位乘基准胃口")
 	_check(is_equal_approx(gate.right_base_health, 180.0), "稀有门拥有更高基础血量与撞门风险")
 	_check(is_equal_approx(gate.left_upgrade_health, 66.0), "34%门的隐藏升值血量为基准胃口的66%")
@@ -277,7 +304,7 @@ func _test_upgrade_gate() -> void:
 	_check(gate.selected_base_health_for_x(360.0) == gate.right_base_health, "中心点只结算右门碰撞损伤")
 	gate.free()
 
-	var start_gate: UpgradeGate = UpgradeGate.new()
+	var start_gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
 	start_gate.configure(null, left, right, true, 100.0, 2)
 	_check(not start_gate.side_is_attackable(true), "开局食材门不可攻击")
 	_check(start_gate.target_for_cart_x(200.0) == null, "开局食材门不进入自动目标池")
@@ -292,8 +319,9 @@ func _test_customer_reward_gate() -> void:
 	var elite: CustomerData = load("res://data/customers/elite_guest.tres") as CustomerData
 	_check(is_equal_approx(basic.appetite_at(100.0, 0.34), 134.0), "普通食客胃口按奖励百分位提高")
 	_check(is_equal_approx(elite.appetite_at(32.0), 48.0), "精英只使用1.5倍基准且不参与随机稀有度")
-	var reward_gate: UpgradeDrop = UpgradeDrop.new()
-	reward_gate.configure(null, reward, Vector2(160.0, 400.0), 100.0, 2, 3)
+	var reward_scene: PackedScene = load("res://scenes/upgrade_drop_3d.tscn") as PackedScene
+	var reward_gate: UpgradeDrop3D = reward_scene.instantiate() as UpgradeDrop3D
+	reward_gate.configure(null, reward, Vector3(160.0, 0.0, 400.0), 100.0, 2, 3)
 	_check(is_equal_approx(reward_gate.upgrade_health, 66.0), "食客奖励门没有基础层并按百分位建立升值血量")
 	_check(reward_gate.contains_cart_x(160.0), "餐车经过食客原占地区域可以领取奖励门")
 	_check(not reward_gate.contains_cart_x(360.0), "餐车绕开奖励门时不能领取")
@@ -303,36 +331,38 @@ func _test_customer_reward_gate() -> void:
 
 
 func _test_reward_gate_spacing() -> void:
-	var run: RunController = RunController.new()
+	var run: RunController3D = RunController3D.new()
 	var field: Playfield = Playfield.new()
-	var gates: Node2D = Node2D.new()
-	var drops: Node2D = Node2D.new()
+	var gates: Node3D = Node3D.new()
+	var drops: Node3D = Node3D.new()
 	run.playfield = field
 	run.gates = gates
 	run.drops = drops
 	run.add_child(field)
 	run.add_child(gates)
 	run.add_child(drops)
-	var gate: UpgradeGate = UpgradeGate.new()
-	gate.position.y = 400.0
+	var gate_scene: PackedScene = load("res://scenes/upgrade_gate_3d.tscn") as PackedScene
+	var reward_scene: PackedScene = load("res://scenes/upgrade_drop_3d.tscn") as PackedScene
+	var gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
+	gate.position.z = 400.0
 	gates.add_child(gate)
-	var existing_drop: UpgradeDrop = UpgradeDrop.new()
-	existing_drop.position.y = 650.0
+	var existing_drop: UpgradeDrop3D = reward_scene.instantiate() as UpgradeDrop3D
+	existing_drop.position.z = 650.0
 	drops.add_child(existing_drop)
-	var safe_y: float = run._find_reward_gate_spawn_y(500.0)
+	var safe_z: float = run._find_reward_gate_spawn_z(500.0)
 	_check(
-		field.forward_paths_are_separated(safe_y, 250.0, gate.position.y, gate.travel_speed()),
+		field.forward_paths_are_separated(safe_z, 250.0, gate.position.z, gate.travel_speed()),
 		"新奖励门不会与原普通门重叠或追尾"
 	)
 	_check(
-		field.forward_paths_are_separated(safe_y, 250.0, existing_drop.position.y, existing_drop.travel_speed()),
+		field.forward_paths_are_separated(safe_z, 250.0, existing_drop.position.z, existing_drop.travel_speed()),
 		"食客奖励门之间不会重叠或追尾"
 	)
 	run.free()
 
 
 func _test_customer_reward_randomness() -> void:
-	var run: RunController = RunController.new()
+	var run: RunController3D = RunController3D.new()
 	run._build_drop_upgrades()
 	var first_kinds: Dictionary = {}
 	for seed_value: int in range(1, 17):

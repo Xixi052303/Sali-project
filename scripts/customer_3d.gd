@@ -63,7 +63,7 @@ func _process(delta: float) -> void:
 	if run.customer_collides_with_cart(self):
 		active = false
 		collided_with_cart.emit(self)
-	elif position.z >= Playfield.CUSTOMER_DESPAWN_Y:
+	elif position.z >= Playfield.CUSTOMER_DESPAWN_Z:
 		active = false
 		escaped.emit(self)
 

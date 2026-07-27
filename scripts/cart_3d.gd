@@ -21,7 +21,7 @@ var _upgrade_tween: Tween
 func configure(run_state: RunState, field: Playfield) -> void:
 	state = run_state
 	playfield = field
-	position = Vector3(360.0, 0.0, Playfield.CART_Y)
+	position = Vector3(360.0, 0.0, Playfield.CART_Z)
 	target_x = position.x
 
 

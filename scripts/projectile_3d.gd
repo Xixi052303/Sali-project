@@ -67,7 +67,7 @@ func _process(delta: float) -> void:
 	position += velocity * delta
 	rotation.y = atan2(velocity.x, -velocity.z)
 	run.resolve_projectile_hits(self)
-	if position.z < Playfield.PROJECTILE_TOP_BOUNDARY or position.z > 1450.0 or position.x < -120.0 or position.x > 840.0:
+	if position.z < Playfield.PROJECTILE_FORWARD_BOUNDARY_Z or position.z > 1450.0 or position.x < -120.0 or position.x > 840.0:
 		queue_free()
 
 

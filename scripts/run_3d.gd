@@ -104,11 +104,9 @@ func _ready() -> void:
 	cart.damaged.connect(_on_cart_damaged)
 	cart.destroyed.connect(_on_cart_destroyed)
 	state.durability_changed.connect(hud.set_durability)
-	state.inventory_changed.connect(_refresh_inventory)
 	hud.special_choice_selected.connect(_on_special_choice_selected)
 	hud.restart_requested.connect(_on_restart_requested)
 	hud.set_durability(state.current_durability, state.maximum_durability)
-	hud.set_inventory(state)
 	hud.set_phase("准备出餐 · 横向拖动餐车")
 	hud.show_toast("按住并横向拖动，松手后餐车留在原位")
 	phase = Phase.FORWARD
@@ -390,33 +388,33 @@ func _process_spawn_requests() -> void:
 
 # 对候选对象与全部活动前进对象做匀速路径预测，追尾风险解除后才生成。
 func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
-	var candidate_y: float = 0.0
-	var candidate_speed: float = 250.0
+	var candidate_z: float = 0.0 if request.start_food_gate else Playfield.FORWARD_SPAWN_Z
+	var candidate_speed: float = 500.0 if request.kind == ForwardSpawnRequest.Kind.GATE else 250.0
 	if request.kind == ForwardSpawnRequest.Kind.CUSTOMER:
 		if request.customer_data == null:
 			return false
-		candidate_y = Playfield.CUSTOMER_SPAWN_Y
+		candidate_z = Playfield.FORWARD_SPAWN_Z
 		candidate_speed = world_scroll_speed + request.customer_data.move_speed
 	elif request.kind == ForwardSpawnRequest.Kind.ELITE:
-		candidate_y = Playfield.CUSTOMER_SPAWN_Y
+		candidate_z = Playfield.FORWARD_SPAWN_Z
 		candidate_speed = world_scroll_speed + elite_guest_data.move_speed
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active:
 			continue
-		if not playfield.forward_paths_are_separated(candidate_y, candidate_speed, customer.position.z, customer.travel_speed()):
+		if not playfield.forward_paths_are_separated(candidate_z, candidate_speed, customer.position.z, customer.travel_speed()):
 			return false
 	for child: Node in gates.get_children():
 		if not child is UpgradeGate3D or child.is_queued_for_deletion():
 			continue
 		var gate: UpgradeGate3D = child as UpgradeGate3D
-		if not playfield.forward_paths_are_separated(candidate_y, candidate_speed, gate.position.z, gate.travel_speed()):
+		if not playfield.forward_paths_are_separated(candidate_z, candidate_speed, gate.position.z, gate.travel_speed()):
 			return false
 	for child: Node in drops.get_children():
 		if not child is UpgradeDrop3D or child.is_queued_for_deletion():
 			continue
 		var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
 		if not playfield.forward_paths_are_separated(
-			candidate_y,
+			candidate_z,
 			candidate_speed,
 			reward_gate.position.z,
 			reward_gate.travel_speed()
@@ -433,7 +431,7 @@ func _spawn_customer_now(customer_data: CustomerData) -> void:
 	customer.position = Vector3(
 		playfield.spawn_x(first_region, customer_data.occupied_regions),
 		0.0,
-		Playfield.CUSTOMER_SPAWN_Y
+		Playfield.FORWARD_SPAWN_Z
 	)
 	entities.add_child(customer)
 	var baseline_appetite: float = _current_baseline_appetite()
@@ -469,7 +467,7 @@ func _spawn_elite_now() -> void:
 	_elite_started_at = state.elapsed_seconds
 	_spawn_counter += 1
 	var elite: Customer3D = CUSTOMER_SCENE.instantiate() as Customer3D
-	elite.position = Vector3(360.0, 0.0, Playfield.CUSTOMER_SPAWN_Y)
+	elite.position = Vector3(360.0, 0.0, Playfield.FORWARD_SPAWN_Z)
 	entities.add_child(elite)
 	var appetite: float = elite_guest_data.appetite_at(_current_baseline_appetite())
 	elite.configure(elite_guest_data, self, _spawn_counter, appetite)
@@ -567,49 +565,49 @@ func _spawn_customer_reward_gate(
 	state.upgrade_drops_spawned += 1
 	_spawn_counter += 1
 	var drop: UpgradeDrop3D = REWARD_GATE_SCENE.instantiate() as UpgradeDrop3D
-	start_position.z = _find_reward_gate_spawn_y(start_position.z)
+	start_position.z = _find_reward_gate_spawn_z(start_position.z)
 	drops.add_child(drop)
 	drop.configure(self, upgrade, start_position, baseline_appetite, occupied_regions, _spawn_counter)
 
 
 # 奖励门优先留在食客位置；发生路径冲突时逐段前移，直到不会与现有前进对象追尾。
-func _find_reward_gate_spawn_y(preferred_y: float) -> float:
-	var candidate_y: float = preferred_y
+func _find_reward_gate_spawn_z(preferred_z: float) -> float:
+	var candidate_z: float = preferred_z
 	var attempts: int = 0
 	while attempts < 64:
-		var conflict_y: float = INF
+		var conflict_z: float = INF
 		for customer: Customer3D in customers:
 			if not is_instance_valid(customer) or not customer.active:
 				continue
 			if not playfield.forward_paths_are_separated(
-				candidate_y,
+				candidate_z,
 				250.0,
 				customer.position.z,
 				customer.travel_speed()
 			):
-				conflict_y = minf(conflict_y, customer.position.z)
+				conflict_z = minf(conflict_z, customer.position.z)
 		for child: Node in gates.get_children():
 			if not child is UpgradeGate3D or child.is_queued_for_deletion():
 				continue
 			var gate: UpgradeGate3D = child as UpgradeGate3D
-			if not playfield.forward_paths_are_separated(candidate_y, 250.0, gate.position.z, gate.travel_speed()):
-				conflict_y = minf(conflict_y, gate.position.z)
+			if not playfield.forward_paths_are_separated(candidate_z, 250.0, gate.position.z, gate.travel_speed()):
+				conflict_z = minf(conflict_z, gate.position.z)
 		for child: Node in drops.get_children():
 			if not child is UpgradeDrop3D or child.is_queued_for_deletion():
 				continue
 			var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
 			if not playfield.forward_paths_are_separated(
-				candidate_y,
+				candidate_z,
 				250.0,
 				reward_gate.position.z,
 				reward_gate.travel_speed()
 			):
-				conflict_y = minf(conflict_y, reward_gate.position.z)
-		if conflict_y == INF:
-			return candidate_y
-		candidate_y = minf(candidate_y, conflict_y) - Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE
+				conflict_z = minf(conflict_z, reward_gate.position.z)
+		if conflict_z == INF:
+			return candidate_z
+		candidate_z = minf(candidate_z, conflict_z) - Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE
 		attempts += 1
-	return candidate_y
+	return candidate_z
 
 
 func _on_customer_ranged_attack(_customer: Customer3D, amount: float) -> void:
@@ -637,7 +635,6 @@ func _on_special_choice_selected(choice_id: StringName) -> void:
 			hud.show_toast("酱油：所有食材穿透次数 +1")
 	hud.hide_special_choices()
 	hud.set_phase("继续前进 · 构筑已变化")
-	hud.set_inventory(state)
 	phase = Phase.FORWARD
 	_normal_waves_suspended = false
 	_next_normal_spawn_time = state.elapsed_seconds + 1.0
@@ -694,10 +691,6 @@ func _on_cart_destroyed() -> void:
 func _on_restart_requested() -> void:
 	get_tree().paused = false
 	get_tree().reload_current_scene()
-
-
-func _refresh_inventory() -> void:
-	hud.set_inventory(state)
 
 
 func _clear_forward_objects() -> void:

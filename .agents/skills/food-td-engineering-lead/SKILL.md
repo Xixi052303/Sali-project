@@ -18,7 +18,7 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 
 1. 完整读取项目根目录 `AGENTS.md`。
 2. 检查 Git 工作区状态，保护用户已有改动；重叠文件无法安全区分时先报告。
-3. 从 `project.godot`、`scenes/run.tscn` 或任务的直接触发点开始，沿节点引用、信号、直接调用、资源路径和状态所有权追踪实际依赖。不得只凭文件名或本 Skill 的架构摘要修改代码。
+3. 从 `project.godot`、`scenes/run_3d.tscn` 或任务的直接触发点开始，沿节点引用、信号、直接调用、资源路径和状态所有权追踪实际依赖。不得只凭文件名或本 Skill 的架构摘要修改代码。
 4. 玩法、关卡、数值、表现或跨系统规则受影响时，读取 `docs/策划案.md` 和 `docs/gdd/index.md`，再读取对应的唯一领域事实源。
 5. 精确运行数值需要核对实际加载的`balance_tables/*.xlsx`、项目适配器、`data/**/*.tres`回退、Resource类型定义和调用处；不得把GDD目标值直接声称为当前实现。
 
@@ -74,21 +74,21 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 
 - 引擎为 Godot 4.7，主要语言为静态类型 GDScript；项目采用 Mobile 渲染方式。
 - 内部设计分辨率为 `720 × 1280`，桌面调试窗口默认为 `405 × 720`，移动端锁定竖屏。
-- 启动场景为 `res://scenes/run.tscn`，当前没有 Autoload。
+- 唯一启动场景为 `res://scenes/run_3d.tscn`，旧2D场景已移除，当前没有 Autoload。
 - 当前导出目标为 Android ARM64 原型，配置见 `export_presets.cfg`。
 
 ### 核心职责
 
-- `RunController`（`scripts/run.gd`）：拥有单局阶段、运行对象集合、生成、选择、Boss 和结算的跨系统编排。
+- `RunController3D`（`scripts/run_3d.gd`）：拥有单局阶段、3D运行对象集合、生成、选择、Boss 和结算的跨系统编排。
 - `RunState`（`scripts/data/run_state.gd`）：拥有局内耐久、强化、食材、特殊能力和统计状态。
 - `Playfield`（`scripts/playfield.gd`）：定义道路边界、六个逻辑区域和餐车活动范围。
-- `EncounterDirector`与`EncounterTimeline`：按时间触发竖切片事件；`balance_tables/时间轴.xlsx`保存当前固定排程，`TimelineExcelLoader`生成运行时Resource，`data/timelines/vertical_slice.tres`负责失败回退，`RunController._advance_normal_waves()`另行补充普通食客波次。
-- `WeaponController`、`FoodRuntime` 与 `FoodProjectile`：负责武器冷却、目标获取后的发射、弹道和命中。
-- `Customer`、`PrototypeBoss` 与 `Cart`：分别负责食客、Boss 和餐车局部行为，并通过 `RunController` 协调伤害与流程。
+- `EncounterDirector`与`EncounterTimeline`：按时间触发竖切片事件；`balance_tables/时间轴.xlsx`保存当前固定排程，`TimelineExcelLoader`生成运行时Resource，`data/timelines/vertical_slice.tres`负责失败回退，`RunController3D._advance_normal_waves()`另行补充普通食客波次。
+- `WeaponController3D`、`FoodRuntime` 与 `FoodProjectile3D`：负责武器冷却、目标获取后的发射、`X/Z`弹道和命中。
+- `Customer3D`、`PrototypeBoss3D` 与 `Cart3D`：分别负责食客、Boss 和餐车局部行为，并通过 `RunController3D` 协调伤害与流程。
 - `GameHud`：负责运行界面与选择、重开信号，不拥有玩法规则。
 - `scripts/data/*.gd`定义类型化Resource；`balance_tables/时间轴.xlsx`是时间轴运行主源，`data/**/*.tres`保存食材、食客、Boss和时间轴回退参数。
 
-当前普通强化候选和部分特殊选择由 `RunController` 在运行时构建，并非全部来自 `.tres`。修改数据前必须先确认事实源位于具体 Resource、脚本构建逻辑还是 GDD。
+当前普通强化候选和部分特殊选择由 `RunController3D` 在运行时构建，并非全部来自 `.tres`。修改数据前必须先确认事实源位于具体 Resource、脚本构建逻辑还是 GDD。
 
 ### 设计与实现差异
 
@@ -103,7 +103,7 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 - 餐车耐久是唯一失败资源，受击后有 1 秒无敌；不得额外引入未获确认的生命或投诉计量。
 - 食客被满足后满意离场，不使用死亡、尸体或真实暴力反馈。
 - `RunState` 是局内可变数据的主要所有者；不得在 HUD、餐车、武器或敌人中建立第二份同义可写状态。
-- 当前 UI、角色和背景大量使用程序绘制占位表现。没有用户要求时不把它们误认作正式美术，也不顺手替换整套视觉。
+- 当前 UI、角色和背景使用可编辑的临时3D节点与少量贴图。没有用户要求时不把它们误认作正式美术，也不顺手替换整套视觉。
 - 当前只有时间轴使用`ExcelReader47`与项目适配器直接读取Excel；没有JSON导出器、资源生成器或对象池。不得照搬旧项目的数据管线，也不得为形式提前引入全局单例、生成链或池化架构。
 - 修改场景时保留现有 UID、节点唯一名称和外部资源引用；`.uid`、`.import` 和 `.godot/` 由 Godot 管理，不手工伪造或编辑。
 - Shader、粒子和后处理必须兼容 Mobile 渲染方式，并检查竖屏可读性和目标设备性能。

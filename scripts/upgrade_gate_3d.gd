@@ -10,7 +10,8 @@ var left_upgrade: UpgradeData
 var right_upgrade: UpgradeData
 var start_food_gate: bool = false
 var resolved: bool = false
-var move_speed: float = 250.0
+# 远景门需要在既有时间轴窗口内抵达，速度高于普通道路滚动但不改变横向选择规则。
+var move_speed: float = 500.0
 var spawn_index: int = 0
 var baseline_appetite: float = 1.0
 # 基础胃口负责撞门损伤并公开显示；隐藏胃口只负责基础层击破后的奖励升值。
@@ -47,7 +48,7 @@ func configure(
 	start_food_gate = is_start_gate
 	baseline_appetite = maxf(1.0, gate_baseline_appetite)
 	spawn_index = index
-	position = Vector3.ZERO
+	position = Vector3.ZERO if start_food_gate else Vector3(0.0, 0.0, Playfield.FORWARD_SPAWN_Z)
 	if not start_food_gate:
 		left_base_health = baseline_appetite * (1.0 + left_upgrade.value_ratio)
 		right_base_health = baseline_appetite * (1.0 + right_upgrade.value_ratio)
@@ -65,7 +66,7 @@ func _process(delta: float) -> void:
 		_refresh_feedback()
 	if run.is_world_scrolling():
 		position.z += move_speed * delta
-	if position.z >= Playfield.CART_Y:
+	if position.z >= Playfield.CART_Z:
 		resolved = true
 		var cart_x: float = run.cart.position.x
 		run.on_gate_selected(selected_upgrade_for_x(cart_x), start_food_gate, selected_base_health_for_x(cart_x))

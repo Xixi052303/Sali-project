@@ -7,10 +7,11 @@ const ROAD_RIGHT: float = 660.0
 const ROAD_WIDTH: float = 600.0
 const REGION_COUNT: int = 6
 const REGION_WIDTH: float = ROAD_WIDTH / float(REGION_COUNT)
-const CART_Y: float = 1050.0
-const CUSTOMER_SPAWN_Y: float = -640.0
-const CUSTOMER_DESPAWN_Y: float = 1360.0
-const PROJECTILE_TOP_BOUNDARY: float = -720.0
+const CART_Z: float = 1050.0
+# 四段前方道路从该位置延伸到餐车附近，远景对象会提前进入固定相机视野。
+const FORWARD_SPAWN_Z: float = -3200.0
+const CUSTOMER_DESPAWN_Z: float = 1360.0
+const PROJECTILE_FORWARD_BOUNDARY_Z: float = -720.0
 const FORWARD_MIN_CENTER_DISTANCE: float = 180.0
 # 生成预测额外预留一帧移动量，保证低帧率下实际距离仍不低于视觉安全线。
 const FORWARD_SPAWN_RESERVATION_DISTANCE: float = 220.0
@@ -45,8 +46,8 @@ func forward_paths_are_separated(
 ) -> bool:
 	var safe_first_speed: float = maxf(0.001, first_speed)
 	var safe_second_speed: float = maxf(0.001, second_speed)
-	var first_exit_time: float = maxf(0.0, (CART_Y - first_y) / safe_first_speed)
-	var second_exit_time: float = maxf(0.0, (CART_Y - second_y) / safe_second_speed)
+	var first_exit_time: float = maxf(0.0, (CART_Z - first_y) / safe_first_speed)
+	var second_exit_time: float = maxf(0.0, (CART_Z - second_y) / safe_second_speed)
 	var comparison_time: float = minf(first_exit_time, second_exit_time)
 	var start_delta: float = first_y - second_y
 	var relative_speed: float = safe_first_speed - safe_second_speed

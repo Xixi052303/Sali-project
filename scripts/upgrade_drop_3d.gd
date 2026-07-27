@@ -46,7 +46,7 @@ func _process(delta: float) -> void:
 		_refresh_feedback()
 	if run.is_world_scrolling():
 		position.z += move_speed * delta
-	if position.z >= Playfield.CART_Y:
+	if position.z >= Playfield.CART_Z:
 		resolved = true
 		if contains_cart_x(run.cart.position.x):
 			run.on_customer_reward_gate_collected(upgrade)

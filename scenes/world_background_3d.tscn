@@ -18,7 +18,7 @@ albedo_color = Color(0.25098, 0.345098, 0.305882, 1)
 roughness = 0.95
 
 [sub_resource type="PlaneMesh" id="MeshGround"]
-size = Vector2(2200, 5200)
+size = Vector2(2200, 8000)
 
 [sub_resource type="StandardMaterial3D" id="MatRoad"]
 albedo_texture = ExtResource("2_road")
@@ -26,30 +26,6 @@ roughness = 1.0
 
 [sub_resource type="PlaneMesh" id="MeshRoad"]
 size = Vector2(996, 1280)
-
-[sub_resource type="AtlasTexture" id="AtlasBench"]
-atlas = ExtResource("3_street")
-region = Rect2(0, 0, 610, 410)
-
-[sub_resource type="AtlasTexture" id="AtlasBin"]
-atlas = ExtResource("3_street")
-region = Rect2(600, 0, 380, 420)
-
-[sub_resource type="AtlasTexture" id="AtlasSign"]
-atlas = ExtResource("3_street")
-region = Rect2(1550, 0, 370, 440)
-
-[sub_resource type="AtlasTexture" id="AtlasPlanter"]
-atlas = ExtResource("3_street")
-region = Rect2(1900, 0, 500, 440)
-
-[sub_resource type="AtlasTexture" id="AtlasLamp"]
-atlas = ExtResource("3_street")
-region = Rect2(500, 390, 350, 610)
-
-[sub_resource type="AtlasTexture" id="AtlasPlant"]
-atlas = ExtResource("3_street")
-region = Rect2(1170, 850, 430, 470)
 
 [node name="Background" type="Node3D"]
 script = ExtResource("1_script")
@@ -61,7 +37,7 @@ current = true
 fov = 46.0
 keep_aspect = 0
 near = 0.05
-far = 60.0
+far = 90.0
 
 [node name="PaperEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("EnvironmentPaper")
@@ -73,88 +49,115 @@ light_energy = 1.2
 shadow_enabled = false
 
 [node name="GroundBacking" type="MeshInstance3D" parent="."]
-position = Vector3(360, -8, 400)
+position = Vector3(360, -8, -1280)
 material_override = SubResource("MatGround")
 mesh = SubResource("MeshGround")
 
 [node name="RoadTile0" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(360, 0, -1920)
+position = Vector3(360, 0, -4480)
 material_override = SubResource("MatRoad")
 mesh = SubResource("MeshRoad")
 
 [node name="RoadTile1" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(360, 0, -640)
+position = Vector3(360, 0, -3200)
 material_override = SubResource("MatRoad")
 mesh = SubResource("MeshRoad")
 
 [node name="RoadTile2" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(360, 0, 640)
+position = Vector3(360, 0, -1920)
 material_override = SubResource("MatRoad")
 mesh = SubResource("MeshRoad")
 
 [node name="RoadTile3" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
+position = Vector3(360, 0, -640)
+material_override = SubResource("MatRoad")
+mesh = SubResource("MeshRoad")
+
+[node name="RoadTile4" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(360, 0, 640)
+material_override = SubResource("MatRoad")
+mesh = SubResource("MeshRoad")
+
+[node name="RoadTile5" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
 position = Vector3(360, 0, 1920)
 material_override = SubResource("MatRoad")
 mesh = SubResource("MeshRoad")
 
-[node name="PropBench" type="Sprite3D" parent="."]
+[node name="StreetProps" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="PropBench" type="Sprite3D" parent="StreetProps"]
 unique_name_in_owner = true
 position = Vector3(10, 51, 1040)
-texture = SubResource("AtlasBench")
+texture = ExtResource("3_street")
+region_enabled = true
+region_rect = Rect2(0, 0, 610, 410)
 pixel_size = 0.25
 shaded = true
 alpha_cut = 1
 alpha_scissor_threshold = 0.2
 cast_shadow = 0
 
-[node name="PropBin" type="Sprite3D" parent="."]
+[node name="PropBin" type="Sprite3D" parent="StreetProps"]
 unique_name_in_owner = true
-position = Vector3(710, 52, 850)
-texture = SubResource("AtlasBin")
+position = Vector3(710, 52, 420)
+texture = ExtResource("3_street")
+region_enabled = true
+region_rect = Rect2(600, 0, 380, 420)
 pixel_size = 0.25
 shaded = true
 alpha_cut = 1
 alpha_scissor_threshold = 0.2
 cast_shadow = 0
 
-[node name="PropSign" type="Sprite3D" parent="."]
+[node name="PropSign" type="Sprite3D" parent="StreetProps"]
 unique_name_in_owner = true
-position = Vector3(8, 55, 500)
-texture = SubResource("AtlasSign")
+position = Vector3(8, 55, -420)
+texture = ExtResource("3_street")
+region_enabled = true
+region_rect = Rect2(1550, 0, 370, 440)
 pixel_size = 0.25
 shaded = true
 alpha_cut = 1
 alpha_scissor_threshold = 0.2
 cast_shadow = 0
 
-[node name="PropPlanter" type="Sprite3D" parent="."]
+[node name="PropPlanter" type="Sprite3D" parent="StreetProps"]
 unique_name_in_owner = true
-position = Vector3(712, 55, 280)
-texture = SubResource("AtlasPlanter")
+position = Vector3(712, 55, -1260)
+texture = ExtResource("3_street")
+region_enabled = true
+region_rect = Rect2(1900, 0, 500, 440)
 pixel_size = 0.25
 shaded = true
 alpha_cut = 1
 alpha_scissor_threshold = 0.2
 cast_shadow = 0
 
-[node name="PropLamp" type="Sprite3D" parent="."]
+[node name="PropLamp" type="Sprite3D" parent="StreetProps"]
 unique_name_in_owner = true
-position = Vector3(5, 76, -40)
-texture = SubResource("AtlasLamp")
+position = Vector3(5, 76, -2200)
+texture = ExtResource("3_street")
+region_enabled = true
+region_rect = Rect2(500, 390, 350, 610)
 pixel_size = 0.25
 shaded = true
 alpha_cut = 1
 alpha_scissor_threshold = 0.2
 cast_shadow = 0
 
-[node name="PropPlant" type="Sprite3D" parent="."]
+[node name="PropPlant" type="Sprite3D" parent="StreetProps"]
 unique_name_in_owner = true
-position = Vector3(715, 59, -340)
-texture = SubResource("AtlasPlant")
+position = Vector3(715, 59, -3300)
+texture = ExtResource("3_street")
+region_enabled = true
+region_rect = Rect2(1170, 850, 430, 470)
 pixel_size = 0.25
 shaded = true
 alpha_cut = 1
