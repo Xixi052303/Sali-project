@@ -47,7 +47,7 @@ class ExcelSheet:
 	func to_records(header_row: int = 1, first_data_row: int = 2) -> Array[Dictionary]:
 		var headers: Dictionary = {}
 		for column: int in range(1, max_column + 1):
-			var header: String = String(get_value(header_row, column, "")).strip_edges()
+			var header: String = str(get_value(header_row, column, "")).strip_edges()
 			if not header.is_empty():
 				headers[column] = header
 		var records: Array[Dictionary] = []
@@ -57,8 +57,8 @@ class ExcelSheet:
 			for column_value: Variant in headers.keys():
 				var column: int = int(column_value)
 				var value: Variant = get_value(row, column, "")
-				record[String(headers[column])] = value
-				if value != null and not String(value).strip_edges().is_empty():
+				record[str(headers[column])] = value
+				if value != null and not str(value).strip_edges().is_empty():
 					has_value = true
 			if has_value:
 				records.append(record)
@@ -134,7 +134,7 @@ static func _load_shared_strings(zip: ZIPReader) -> PackedStringArray:
 	while parser.read() == OK:
 		match parser.get_node_type():
 			XMLParser.NODE_ELEMENT:
-				var node_name: String = parser.get_node_name().to_lower()
+				var node_name: String = _local_name(parser.get_node_name())
 				if node_name == "si":
 					in_string_item = true
 					current_string = ""
@@ -144,7 +144,7 @@ static func _load_shared_strings(zip: ZIPReader) -> PackedStringArray:
 				if in_text:
 					current_string += parser.get_node_data()
 			XMLParser.NODE_ELEMENT_END:
-				var node_name: String = parser.get_node_name().to_lower()
+				var node_name: String = _local_name(parser.get_node_name())
 				if node_name == "t":
 					in_text = false
 				elif node_name == "si":
@@ -164,7 +164,7 @@ static func _parse_workbook_relations(zip: ZIPReader) -> Dictionary:
 	while parser.read() == OK:
 		if parser.get_node_type() != XMLParser.NODE_ELEMENT:
 			continue
-		if parser.get_node_name().to_lower() != "relationship":
+		if _local_name(parser.get_node_name()) != "relationship":
 			continue
 		var relation_type: String = _attribute(parser, "type").to_lower()
 		if not relation_type.ends_with("/worksheet"):
@@ -191,13 +191,13 @@ static func _parse_workbook(
 	while parser.read() == OK:
 		if parser.get_node_type() != XMLParser.NODE_ELEMENT:
 			continue
-		if parser.get_node_name().to_lower() != "sheet":
+		if _local_name(parser.get_node_name()) != "sheet":
 			continue
 		var sheet_name: String = _attribute(parser, "name")
 		var relation_id: String = _attribute(parser, "r:id")
 		if relation_id.is_empty():
 			relation_id = _attribute(parser, "id")
-		var sheet_path: String = String(relations.get(relation_id, ""))
+		var sheet_path: String = str(relations.get(relation_id, ""))
 		if not sheet_path.is_empty() and zip.file_exists(sheet_path):
 			workbook.sheets.append(_parse_sheet(zip, sheet_path, sheet_name, shared_strings))
 	return workbook
@@ -226,7 +226,7 @@ static func _parse_sheet(
 	while parser.read() == OK:
 		match parser.get_node_type():
 			XMLParser.NODE_ELEMENT:
-				var node_name: String = parser.get_node_name().to_lower()
+				var node_name: String = _local_name(parser.get_node_name())
 				match node_name:
 					"row":
 						current_row = _integer_attribute(parser, "r", previous_row + 1)
@@ -259,7 +259,7 @@ static func _parse_sheet(
 				elif in_formula:
 					formula_text += parser.get_node_data()
 			XMLParser.NODE_ELEMENT_END:
-				var node_name: String = parser.get_node_name().to_lower()
+				var node_name: String = _local_name(parser.get_node_name())
 				match node_name:
 					"v":
 						in_value = false
@@ -316,6 +316,13 @@ static func _attribute(parser: XMLParser, name: String) -> String:
 		if parser.get_attribute_name(index).to_lower() == name.to_lower():
 			return parser.get_attribute_value(index)
 	return ""
+
+
+# 忽略可选命名空间前缀，兼容 x:sheet 与无前缀 sheet 两种 OpenXML 写法。
+static func _local_name(qualified_name: String) -> String:
+	var normalized: String = qualified_name.to_lower()
+	var separator_index: int = normalized.rfind(":")
+	return normalized.substr(separator_index + 1) if separator_index >= 0 else normalized
 
 
 static func _integer_attribute(parser: XMLParser, name: String, fallback: int) -> int:

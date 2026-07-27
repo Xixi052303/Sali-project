@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="EncounterTimeline" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="EncounterTimeline" format=3 uid="uid://88dew4uimxmv"]
 
-[ext_resource type="Script" path="res://scripts/data/encounter_timeline.gd" id="1_timeline"]
+[ext_resource type="Script" uid="uid://b3fntffkgtosw" path="res://scripts/data/encounter_timeline.gd" id="1_timeline"]
 
 [resource]
 script = ExtResource("1_timeline")

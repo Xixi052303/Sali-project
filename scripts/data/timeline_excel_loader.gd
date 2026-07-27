@@ -31,10 +31,10 @@ static func load_from_excel(path: String, fallback: EncounterTimeline = null) ->
 
 	var config_values: Dictionary = {}
 	for record: Dictionary in config_sheet.to_records():
-		var parameter_id: String = String(record.get("参数ID", "")).strip_edges()
+		var parameter_id: String = str(record.get("参数ID", "")).strip_edges()
 		if not parameter_id.is_empty():
 			config_values[parameter_id] = record.get("数值")
-	var schema_id: String = String(config_values.get("schema_id", ""))
+	var schema_id: String = str(config_values.get("schema_id", ""))
 	if schema_id != EXPECTED_SCHEMA_ID:
 		return _fallback(result, fallback, "时间轴 Excel schema_id 不匹配: %s" % schema_id)
 	var schema_version_value: Variant = config_values.get("schema_version")
@@ -64,7 +64,7 @@ static func load_from_excel(path: String, fallback: EncounterTimeline = null) ->
 	for record: Dictionary in events_sheet.to_records():
 		event_row += 1
 		var time_value: Variant = record.get("请求时间(s)")
-		var event_id: String = String(record.get("事件ID", "")).strip_edges()
+		var event_id: String = str(record.get("事件ID", "")).strip_edges()
 		if not _is_number(time_value):
 			errors.append("事件表第 %d 行请求时间不是数字" % event_row)
 			continue
