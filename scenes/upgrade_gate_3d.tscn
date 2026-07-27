@@ -1,0 +1,63 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/upgrade_gate_3d.gd" id="1_script"]
+
+[sub_resource type="StandardMaterial3D" id="MatLeft"]
+resource_local_to_scene = true
+albedo_color = Color(0.239216, 0.317647, 0.239216, 1)
+roughness = 0.94
+
+[sub_resource type="StandardMaterial3D" id="MatRight"]
+resource_local_to_scene = true
+albedo_color = Color(0.411765, 0.25098, 0.207843, 1)
+roughness = 0.94
+
+[sub_resource type="BoxMesh" id="MeshPanel"]
+size = Vector3(288, 144, 12)
+
+[node name="UpgradeGate3D" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="LeftTarget" type="Node3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(210, 0, 0)
+
+[node name="RightTarget" type="Node3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(510, 0, 0)
+
+[node name="LeftPanel" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(210, 76, 0)
+material_override = SubResource("MatLeft")
+mesh = SubResource("MeshPanel")
+
+[node name="RightPanel" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(510, 76, 0)
+material_override = SubResource("MatRight")
+mesh = SubResource("MeshPanel")
+
+[node name="LeftLabel" type="Label3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(210, 82, 8)
+pixel_size = 0.6
+width = 520.0
+font_size = 34
+outline_size = 8
+modulate = Color(1, 1, 1, 1)
+outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
+autowrap_mode = 2
+alpha_cut = 0
+
+[node name="RightLabel" type="Label3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(510, 82, 8)
+pixel_size = 0.6
+width = 520.0
+font_size = 34
+outline_size = 8
+modulate = Color(1, 1, 1, 1)
+outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
+autowrap_mode = 2
+alpha_cut = 0

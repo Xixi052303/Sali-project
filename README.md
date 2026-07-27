@@ -1,12 +1,14 @@
 # 小厨西
 
-Godot 4.7 制作的竖屏移动端玩法竖切片。当前版本使用程序绘制的占位美术，不包含正式图片或正式声音素材。
+Godot 4.7 制作的竖屏移动端玩法竖切片。默认 2D 版本使用程序绘制占位表现，并行 3D 版本使用可在编辑器预览的临时纸艺节点；当前均不代表正式美术或声音质量。
 
 ## 运行
 
 1. 使用 Godot 4.7 打开项目。
 2. 运行主场景 `scenes/run.tscn`。
 3. 按住鼠标或单指横向拖动餐车；松开后餐车保持当前位置。
+
+当前另有并行的直接 3D 纸艺竖切片 `scenes/run_3d.tscn`，可在编辑器中打开并运行。它不会替换默认启动场景；3D 相机、道路、灯光、纸偶、标签和预警均以可编辑场景节点装配。
 
 内部设计分辨率为 `720 × 1280`，桌面调试窗口默认为 `405 × 720`，移动端锁定竖屏。
 
@@ -53,6 +55,12 @@ Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tests/tes
 
 ```powershell
 Godot_v4.7-stable_win64_console.exe --headless --path . --quit-after 20000 -- --smoke-test
+```
+
+3D 并行场景烟雾测试：
+
+```powershell
+Godot_v4.7-stable_win64_console.exe --headless --path . res://scenes/run_3d.tscn -- --smoke-test
 ```
 
 成功时会输出 `CORE_TESTS_OK` 与 `SMOKE_TEST_OK`。

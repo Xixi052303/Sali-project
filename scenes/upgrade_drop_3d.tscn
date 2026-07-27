@@ -1,0 +1,36 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/upgrade_drop_3d.gd" id="1_script"]
+
+[sub_resource type="StandardMaterial3D" id="MatPanel"]
+resource_local_to_scene = true
+albedo_color = Color(0.278431, 0.376471, 0.298039, 1)
+roughness = 0.94
+
+[sub_resource type="BoxMesh" id="MeshPanel"]
+resource_local_to_scene = true
+size = Vector3(182, 144, 12)
+
+[node name="UpgradeDrop3D" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="RewardTarget" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="Panel" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 72, 0)
+material_override = SubResource("MatPanel")
+mesh = SubResource("MeshPanel")
+
+[node name="DropLabel" type="Label3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 76, 8)
+pixel_size = 0.6
+width = 364.0
+font_size = 32
+outline_size = 8
+modulate = Color(1, 1, 1, 1)
+outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
+autowrap_mode = 2
+alpha_cut = 0

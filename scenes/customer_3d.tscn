@@ -1,0 +1,66 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/customer_3d.gd" id="1_script"]
+
+[sub_resource type="StandardMaterial3D" id="MatBody"]
+resource_local_to_scene = true
+albedo_color = Color(0.396078, 0.470588, 0.356863, 1)
+roughness = 0.94
+
+[sub_resource type="BoxMesh" id="MeshBody"]
+resource_local_to_scene = true
+size = Vector3(182, 84, 12)
+
+[sub_resource type="StandardMaterial3D" id="MatHead"]
+resource_local_to_scene = true
+albedo_color = Color(0.505882, 0.568627, 0.470588, 1)
+roughness = 0.94
+
+[sub_resource type="SphereMesh" id="MeshHead"]
+radius = 0.5
+height = 1.0
+
+[sub_resource type="StandardMaterial3D" id="MatShadow"]
+albedo_color = Color(0.168627, 0.141176, 0.113725, 1)
+roughness = 1.0
+
+[sub_resource type="SphereMesh" id="MeshShadow"]
+radius = 0.5
+height = 1.0
+
+[node name="Customer3D" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="PaperCustomerVisual" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="Body" type="MeshInstance3D" parent="PaperCustomerVisual"]
+unique_name_in_owner = true
+position = Vector3(0, 48, 0)
+material_override = SubResource("MatBody")
+mesh = SubResource("MeshBody")
+
+[node name="Head" type="MeshInstance3D" parent="PaperCustomerVisual"]
+unique_name_in_owner = true
+position = Vector3(0, 118, 0)
+scale = Vector3(90, 72, 14)
+material_override = SubResource("MatHead")
+mesh = SubResource("MeshHead")
+
+[node name="ContactShadow" type="MeshInstance3D" parent="PaperCustomerVisual"]
+unique_name_in_owner = true
+position = Vector3(0, 3, 0)
+scale = Vector3(182, 5, 56)
+cast_shadow = 0
+material_override = SubResource("MatShadow")
+mesh = SubResource("MeshShadow")
+
+[node name="AppetiteLabel" type="Label3D" parent="PaperCustomerVisual"]
+unique_name_in_owner = true
+position = Vector3(0, 192, 8)
+pixel_size = 0.8
+font_size = 38
+outline_size = 8
+modulate = Color(1, 0.878431, 0.603922, 1)
+outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
+alpha_cut = 0

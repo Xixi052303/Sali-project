@@ -6,6 +6,7 @@ var _failures: int = 0
 func _init() -> void:
 	_test_playfield()
 	_test_customer_cart_collision()
+	_test_3d_plane_rules()
 	_test_run_state()
 	_test_weapon_fires_without_target()
 	_test_upgrade_gate()
@@ -56,6 +57,54 @@ func _test_customer_cart_collision() -> void:
 	_check(not customer.collision_rect().intersects(cart.collision_rect()), "绕开的食客到达屏幕底部时不算碰撞")
 	customer.free()
 	cart.free()
+	field.free()
+
+
+# 3D 版本直接在 X/Z 道路平面运行，沿用与 2D 版本相同的逻辑坐标和六区边界。
+func _test_3d_plane_rules() -> void:
+	var field: Playfield = Playfield.new()
+	var state: RunState = RunState.new()
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var customer_scene: PackedScene = load("res://scenes/customer_3d.tscn") as PackedScene
+	var cart: Cart3D = cart_scene.instantiate() as Cart3D
+	cart.configure(state, field)
+	_check(is_equal_approx(cart.position.x, 360.0), "3D餐车沿用逻辑横坐标")
+	_check(is_equal_approx(cart.position.z, Playfield.CART_Y), "3D餐车把前进坐标放在Z轴")
+	var basic_data: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
+	var customer: Customer3D = customer_scene.instantiate() as Customer3D
+	customer.configure(basic_data, null, 1, 32.0)
+	customer.position = Vector3(160.0, 0.0, 900.0)
+	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "3D食客横向绕开时不算碰撞")
+	customer.position = Vector3(360.0, 0.0, 900.0)
+	_check(customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "3D食客在X/Z平面实际相交时碰撞")
+
+	var run: RunController3D = RunController3D.new()
+	var projectiles: Node3D = Node3D.new()
+	var gates: Node3D = Node3D.new()
+	var drops: Node3D = Node3D.new()
+	var weapon: WeaponController3D = WeaponController3D.new()
+	run.state = state
+	run.playfield = field
+	run.cart = cart
+	run.projectiles = projectiles
+	run.gates = gates
+	run.drops = drops
+	run.phase = RunController3D.Phase.FORWARD
+	run.add_child(cart)
+	run.add_child(projectiles)
+	run.add_child(gates)
+	run.add_child(drops)
+	run.add_child(weapon)
+	weapon.configure(run, cart, state)
+	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
+	weapon.add_food(potato)
+	weapon._tick_food(weapon.foods[0], 0.0)
+	_check(projectiles.get_child_count() == 1, "3D武器没有目标时仍朝道路前方发射")
+	if projectiles.get_child_count() == 1:
+		var projectile: FoodProjectile3D = projectiles.get_child(0) as FoodProjectile3D
+		_check(projectile.velocity.z < 0.0 and is_zero_approx(projectile.velocity.y), "3D投射物只在X/Z玩法平面移动")
+	run.free()
+	customer.free()
 	field.free()
 
 
@@ -208,7 +257,7 @@ func _test_customer_reward_gate() -> void:
 	var basic: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
 	var elite: CustomerData = load("res://data/customers/elite_guest.tres") as CustomerData
 	_check(is_equal_approx(basic.appetite_at(100.0, 0.34), 134.0), "普通食客胃口按奖励百分位提高")
-	_check(is_equal_approx(elite.appetite_at(32.0), 180.0), "精英不参与随机稀有度")
+	_check(is_equal_approx(elite.appetite_at(32.0), 48.0), "精英只使用1.5倍基准且不参与随机稀有度")
 	var reward_gate: UpgradeDrop = UpgradeDrop.new()
 	reward_gate.configure(null, reward, Vector2(160.0, 400.0), 100.0, 2, 3)
 	_check(is_equal_approx(reward_gate.upgrade_health, 66.0), "食客奖励门没有基础层并按百分位建立升值血量")
