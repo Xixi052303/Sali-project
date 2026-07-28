@@ -922,18 +922,22 @@ func _test_resources() -> void:
 	_check(is_equal_approx(baguette.projectile_speed * baguette.base_lifetime / 1280.0, 0.6), "法棍基础持续约0.6屏")
 	_check(
 		basic.category == CustomerData.Category.NORMAL
-		and basic.behavior == CustomerData.Behavior.NONE,
-		"基础食客回退资源使用普通身份与无行为"
+		and basic.behavior == CustomerData.Behavior.NONE
+		and basic.display_name == "小鼠食客"
+		and basic.model_scene != null,
+		"基础食客回退资源使用小鼠模型与无行为"
 	)
 	_check(
 		fast.category == CustomerData.Category.NORMAL
-		and fast.behavior == CustomerData.Behavior.NONE,
-		"急脚食客只通过属性形成差异"
+		and fast.behavior == CustomerData.Behavior.NONE
+		and fast.model_scene != null,
+		"急脚狐狸只通过属性形成差异"
 	)
 	_check(
 		ranged.category == CustomerData.Category.NORMAL
-		and ranged.behavior == CustomerData.Behavior.RANGED,
-		"拍桌食客回退资源使用远程行为"
+		and ranged.behavior == CustomerData.Behavior.RANGED
+		and ranged.model_scene != null,
+		"拍桌青蛙回退资源使用远程行为"
 	)
 	_check(elite != null and elite.occupied_regions == 6, "精英横跨六区")
 	_check(elite != null and elite.category == CustomerData.Category.ELITE, "精英身份独立于行为类型")

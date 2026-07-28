@@ -124,10 +124,16 @@ func _test_customer_workbook() -> void:
 	var fast: CustomerData = customers[&"fast_guest"]
 	var ranged: CustomerData = customers[&"ranged_guest"]
 	var elite: CustomerData = customers[&"elite_guest"]
+	_check(basic.display_name == "小鼠食客", "基础食客身份为小鼠")
+	_check(basic.model_scene != null and basic.model_scene.resource_path.ends_with("老鼠.glb"), "基础食客加载小鼠模型")
 	_check(is_equal_approx(basic.appetite_multiplier, 1.0), "基础食客保持1.0倍胃口")
 	_check(is_equal_approx(basic.move_speed, 42.0), "基础食客保持42px/s")
+	_check(fast.display_name == "急脚狐狸", "快速模板加载狐狸身份")
+	_check(fast.model_scene != null and fast.model_scene.resource_path.ends_with("狐狸.glb"), "快速模板加载狐狸模型")
 	_check(is_equal_approx(fast.appetite_multiplier, 0.75), "急脚食客保持0.75倍胃口")
 	_check(is_equal_approx(fast.move_speed, 96.0), "急脚食客保持96px/s")
+	_check(ranged.display_name == "拍桌青蛙", "远程模板加载青蛙身份")
+	_check(ranged.model_scene != null and ranged.model_scene.resource_path.ends_with("青蛙.glb"), "远程模板加载青蛙模型")
 	_check(
 		ranged.category == CustomerData.Category.NORMAL
 		and ranged.behavior == CustomerData.Behavior.RANGED,

@@ -20,6 +20,8 @@ enum Behavior {
 @export var move_speed: float = 65.0
 @export_range(1, 6, 1) var occupied_regions: int = 2
 @export var body_color: Color = Color("#6f7650")
+# 普通食客模型随内容模板保存；空值继续使用场景内纸片占位作为安全回退。
+@export var model_scene: PackedScene
 @export var attack_ratio: float = 0.0
 @export var attack_interval: float = 3.0
 

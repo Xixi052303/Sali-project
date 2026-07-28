@@ -1,14 +1,16 @@
-[gd_resource type="Resource" script_class="CustomerData" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="CustomerData" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/customer_data.gd" id="1_customer"]
+[ext_resource type="PackedScene" uid="uid://cgnextck15qrc" path="res://assets/models/角色/敌人/普通食客/狐狸.glb" id="2_model"]
 
 [resource]
 script = ExtResource("1_customer")
 id = &"fast_guest"
-display_name = "急脚食客"
+display_name = "急脚狐狸"
 category = 0
 behavior = 0
 appetite_multiplier = 0.75
 move_speed = 96.0
 occupied_regions = 2
 body_color = Color(0.55, 0.35, 0.25, 1)
+model_scene = ExtResource("2_model")

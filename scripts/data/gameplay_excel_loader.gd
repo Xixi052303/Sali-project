@@ -9,6 +9,12 @@ const REQUIRED_CUSTOMER_IDS: Array[StringName] = [
 	&"ranged_guest",
 	&"elite_guest",
 ]
+# 当前切片只把已有三种普通模板映射到已确认模型，不提前扩充食客机制。
+const CUSTOMER_MODEL_SCENES: Dictionary[StringName, PackedScene] = {
+	&"basic_guest": preload("res://assets/models/角色/敌人/普通食客/老鼠.glb"),
+	&"fast_guest": preload("res://assets/models/角色/敌人/普通食客/狐狸.glb"),
+	&"ranged_guest": preload("res://assets/models/角色/敌人/普通食客/青蛙.glb"),
+}
 
 
 class WeaponLoadResult:
@@ -95,6 +101,7 @@ static func _parse_customer_records(
 		var customer: CustomerData = CustomerData.new()
 		customer.id = customer_id
 		customer.display_name = str(record.get("显示名称", "")).strip_edges()
+		customer.model_scene = CUSTOMER_MODEL_SCENES.get(customer_id) as PackedScene
 		customer.category = _customer_category(record.get("身份层级"), row_number, errors)
 		customer.behavior = _customer_behavior(record.get("行为类型"), row_number, errors)
 		customer.appetite_multiplier = _required_number(
