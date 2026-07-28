@@ -6,7 +6,8 @@
 script = ExtResource("1_customer")
 id = &"ranged_guest"
 display_name = "拍桌食客"
-kind = 2
+category = 0
+behavior = 1
 appetite_multiplier = 1.5
 move_speed = 28.0
 occupied_regions = 2

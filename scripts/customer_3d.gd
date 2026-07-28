@@ -55,7 +55,7 @@ func _process(delta: float) -> void:
 		_visual_root.scale = Vector3.ONE
 	if run.is_world_scrolling():
 		position.z += travel_speed() * delta
-	if data.kind == CustomerData.Kind.RANGED and position.z > 1.8 and position.z < 8.2:
+	if data.behavior == CustomerData.Behavior.RANGED and position.z > 1.8 and position.z < 8.2:
 		_attack_remaining -= delta
 		if _attack_remaining <= 0.0:
 			_attack_remaining = data.attack_interval

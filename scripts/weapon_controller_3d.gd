@@ -36,7 +36,7 @@ func _tick_food(runtime: FoodRuntime, delta: float) -> void:
 			runtime.ready = true
 	if not runtime.ready:
 		return
-	var target: Node3D = run.get_priority_target()
+	var target: Node3D = run.get_priority_target_for_food(runtime.data)
 	runtime.ready = false
 	runtime.cooldown_remaining = state.effective_interval(runtime.data)
 	_fire(runtime.data, target)

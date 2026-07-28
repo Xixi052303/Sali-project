@@ -185,7 +185,7 @@ func _test_3d_plane_rules() -> void:
 	field.free()
 
 
-# 法棍按餐车到目标的X/Z平面真实距离瞄准，不按单一纵向距离抢目标。
+# 法棍先限制正前方90°扇区，再按餐车到目标的X/Z平面真实距离瞄准。
 func _test_baguette_targeting() -> void:
 	var run: RunController3D = RunController3D.new()
 	var state: RunState = RunState.new()
@@ -208,20 +208,29 @@ func _test_baguette_targeting() -> void:
 	cart.position = Vector3(3.6, 0.0, 10.0)
 	weapon.configure(run, cart, state)
 
-	var forward_but_farther: Customer3D = Customer3D.new()
-	forward_but_farther.position = Vector3(6.1, 0.0, 9.5)
-	forward_but_farther.active = true
-	forward_but_farther.spawn_index = 1
-	var actual_nearest: Customer3D = Customer3D.new()
-	actual_nearest.position = Vector3(3.6, 0.0, 8.0)
-	actual_nearest.active = true
-	actual_nearest.spawn_index = 2
-	run.add_child(forward_but_farther)
-	run.add_child(actual_nearest)
-	run.customers = [forward_but_farther, actual_nearest]
-	_check(run.get_priority_target() == actual_nearest, "自动瞄准使用餐车到单位的X/Z平面真实距离")
-
 	var baguette: FoodData = load("res://data/foods/baguette.tres") as FoodData
+	var outside_but_closer: Customer3D = Customer3D.new()
+	outside_but_closer.position = Vector3(4.3, 0.0, 9.5)
+	outside_but_closer.active = true
+	outside_but_closer.spawn_index = 1
+	var nearest_in_cone: Customer3D = Customer3D.new()
+	nearest_in_cone.position = Vector3(3.6, 0.0, 8.0)
+	nearest_in_cone.active = true
+	nearest_in_cone.spawn_index = 2
+	var farther_in_cone: Customer3D = Customer3D.new()
+	farther_in_cone.position = Vector3(3.6, 0.0, 7.0)
+	farther_in_cone.active = true
+	farther_in_cone.spawn_index = 3
+	run.add_child(outside_but_closer)
+	run.add_child(nearest_in_cone)
+	run.add_child(farther_in_cone)
+	run.customers = [outside_but_closer, nearest_in_cone, farther_in_cone]
+	_check(run.get_priority_target() == outside_but_closer, "通用自动瞄准仍选择全平面最近单位")
+	_check(
+		run.get_priority_target_for_food(baguette) == nearest_in_cone,
+		"法棍忽略前方90°之外的更近单位，并选择扇区内最近单位"
+	)
+
 	weapon.add_food(baguette)
 	weapon._tick_food(weapon.foods[0], 0.0)
 	_check(projectiles.get_child_count() == 1, "法棍存在目标时正常发射")
@@ -229,8 +238,39 @@ func _test_baguette_targeting() -> void:
 		var projectile: FoodProjectile3D = projectiles.get_child(0) as FoodProjectile3D
 		_check(
 			is_zero_approx(projectile.velocity.x) and projectile.velocity.z < 0.0,
-			"法棍发射方向指向距离餐车最近的单位"
+			"法棍发射方向指向扇区内距离餐车最近的单位"
 		)
+
+	var left_boundary: Customer3D = Customer3D.new()
+	left_boundary.position = Vector3(1.6, 0.0, 8.0)
+	left_boundary.active = true
+	left_boundary.spawn_index = 3
+	var right_boundary: Customer3D = Customer3D.new()
+	right_boundary.position = Vector3(5.6, 0.0, 8.0)
+	right_boundary.active = true
+	right_boundary.spawn_index = 4
+	var just_outside: Customer3D = Customer3D.new()
+	just_outside.position = Vector3(1.59, 0.0, 8.0)
+	just_outside.active = true
+	just_outside.spawn_index = 1
+	var behind_cart: Customer3D = Customer3D.new()
+	behind_cart.position = Vector3(3.6, 0.0, 12.0)
+	behind_cart.active = true
+	behind_cart.spawn_index = 0
+	run.add_child(left_boundary)
+	run.add_child(right_boundary)
+	run.add_child(just_outside)
+	run.add_child(behind_cart)
+	run.customers = [just_outside, behind_cart, left_boundary, right_boundary]
+	_check(
+		run.get_priority_target_for_food(baguette) == left_boundary,
+		"法棍计入北偏西45°边界，并排除边界外与后方单位"
+	)
+	left_boundary.active = false
+	_check(
+		run.get_priority_target_for_food(baguette) == right_boundary,
+		"法棍计入北偏东45°边界"
+	)
 	run.free()
 
 
@@ -467,8 +507,8 @@ func _test_run_state() -> void:
 	_check(is_equal_approx(state.effective_satisfaction(potato), 12.0), "满足值按基础值加算")
 	state.level_food(&"potato")
 	_check(
-		is_equal_approx(state.effective_satisfaction(potato), 18.0),
-		"食材Lv.2的1.5倍自身倍率与全局倍率相乘"
+		is_equal_approx(state.effective_satisfaction(potato), 30.0),
+		"食材Lv.2的2.5倍自身倍率与全局倍率相乘"
 	)
 	state.level_food(&"potato")
 	_check(state.food_level(&"potato") == 3, "食材等级最高为Lv.3")
@@ -767,7 +807,7 @@ func _test_timeline() -> void:
 			timeline.baseline_appetite_at(timeline.baseline_appetite_end_time),
 			roundf(timeline.baseline_appetite_end)
 		),
-		"基准胃口曲线使用 Excel 终点和结束时间"
+		"前段基准胃口曲线使用 Excel 终点和结束时间"
 	)
 	var midpoint_time: float = timeline.baseline_appetite_end_time * 0.5
 	var expected_midpoint: float = roundf(lerpf(
@@ -777,7 +817,42 @@ func _test_timeline() -> void:
 	))
 	_check(
 		is_equal_approx(timeline.baseline_appetite_at(midpoint_time), expected_midpoint),
-		"基准胃口曲线使用 Excel 增长指数"
+		"前段基准胃口曲线使用 Excel 增长指数"
+	)
+	_check(
+		is_equal_approx(
+			timeline.baseline_appetite_at(timeline.baseline_appetite_end_time - 0.001),
+			timeline.baseline_appetite_at(timeline.baseline_appetite_end_time + 0.001)
+		),
+		"两段胃口曲线在135秒交界连续"
+	)
+	for checkpoint: Dictionary in [
+		{"time": 180.0, "appetite": 554.0},
+		{"time": 210.0, "appetite": 746.0},
+		{"time": 270.0, "appetite": 1200.0},
+		{"time": 300.0, "appetite": 1200.0},
+	]:
+		var checkpoint_time: float = float(checkpoint["time"])
+		var checkpoint_appetite: float = float(checkpoint["appetite"])
+		_check(
+			is_equal_approx(
+				timeline.baseline_appetite_at(checkpoint_time),
+				checkpoint_appetite
+			),
+			"%.0f秒基准胃口保持计划值%.0f" % [
+				checkpoint_time,
+				checkpoint_appetite,
+			]
+		)
+	_check(
+		is_equal_approx(timeline.normal_wave_interval_at(77.999), 3.2)
+		and is_equal_approx(timeline.normal_wave_interval_at(78.0), 2.8),
+		"78秒普通波次阶段边界"
+	)
+	_check(
+		is_equal_approx(timeline.normal_wave_interval_at(134.999), 2.8)
+		and is_equal_approx(timeline.normal_wave_interval_at(135.0), 3.2),
+		"135秒普通波次阶段边界"
 	)
 	var gate_count: int = 0
 	var elite_count: int = 0
@@ -790,6 +865,12 @@ func _test_timeline() -> void:
 	_check(elite_count == 3, "时间轴包含3次精英检查")
 	_check(timeline.event_ids.has("boss"), "时间轴包含Boss")
 	_check(timeline.event_ids.find("gate_20") > timeline.event_ids.find("boss"), "Boss后保留4道复跑门")
+	_check(timeline.event_times.size() == 29, "时间轴仍保留29条显式事件")
+	var boss_index: int = timeline.event_ids.find("boss")
+	_check(
+		boss_index >= 0 and is_equal_approx(timeline.event_times[boss_index], 270.0),
+		"Boss请求时间仍为270秒"
+	)
 	var run: RunController3D = RunController3D.new()
 	run.basic_guest_data = load("res://data/customers/basic_guest.tres") as CustomerData
 	run.fast_guest_data = load("res://data/customers/fast_guest.tres") as CustomerData
@@ -820,6 +901,9 @@ func _test_resources() -> void:
 	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
 	var baguette: FoodData = load("res://data/foods/baguette.tres") as FoodData
 	var mushroom: FoodData = load("res://data/foods/mushroom.tres") as FoodData
+	var basic: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
+	var fast: CustomerData = load("res://data/customers/fast_guest.tres") as CustomerData
+	var ranged: CustomerData = load("res://data/customers/ranged_guest.tres") as CustomerData
 	var elite: CustomerData = load("res://data/customers/elite_guest.tres") as CustomerData
 	var boss: BossPatternData = load("res://data/bosses/prototype_boss.tres") as BossPatternData
 	_check(potato != null and is_equal_approx(potato.base_satisfaction, 10.0), "土豆基线")
@@ -836,8 +920,31 @@ func _test_resources() -> void:
 	_check(is_equal_approx(mushroom.breathing_outer_multiplier, 2.0), "蘑菇呼吸扩圈外沿为两倍基础半径")
 	_check(is_equal_approx(potato.projectile_speed * potato.base_lifetime / 1280.0, 0.8), "土豆基础持续约0.8屏")
 	_check(is_equal_approx(baguette.projectile_speed * baguette.base_lifetime / 1280.0, 0.6), "法棍基础持续约0.6屏")
+	_check(
+		basic.category == CustomerData.Category.NORMAL
+		and basic.behavior == CustomerData.Behavior.NONE,
+		"基础食客回退资源使用普通身份与无行为"
+	)
+	_check(
+		fast.category == CustomerData.Category.NORMAL
+		and fast.behavior == CustomerData.Behavior.NONE,
+		"急脚食客只通过属性形成差异"
+	)
+	_check(
+		ranged.category == CustomerData.Category.NORMAL
+		and ranged.behavior == CustomerData.Behavior.RANGED,
+		"拍桌食客回退资源使用远程行为"
+	)
 	_check(elite != null and elite.occupied_regions == 6, "精英横跨六区")
+	_check(elite != null and elite.category == CustomerData.Category.ELITE, "精英身份独立于行为类型")
 	_check(elite != null and is_equal_approx(elite.appetite_multiplier, 1.5), "精英默认使用1.5倍基准胃口")
+	_check(
+		basic.spawn_pattern_offset() == 0
+		and fast.spawn_pattern_offset() == 1
+		and ranged.spawn_pattern_offset() == 2
+		and elite.spawn_pattern_offset() == 3,
+		"四类食客保持原有生成错位序列"
+	)
 	_check(boss != null and is_equal_approx(boss.appetite_at(100.0), 300.0), "Boss默认使用3倍基准胃口")
 	var boss_scene: PackedScene = load("res://scenes/boss_3d.tscn") as PackedScene
 	var boss_instance: PrototypeBoss3D = boss_scene.instantiate() as PrototypeBoss3D

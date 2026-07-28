@@ -3,12 +3,27 @@ extends RefCounted
 
 const CONFIG_SHEET: String = "配置"
 const EXPECTED_SCHEMA_VERSION: int = 1
+const REQUIRED_CUSTOMER_IDS: Array[StringName] = [
+	&"basic_guest",
+	&"fast_guest",
+	&"ranged_guest",
+	&"elite_guest",
+]
 
 
 class WeaponLoadResult:
 	extends RefCounted
 
 	var foods: Array[FoodData] = []
+	var loaded_from_excel: bool = false
+	var error_message: String = ""
+	var source_path: String = ""
+
+
+class CustomerLoadResult:
+	extends RefCounted
+
+	var customers: Array[CustomerData] = []
 	var loaded_from_excel: bool = false
 	var error_message: String = ""
 	var source_path: String = ""
@@ -39,6 +54,121 @@ class WorkbookReadResult:
 
 	var workbook: ExcelReader47.ExcelWorkbook
 	var error_message: String = ""
+
+
+# 读取食客主表并生成本局独立的 CustomerData；任一必需行非法时整表失败。
+static func load_customers(path: String) -> CustomerLoadResult:
+	var result: CustomerLoadResult = CustomerLoadResult.new()
+	result.source_path = path
+	var read_result: WorkbookReadResult = _read_valid_workbook(path, "xiaochuxi.customers")
+	if read_result.workbook == null:
+		result.error_message = read_result.error_message
+		return result
+	var sheet: ExcelReader47.ExcelSheet = read_result.workbook.get_sheet_by_name("食客")
+	if sheet == null:
+		return _customer_failure(result, "食客 Excel 必须包含“食客”工作表")
+	return _parse_customer_records(sheet.to_records(), result)
+
+
+# 独立解析记录，便于对全行校验与整体回退规则做无文件单元测试。
+static func _parse_customer_records(
+	records: Array[Dictionary],
+	result: CustomerLoadResult = null
+) -> CustomerLoadResult:
+	if result == null:
+		result = CustomerLoadResult.new()
+	var errors: PackedStringArray = []
+	var seen_ids: Dictionary[StringName, bool] = {}
+	var row_number: int = 1
+	for record: Dictionary in records:
+		row_number += 1
+		if not _as_bool(record.get("启用", true)):
+			continue
+		var customer_id: StringName = StringName(str(record.get("食客ID", "")).strip_edges())
+		if customer_id.is_empty():
+			errors.append("食客表第 %d 行食客ID不能为空" % row_number)
+			continue
+		if seen_ids.has(customer_id):
+			errors.append("食客表第 %d 行食客ID重复: %s" % [row_number, String(customer_id)])
+			continue
+		seen_ids[customer_id] = true
+		var customer: CustomerData = CustomerData.new()
+		customer.id = customer_id
+		customer.display_name = str(record.get("显示名称", "")).strip_edges()
+		customer.category = _customer_category(record.get("身份层级"), row_number, errors)
+		customer.behavior = _customer_behavior(record.get("行为类型"), row_number, errors)
+		customer.appetite_multiplier = _required_number(
+			record,
+			"胃口倍率",
+			row_number,
+			errors,
+			"食客"
+		)
+		customer.move_speed = _required_number(
+			record,
+			"移动速度(px/s)",
+			row_number,
+			errors,
+			"食客"
+		)
+		var occupied_value: float = _required_number(
+			record,
+			"占据区域数",
+			row_number,
+			errors,
+			"食客"
+		)
+		customer.occupied_regions = int(occupied_value)
+		var color_text: String = str(record.get("颜色HEX", "")).strip_edges()
+		if Color.html_is_valid(color_text):
+			customer.body_color = Color.from_string(color_text, Color.WHITE)
+		else:
+			errors.append("食客表第 %d 行颜色HEX无效: %s" % [row_number, color_text])
+		if customer.display_name.is_empty():
+			errors.append("食客表第 %d 行显示名称不能为空" % row_number)
+		if customer.appetite_multiplier <= 0.0:
+			errors.append("食客表第 %d 行胃口倍率必须大于0" % row_number)
+		if customer.move_speed < 0.0:
+			errors.append("食客表第 %d 行移动速度不能为负数" % row_number)
+		if (
+			occupied_value < 1.0
+			or occupied_value > 6.0
+			or not is_equal_approx(occupied_value, roundf(occupied_value))
+		):
+			errors.append("食客表第 %d 行占据区域数必须是1至6的整数" % row_number)
+		if customer.behavior == CustomerData.Behavior.RANGED:
+			customer.attack_ratio = _required_number(
+				record,
+				"攻击强度比例",
+				row_number,
+				errors,
+				"食客"
+			)
+			customer.attack_interval = _required_number(
+				record,
+				"攻击间隔(s)",
+				row_number,
+				errors,
+				"食客"
+			)
+			if customer.attack_ratio <= 0.0 or customer.attack_interval <= 0.0:
+				errors.append("食客表第 %d 行远程攻击比例和间隔必须大于0" % row_number)
+		else:
+			if (
+				not _is_blank(record.get("攻击强度比例"))
+				or not _is_blank(record.get("攻击间隔(s)"))
+			):
+				errors.append("食客表第 %d 行无行为食客的攻击字段必须留空" % row_number)
+			customer.attack_ratio = 0.0
+			customer.attack_interval = 3.0
+		result.customers.append(customer)
+	for required_id: StringName in REQUIRED_CUSTOMER_IDS:
+		if not seen_ids.has(required_id):
+			errors.append("食客表缺少已启用的必需食客ID: %s" % String(required_id))
+	if not errors.is_empty():
+		return _customer_failure(result, "；".join(errors))
+	result.loaded_from_excel = true
+	return result
 
 
 # 读取武器主表并生成本局独立的 FoodData，避免改写场景共享 Resource。
@@ -317,6 +447,38 @@ static func _as_bool(value: Variant) -> bool:
 	return str(value).strip_edges().to_lower() in ["true", "yes", "是", "1"]
 
 
+static func _is_blank(value: Variant) -> bool:
+	return value == null or (typeof(value) == TYPE_STRING and str(value).strip_edges().is_empty())
+
+
+static func _customer_category(
+	value: Variant,
+	row_number: int,
+	errors: PackedStringArray
+) -> CustomerData.Category:
+	match str(value).strip_edges():
+		"普通":
+			return CustomerData.Category.NORMAL
+		"精英":
+			return CustomerData.Category.ELITE
+	errors.append("食客表第 %d 行身份层级不受支持: %s" % [row_number, str(value)])
+	return CustomerData.Category.NORMAL
+
+
+static func _customer_behavior(
+	value: Variant,
+	row_number: int,
+	errors: PackedStringArray
+) -> CustomerData.Behavior:
+	match str(value).strip_edges():
+		"无":
+			return CustomerData.Behavior.NONE
+		"远程":
+			return CustomerData.Behavior.RANGED
+	errors.append("食客表第 %d 行行为类型不受支持: %s" % [row_number, str(value)])
+	return CustomerData.Behavior.NONE
+
+
 static func _attack_kind(value: Variant, row_number: int, errors: PackedStringArray) -> FoodData.AttackKind:
 	match str(value).strip_edges().to_lower():
 		"projectile":
@@ -398,6 +560,15 @@ static func _special_effect_kind(
 
 static func _weapon_failure(result: WeaponLoadResult, message: String) -> WeaponLoadResult:
 	result.foods.clear()
+	result.error_message = message
+	return result
+
+
+static func _customer_failure(
+	result: CustomerLoadResult,
+	message: String
+) -> CustomerLoadResult:
+	result.customers.clear()
 	result.error_message = message
 	return result
 

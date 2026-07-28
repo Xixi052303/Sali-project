@@ -6,7 +6,7 @@ signal inventory_changed
 
 const MINIMUM_INTERVAL: float = 1.0 / 60.0
 const FOOD_MAX_LEVEL: int = 3
-const FOOD_LEVEL_SATISFACTION_MULTIPLIER: float = 1.5
+const FOOD_LEVEL_SATISFACTION_MULTIPLIER: float = 2.5
 
 
 class SpecialChoiceRecord:

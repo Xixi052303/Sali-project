@@ -4,7 +4,7 @@ extends RefCounted
 const CONFIG_SHEET: String = "配置"
 const EVENTS_SHEET: String = "事件"
 const EXPECTED_SCHEMA_ID: String = "xiaochuxi.encounter_timeline"
-const EXPECTED_SCHEMA_VERSION: int = 1
+const EXPECTED_SCHEMA_VERSION: int = 2
 
 
 class LoadResult:
@@ -46,6 +46,56 @@ static func load_from_excel(path: String, fallback: EncounterTimeline = null) ->
 	var appetite_end: float = _required_number(config_values, "baseline_appetite_end", errors)
 	var appetite_end_time: float = _required_number(config_values, "baseline_appetite_end_time", errors)
 	var appetite_exponent: float = _required_number(config_values, "baseline_appetite_exponent", errors)
+	var appetite_late_end: float = _required_number(
+		config_values,
+		"baseline_appetite_late_end",
+		errors
+	)
+	var appetite_late_end_time: float = _required_number(
+		config_values,
+		"baseline_appetite_late_end_time",
+		errors
+	)
+	var appetite_late_exponent: float = _required_number(
+		config_values,
+		"baseline_appetite_late_exponent",
+		errors
+	)
+	var normal_wave_start_time: float = _required_number(
+		config_values,
+		"normal_wave_start_time",
+		errors
+	)
+	var normal_wave_end_time: float = _required_number(
+		config_values,
+		"normal_wave_end_time",
+		errors
+	)
+	var normal_wave_early_end_time: float = _required_number(
+		config_values,
+		"normal_wave_early_end_time",
+		errors
+	)
+	var normal_wave_mid_end_time: float = _required_number(
+		config_values,
+		"normal_wave_mid_end_time",
+		errors
+	)
+	var normal_wave_interval_early: float = _required_number(
+		config_values,
+		"normal_wave_interval_early",
+		errors
+	)
+	var normal_wave_interval_mid: float = _required_number(
+		config_values,
+		"normal_wave_interval_mid",
+		errors
+	)
+	var normal_wave_interval_late: float = _required_number(
+		config_values,
+		"normal_wave_interval_late",
+		errors
+	)
 	if appetite_start <= 0.0:
 		errors.append("baseline_appetite_start 必须大于 0")
 	if appetite_end <= 0.0:
@@ -56,6 +106,26 @@ static func load_from_excel(path: String, fallback: EncounterTimeline = null) ->
 		errors.append("baseline_appetite_end_time 必须大于 0")
 	if appetite_exponent <= 0.0:
 		errors.append("baseline_appetite_exponent 必须大于 0")
+	if appetite_late_end < appetite_end:
+		errors.append("baseline_appetite_late_end 不能小于 baseline_appetite_end")
+	if appetite_late_end_time <= appetite_end_time:
+		errors.append("baseline_appetite_late_end_time 必须晚于 baseline_appetite_end_time")
+	if appetite_late_exponent <= 0.0:
+		errors.append("baseline_appetite_late_exponent 必须大于 0")
+	if normal_wave_start_time < 0.0:
+		errors.append("normal_wave_start_time 不能为负数")
+	if normal_wave_end_time <= normal_wave_mid_end_time:
+		errors.append("normal_wave_end_time 必须晚于 normal_wave_mid_end_time")
+	if normal_wave_early_end_time < normal_wave_start_time:
+		errors.append("normal_wave_early_end_time 不能早于 normal_wave_start_time")
+	if normal_wave_mid_end_time < normal_wave_early_end_time:
+		errors.append("normal_wave_mid_end_time 不能早于 normal_wave_early_end_time")
+	if normal_wave_interval_early <= 0.0:
+		errors.append("normal_wave_interval_early 必须大于 0")
+	if normal_wave_interval_mid <= 0.0:
+		errors.append("normal_wave_interval_mid 必须大于 0")
+	if normal_wave_interval_late <= 0.0:
+		errors.append("normal_wave_interval_late 必须大于 0")
 
 	var event_times: PackedFloat32Array = []
 	var event_ids: PackedStringArray = []
@@ -92,6 +162,16 @@ static func load_from_excel(path: String, fallback: EncounterTimeline = null) ->
 	timeline.baseline_appetite_end = appetite_end
 	timeline.baseline_appetite_end_time = appetite_end_time
 	timeline.baseline_appetite_exponent = appetite_exponent
+	timeline.baseline_appetite_late_end = appetite_late_end
+	timeline.baseline_appetite_late_end_time = appetite_late_end_time
+	timeline.baseline_appetite_late_exponent = appetite_late_exponent
+	timeline.normal_wave_start_time = normal_wave_start_time
+	timeline.normal_wave_end_time = normal_wave_end_time
+	timeline.normal_wave_early_end_time = normal_wave_early_end_time
+	timeline.normal_wave_mid_end_time = normal_wave_mid_end_time
+	timeline.normal_wave_interval_early = normal_wave_interval_early
+	timeline.normal_wave_interval_mid = normal_wave_interval_mid
+	timeline.normal_wave_interval_late = normal_wave_interval_late
 	result.timeline = timeline
 	result.loaded_from_excel = true
 	return result

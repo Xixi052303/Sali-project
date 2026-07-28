@@ -36,6 +36,7 @@ class ScheduledCustomerSpawn:
 	var baseline_appetite: float = 1.0
 
 const TIMELINE_WORKBOOK_PATH: String = "res://balance_tables/时间轴.xlsx"
+const CUSTOMER_WORKBOOK_PATH: String = "res://balance_tables/食客.xlsx"
 const WEAPON_WORKBOOK_PATH: String = "res://balance_tables/武器.xlsx"
 const NORMAL_UPGRADE_WORKBOOK_PATH: String = "res://balance_tables/普通强化.xlsx"
 const SPECIAL_UPGRADE_WORKBOOK_PATH: String = "res://balance_tables/特殊强化.xlsx"
@@ -47,13 +48,14 @@ const REWARD_GATE_SCENE: PackedScene = preload("res://scenes/upgrade_drop_3d.tsc
 const LEGACY_CUSTOMER_SPAWN_Z: float = -6.4
 const LEGACY_GATE_SPAWN_Z: float = 0.0
 const FORWARD_GATE_SPEED: float = 2.5
+const TARGET_CONE_EPSILON: float = 0.0001
 # 远端生成队列还需吸收与食客/掉落门错峰产生的短暂等待。
 const FORWARD_GATE_QUEUE_LEAD_SECONDS: float = 2.0
 const REWARD_GATE_SEARCH_STEP: float = 0.1
 const REWARD_GATE_SEARCH_LIMIT: float = 4.0
-const NORMAL_WAVE_END_TIME: float = 360.0
 const POST_BOSS_MINIMUM_DURATION: float = 40.0
 const SMOKE_TEST_TIMEOUT: float = 450.0
+const SMOKE_TEST_BOSS_CLEAR_DURATION: float = 30.0
 const PLAYTEST_RECORD_PATH: String = "user://playtest_runs.jsonl"
 
 @export_group("Prototype data")
@@ -93,7 +95,7 @@ var _debug_accumulator: float = 0.0
 # 普通门双选与食客奖励单抽共同使用这份本局候选模板。
 var _normal_upgrade_pool: Array[UpgradeData] = []
 var _normal_wave_index: int = 0
-var _next_normal_spawn_time: float = 8.0
+var _next_normal_spawn_time: float = 0.0
 var _scheduled_normal_customers: Array[ScheduledCustomerSpawn] = []
 var _smoke_test: bool = false
 # 请求队列保留时间轴顺序，并在预测到纵向追尾时延迟生成。
@@ -114,6 +116,7 @@ var _special_choice_source: StringName = &""
 var _smoke_minimum_gate_customer_gap: float = INF
 # Excel 加载结果只在本局内存中生效，避免改写场景引用的共享 Resource。
 var _food_data_by_id: Dictionary[StringName, FoodData] = {}
+var _customer_data_by_id: Dictionary[StringName, CustomerData] = {}
 var _special_upgrades_by_id: Dictionary[StringName, SpecialUpgradeData] = {}
 var _special_food_max_level: int = RunState.FOOD_MAX_LEVEL
 var _special_food_level_multiplier: float = RunState.FOOD_LEVEL_SATISFACTION_MULTIPLIER
@@ -133,6 +136,7 @@ var _special_choice_pool: Array[StringName] = [
 
 func _ready() -> void:
 	_load_timeline_balance()
+	_load_customer_balance()
 	_load_weapon_balance()
 	_load_normal_upgrade_balance()
 	_load_special_upgrade_balance()
@@ -191,6 +195,8 @@ func _load_timeline_balance() -> void:
 	)
 	if load_result.timeline != null:
 		director.timeline = load_result.timeline
+	if director.timeline != null:
+		_next_normal_spawn_time = director.timeline.normal_wave_start_time
 	if load_result.loaded_from_excel:
 		print(
 			"BALANCE_TIMELINE_LOADED path=%s events=%d" % [
@@ -204,7 +210,36 @@ func _load_timeline_balance() -> void:
 				TIMELINE_WORKBOOK_PATH,
 				load_result.error_message,
 			]
+	)
+
+
+# 食客表成功时整体替换四类本局数据；失败时不混用部分行，保留场景装配回退。
+func _load_customer_balance() -> void:
+	var load_result: GameplayExcelLoader.CustomerLoadResult = GameplayExcelLoader.load_customers(
+		CUSTOMER_WORKBOOK_PATH
+	)
+	if load_result.loaded_from_excel:
+		_customer_data_by_id.clear()
+		for customer_data: CustomerData in load_result.customers:
+			_customer_data_by_id[customer_data.id] = customer_data
+		basic_guest_data = _customer_data_by_id[&"basic_guest"]
+		fast_guest_data = _customer_data_by_id[&"fast_guest"]
+		ranged_guest_data = _customer_data_by_id[&"ranged_guest"]
+		elite_guest_data = _customer_data_by_id[&"elite_guest"]
+		print(
+			"BALANCE_CUSTOMERS_LOADED path=%s count=%d" % [
+				CUSTOMER_WORKBOOK_PATH,
+				load_result.customers.size(),
+			]
 		)
+		return
+	_register_fallback_customers()
+	push_warning(
+		"BALANCE_CUSTOMERS_FALLBACK path=%s reason=%s" % [
+			CUSTOMER_WORKBOOK_PATH,
+			load_result.error_message,
+		]
+	)
 
 
 # 武器表成功时替换本局数据引用；失败时继续使用场景装配的 FoodData。
@@ -301,6 +336,18 @@ func _register_fallback_foods() -> void:
 			_food_data_by_id[food.id] = food
 
 
+func _register_fallback_customers() -> void:
+	_customer_data_by_id.clear()
+	for customer_data: CustomerData in [
+		basic_guest_data,
+		fast_guest_data,
+		ranged_guest_data,
+		elite_guest_data,
+	]:
+		if customer_data != null:
+			_customer_data_by_id[customer_data.id] = customer_data
+
+
 func _special_upgrade_target_error(upgrades: Array[SpecialUpgradeData]) -> String:
 	for upgrade: SpecialUpgradeData in upgrades:
 		if upgrade.effect_kind not in [
@@ -335,6 +382,10 @@ func _process(delta: float) -> void:
 			if phase == Phase.BOSS and boss != null and is_instance_valid(boss):
 				# 自动跑局在Boss阶段跟随目标横坐标，避免把“固定发射角”误判为流程卡死。
 				cart.target_x = boss.position.x
+				# 流程烟雾以30秒固定测试火力穿过Boss，不把数值调优当作流程故障。
+				boss.receive_satisfaction(
+					boss.maximum_appetite * delta / SMOKE_TEST_BOSS_CLEAR_DURATION
+				)
 			else:
 				cart.target_x = 3.6 + sin(state.elapsed_seconds * 1.7) * 2.45
 			_check_smoke_timeout()
@@ -408,12 +459,22 @@ func customer_collides_with_cart(customer: Customer3D) -> bool:
 
 
 func get_priority_target() -> Node3D:
+	return _get_priority_target(&"")
+
+
+func get_priority_target_for_food(food: FoodData) -> Node3D:
+	return _get_priority_target(food.id if food != null else &"")
+
+
+func _get_priority_target(food_id: StringName) -> Node3D:
 	var best_target: Node3D = null
 	var best_forward: float = INF
 	var best_horizontal: float = INF
 	var best_spawn_index: int = 2147483647
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active or customer.position.z >= cart.position.z:
+			continue
+		if not _target_is_allowed_for_food(food_id, logic_position(customer)):
 			continue
 		var forward: float = cart.position.z - customer.position.z
 		var horizontal: float = absf(customer.position.x - cart.position.x)
@@ -431,6 +492,8 @@ func get_priority_target() -> Node3D:
 		var gate_target: Node3D = gate.target_for_cart_x(cart.position.x)
 		if gate_target == null:
 			continue
+		if not _target_is_allowed_for_food(food_id, logic_position(gate_target)):
+			continue
 		var gate_forward: float = cart.position.z - gate.position.z
 		var gate_horizontal: float = absf(logic_position(gate_target).x - logic_position(cart).x)
 		if _target_is_better(gate_forward, gate_horizontal, gate.spawn_index, best_forward, best_horizontal, best_spawn_index):
@@ -447,6 +510,8 @@ func get_priority_target() -> Node3D:
 		var reward_target: Node3D = reward_gate.target_for_cart_x(cart.position.x)
 		if reward_target == null:
 			continue
+		if not _target_is_allowed_for_food(food_id, logic_position(reward_target)):
+			continue
 		var reward_forward: float = cart.position.z - reward_gate.position.z
 		var reward_horizontal: float = absf(logic_position(reward_target).x - logic_position(cart).x)
 		if _target_is_better(reward_forward, reward_horizontal, reward_gate.spawn_index, best_forward, best_horizontal, best_spawn_index):
@@ -455,11 +520,24 @@ func get_priority_target() -> Node3D:
 			best_horizontal = reward_horizontal
 			best_spawn_index = reward_gate.spawn_index
 	if boss != null and is_instance_valid(boss) and boss.active:
+		if not _target_is_allowed_for_food(food_id, logic_position(boss)):
+			return best_target
 		var boss_forward: float = cart.position.z - boss.position.z
 		var boss_horizontal: float = absf(boss.position.x - cart.position.x)
 		if _target_is_better(boss_forward, boss_horizontal, 2000000000, best_forward, best_horizontal, best_spawn_index):
 			best_target = boss
 	return best_target
+
+
+# 法棍只在道路正前方90°扇区寻敌；-Z为北，左右45°边界均计入。
+func _target_is_allowed_for_food(food_id: StringName, target_position: Vector3) -> bool:
+	if food_id != &"baguette":
+		return true
+	var offset: Vector3 = target_position - logic_position(cart)
+	return (
+		offset.z < -TARGET_CONE_EPSILON
+		and absf(offset.x) <= -offset.z + TARGET_CONE_EPSILON
+	)
 
 
 func spawn_projectile(
@@ -715,7 +793,9 @@ func _spawn_customer_now(customer_data: CustomerData, scheduled_baseline_appetit
 	_spawn_counter += 1
 	var customer: Customer3D = CUSTOMER_SCENE.instantiate() as Customer3D
 	var max_start: int = Playfield.REGION_COUNT - customer_data.occupied_regions
-	var first_region: int = (_spawn_counter * 2 + customer_data.kind) % (max_start + 1)
+	var first_region: int = (
+		_spawn_counter * 2 + customer_data.spawn_pattern_offset()
+	) % (max_start + 1)
 	customer.position = Vector3(
 		playfield.spawn_x(first_region, customer_data.occupied_regions),
 		0.0,
@@ -737,10 +817,13 @@ func _spawn_customer_now(customer_data: CustomerData, scheduled_baseline_appetit
 
 func _advance_normal_waves() -> void:
 	var elapsed: float = state.elapsed_seconds
-	if elapsed >= NORMAL_WAVE_END_TIME or _normal_waves_suspended:
+	if director.timeline == null or _normal_waves_suspended:
+		return
+	var normal_wave_end_time: float = director.timeline.normal_wave_end_time
+	if elapsed >= normal_wave_end_time:
 		return
 	_flush_scheduled_normal_customers(elapsed)
-	while _next_normal_spawn_time < NORMAL_WAVE_END_TIME:
+	while _next_normal_spawn_time < normal_wave_end_time:
 		var pattern: int = _normal_wave_index % 5
 		var wave_customers: Array[CustomerData] = []
 		var customer_data: CustomerData = basic_guest_data
@@ -767,12 +850,9 @@ func _advance_normal_waves() -> void:
 			scheduled.baseline_appetite = baseline_appetite
 			_scheduled_normal_customers.append(scheduled)
 		_normal_wave_index += 1
-		if _next_normal_spawn_time < 78.0:
-			_next_normal_spawn_time += 3.2
-		elif _next_normal_spawn_time < 135.0:
-			_next_normal_spawn_time += 2.8
-		else:
-			_next_normal_spawn_time += 4.0
+		_next_normal_spawn_time += director.timeline.normal_wave_interval_at(
+			_next_normal_spawn_time
+		)
 		_flush_scheduled_normal_customers(elapsed)
 
 
@@ -887,7 +967,7 @@ func _on_customer_escaped(customer: Customer3D) -> void:
 
 
 func _finish_customer(customer: Customer3D, collided: bool) -> void:
-	var was_elite: bool = customer.data.kind == CustomerData.Kind.ELITE
+	var was_elite: bool = customer.data.category == CustomerData.Category.ELITE
 	var defeat_position: Vector3 = logic_position(customer)
 	var reward_upgrade: UpgradeData = customer.reward_upgrade
 	var reward_baseline_appetite: float = customer.reward_baseline_appetite
