@@ -176,11 +176,29 @@ func _test_weapon_workbook() -> void:
 	_check(result.loaded_from_excel, "武器 Excel 可读取")
 	_check(result.foods.size() >= 3, "武器 Excel 至少包含当前三件食材")
 	var ids: Array[StringName] = []
+	var mushroom: FoodData = null
 	for food: FoodData in result.foods:
 		ids.append(food.id)
 		_check(food.base_satisfaction > 0.0, "武器基础满足为正数")
 		_check(food.base_interval > 0.0, "武器基础间隔为正数")
+		_check(food.attack_speed_upgrade_scale >= 0.0, "食材攻速强化倍率有效")
+		_check(food.wine_upgrade_scale >= 0.0, "食材酒强化倍率有效")
+		_check(food.range_upgrade_scale >= 0.0, "食材范围强化倍率有效")
+		_check(food.duration_upgrade_scale >= 0.0, "食材持续强化倍率有效")
+		if food.id == &"mushroom":
+			mushroom = food
 	_check(ids.has(&"potato") and ids.has(&"baguette") and ids.has(&"mushroom"), "当前三件食材ID齐全")
+	_check(mushroom != null, "武器表包含蘑菇")
+	if mushroom != null:
+		_check(is_equal_approx(mushroom.range_upgrade_scale, 0.5), "蘑菇范围强化倍率为0.5")
+		_check(is_equal_approx(mushroom.duration_upgrade_scale, 0.5), "蘑菇持续强化倍率为0.5")
+	_check(is_equal_approx(result.baguette_giant_interval_seconds, 3.0), "巨型法棍间隔由武器表读取")
+	_check(is_equal_approx(result.baguette_giant_attack_speed_scale, 0.05), "巨型法棍攻速倍率由武器表读取")
+	_check(is_equal_approx(result.baguette_giant_minimum_interval_seconds, 1.0), "巨型法棍最小间隔由武器表读取")
+	_check(is_equal_approx(result.baguette_giant_width_regions, 4.0), "巨型法棍宽度由武器表读取")
+	_check(result.baguette_giant_pierce_count == 999, "巨型法棍穿透由武器表读取")
+	_check(is_equal_approx(result.baguette_giant_duration_multiplier, 1.5), "巨型法棍持续倍率由武器表读取")
+	_check(is_equal_approx(result.baguette_giant_satisfaction_multiplier, 3.0), "巨型法棍满足倍率由武器表读取")
 
 
 func _test_normal_upgrade_workbook() -> void:
@@ -196,6 +214,10 @@ func _test_normal_upgrade_workbook() -> void:
 		var rendered_text: String = upgrade.effect_text()
 		_check(not rendered_text.is_empty(), "共用候选文案模板可以生成实际门牌文本")
 		_check(not rendered_text.contains("{"), "共用候选文案占位符已替换")
+		if upgrade.kind == UpgradeData.Kind.STURDY_CART:
+			_check(is_equal_approx(upgrade.minimum_value, 0.05), "餐车改造最小值为最大耐久5%")
+			_check(is_equal_approx(upgrade.maximum_value, 0.32), "餐车改造最大值为最大耐久32%")
+			_check(rendered_text == "耐久上限 +5点", "餐车改造门牌显示实际耐久点数")
 
 
 func _test_special_upgrade_workbook() -> void:
@@ -205,12 +227,7 @@ func _test_special_upgrade_workbook() -> void:
 	_check(result.loaded_from_excel, "特殊强化 Excel 可读取")
 	_check(result.upgrades.size() >= 3, "特殊候选池至少可以组成三选一")
 	_check(result.food_max_level >= 1, "食材最高等级有效")
-	_check(result.food_level_satisfaction_multiplier > 0.0, "食材等级倍率有效")
-	_check(is_equal_approx(result.baguette_giant_interval_seconds, 3.0), "巨型法棍间隔由特殊强化表读取")
-	_check(is_equal_approx(result.baguette_giant_width_regions, 4.0), "巨型法棍宽度由特殊强化表读取")
-	_check(result.baguette_giant_pierce_count == 999, "巨型法棍穿透由特殊强化表读取")
-	_check(is_equal_approx(result.baguette_giant_duration_multiplier, 1.5), "巨型法棍持续倍率由特殊强化表读取")
-	_check(is_equal_approx(result.baguette_giant_satisfaction_multiplier, 3.0), "巨型法棍满足倍率由特殊强化表读取")
+	_check(is_equal_approx(result.food_level_satisfaction_multiplier, 2.25), "食材等级倍率为2.25")
 	var giant_upgrade_found: bool = false
 	for upgrade: SpecialUpgradeData in result.upgrades:
 		if upgrade.id == &"baguette_giant":

@@ -22,6 +22,13 @@ class WeaponLoadResult:
 	extends RefCounted
 
 	var foods: Array[FoodData] = []
+	var baguette_giant_interval_seconds: float = RunState.BAGUETTE_GIANT_INTERVAL_SECONDS
+	var baguette_giant_attack_speed_scale: float = RunState.BAGUETTE_GIANT_ATTACK_SPEED_SCALE
+	var baguette_giant_minimum_interval_seconds: float = RunState.BAGUETTE_GIANT_MINIMUM_INTERVAL_SECONDS
+	var baguette_giant_width_regions: float = RunState.BAGUETTE_GIANT_WIDTH_REGIONS
+	var baguette_giant_pierce_count: int = RunState.BAGUETTE_GIANT_PIERCE_COUNT
+	var baguette_giant_duration_multiplier: float = RunState.BAGUETTE_GIANT_DURATION_MULTIPLIER
+	var baguette_giant_satisfaction_multiplier: float = RunState.BAGUETTE_GIANT_SATISFACTION_MULTIPLIER
 	var loaded_from_excel: bool = false
 	var error_message: String = ""
 	var source_path: String = ""
@@ -51,11 +58,6 @@ class SpecialUpgradeLoadResult:
 	var upgrades: Array[SpecialUpgradeData] = []
 	var food_max_level: int = RunState.FOOD_MAX_LEVEL
 	var food_level_satisfaction_multiplier: float = RunState.FOOD_LEVEL_SATISFACTION_MULTIPLIER
-	var baguette_giant_interval_seconds: float = RunState.BAGUETTE_GIANT_INTERVAL_SECONDS
-	var baguette_giant_width_regions: float = RunState.BAGUETTE_GIANT_WIDTH_REGIONS
-	var baguette_giant_pierce_count: int = RunState.BAGUETTE_GIANT_PIERCE_COUNT
-	var baguette_giant_duration_multiplier: float = RunState.BAGUETTE_GIANT_DURATION_MULTIPLIER
-	var baguette_giant_satisfaction_multiplier: float = RunState.BAGUETTE_GIANT_SATISFACTION_MULTIPLIER
 	var loaded_from_excel: bool = false
 	var error_message: String = ""
 	var source_path: String = ""
@@ -194,8 +196,9 @@ static func load_weapons(path: String) -> WeaponLoadResult:
 		return result
 	var workbook: ExcelReader47.ExcelWorkbook = read_result.workbook
 	var sheet: ExcelReader47.ExcelSheet = workbook.get_sheet_by_name("武器")
-	if sheet == null:
-		return _weapon_failure(result, "武器 Excel 必须包含“武器”工作表")
+	var derived_sheet: ExcelReader47.ExcelSheet = workbook.get_sheet_by_name("衍生攻击")
+	if sheet == null or derived_sheet == null:
+		return _weapon_failure(result, "武器 Excel 必须包含“武器”和“衍生攻击”工作表")
 	var errors: PackedStringArray = []
 	var seen_ids: Dictionary[StringName, bool] = {}
 	var row_number: int = 1
@@ -226,6 +229,10 @@ static func load_weapons(path: String) -> WeaponLoadResult:
 		food.orbit_angular_speed = _required_number(record, "环绕角速度(rad/s)", row_number, errors)
 		food.breathing_period = _required_number(record, "呼吸周期(s)", row_number, errors)
 		food.breathing_outer_multiplier = _required_number(record, "呼吸外圈倍率", row_number, errors)
+		food.attack_speed_upgrade_scale = _required_number(record, "攻速强化倍率", row_number, errors)
+		food.wine_upgrade_scale = _required_number(record, "酒强化倍率", row_number, errors)
+		food.range_upgrade_scale = _required_number(record, "范围强化倍率", row_number, errors)
+		food.duration_upgrade_scale = _required_number(record, "持续强化倍率", row_number, errors)
 		food.visual_color = Color.from_string(str(record.get("颜色HEX", "")), Color.WHITE)
 		if food.display_name.is_empty():
 			errors.append("武器表第 %d 行显示名称不能为空" % row_number)
@@ -240,13 +247,97 @@ static func load_weapons(path: String) -> WeaponLoadResult:
 		if food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
 			if food.orbit_radius <= 0.0 or food.orbit_angular_speed <= 0.0:
 				errors.append("武器表第 %d 行环绕武器的半径和角速度必须大于0" % row_number)
+		if (
+			food.attack_speed_upgrade_scale < 0.0
+			or food.wine_upgrade_scale < 0.0
+			or food.range_upgrade_scale < 0.0
+			or food.duration_upgrade_scale < 0.0
+		):
+			errors.append("武器表第 %d 行强化倍率不能为负数" % row_number)
 		result.foods.append(food)
 	if result.foods.is_empty():
 		errors.append("武器表至少需要一条有效数据")
+	_parse_derived_attack_records(derived_sheet.to_records(), result, errors)
 	if not errors.is_empty():
 		return _weapon_failure(result, "；".join(errors))
 	result.loaded_from_excel = true
 	return result
+
+
+# 衍生攻击与基础食材共用武器工作簿，但以独立记录维护专属节拍和命中参数。
+static func _parse_derived_attack_records(
+	records: Array[Dictionary],
+	result: WeaponLoadResult,
+	errors: PackedStringArray
+) -> void:
+	var found_giant_baguette: bool = false
+	var row_number: int = 1
+	for record: Dictionary in records:
+		row_number += 1
+		if not _as_bool(record.get("启用", true)):
+			continue
+		var config_id: StringName = StringName(str(record.get("配置ID", "")).strip_edges())
+		if config_id != &"baguette_giant":
+			errors.append("衍生攻击表第 %d 行配置ID不受支持: %s" % [row_number, String(config_id)])
+			continue
+		if found_giant_baguette:
+			errors.append("衍生攻击表第 %d 行重复配置: baguette_giant" % row_number)
+			continue
+		found_giant_baguette = true
+		var source_food_id: StringName = StringName(
+			str(record.get("来源食材ID", "")).strip_edges()
+		)
+		if source_food_id != &"baguette":
+			errors.append("衍生攻击表第 %d 行巨型法棍来源食材必须为baguette" % row_number)
+		result.baguette_giant_interval_seconds = _required_number(
+			record, "基础间隔(s)", row_number, errors, "衍生攻击"
+		)
+		result.baguette_giant_attack_speed_scale = _required_number(
+			record, "攻速强化倍率", row_number, errors, "衍生攻击"
+		)
+		result.baguette_giant_minimum_interval_seconds = _required_number(
+			record, "最小间隔(s)", row_number, errors, "衍生攻击"
+		)
+		result.baguette_giant_width_regions = _required_number(
+			record, "宽度区域数", row_number, errors, "衍生攻击"
+		)
+		var pierce_value: float = _required_number(
+			record, "命中目标数", row_number, errors, "衍生攻击"
+		)
+		result.baguette_giant_pierce_count = int(pierce_value)
+		result.baguette_giant_duration_multiplier = _required_number(
+			record, "持续倍率", row_number, errors, "衍生攻击"
+		)
+		result.baguette_giant_satisfaction_multiplier = _required_number(
+			record, "满足倍率", row_number, errors, "衍生攻击"
+		)
+		if result.baguette_giant_interval_seconds <= 0.0:
+			errors.append("衍生攻击表第 %d 行基础间隔必须大于0" % row_number)
+		if result.baguette_giant_attack_speed_scale < 0.0:
+			errors.append("衍生攻击表第 %d 行攻速强化倍率不能为负数" % row_number)
+		if (
+			result.baguette_giant_minimum_interval_seconds <= 0.0
+			or result.baguette_giant_minimum_interval_seconds
+			> result.baguette_giant_interval_seconds
+		):
+			errors.append("衍生攻击表第 %d 行最小间隔必须大于0且不超过基础间隔" % row_number)
+		if (
+			result.baguette_giant_width_regions <= 0.0
+			or result.baguette_giant_width_regions > float(Playfield.REGION_COUNT)
+		):
+			errors.append("衍生攻击表第 %d 行宽度区域数必须大于0且不超过6" % row_number)
+		if (
+			result.baguette_giant_pierce_count < 1
+			or not is_equal_approx(pierce_value, roundf(pierce_value))
+		):
+			errors.append("衍生攻击表第 %d 行命中目标数必须是至少1的整数" % row_number)
+		if (
+			result.baguette_giant_duration_multiplier <= 0.0
+			or result.baguette_giant_satisfaction_multiplier <= 0.0
+		):
+			errors.append("衍生攻击表第 %d 行持续和满足倍率必须大于0" % row_number)
+	if not found_giant_baguette:
+		errors.append("衍生攻击表缺少已启用的baguette_giant配置")
 
 
 # 普通门与食客奖励门共用同一候选池，每个实际选项仍由运行时独立抽百分位。
@@ -296,52 +387,10 @@ static func load_special_upgrades(path: String) -> SpecialUpgradeLoadResult:
 		"food_level_satisfaction_multiplier",
 		errors
 	)
-	result.baguette_giant_interval_seconds = _required_dictionary_number(
-		rules,
-		"baguette_giant_interval_seconds",
-		errors
-	)
-	result.baguette_giant_width_regions = _required_dictionary_number(
-		rules,
-		"baguette_giant_width_regions",
-		errors
-	)
-	var baguette_giant_pierce_value: float = _required_dictionary_number(
-		rules,
-		"baguette_giant_pierce_count",
-		errors
-	)
-	result.baguette_giant_pierce_count = int(baguette_giant_pierce_value)
-	result.baguette_giant_duration_multiplier = _required_dictionary_number(
-		rules,
-		"baguette_giant_duration_multiplier",
-		errors
-	)
-	result.baguette_giant_satisfaction_multiplier = _required_dictionary_number(
-		rules,
-		"baguette_giant_satisfaction_multiplier",
-		errors
-	)
 	if result.food_max_level < 1:
 		errors.append("food_max_level 必须至少为1")
 	if result.food_level_satisfaction_multiplier <= 0.0:
 		errors.append("food_level_satisfaction_multiplier 必须大于0")
-	if result.baguette_giant_interval_seconds <= 0.0:
-		errors.append("baguette_giant_interval_seconds 必须大于0")
-	if (
-		result.baguette_giant_width_regions <= 0.0
-		or result.baguette_giant_width_regions > float(Playfield.REGION_COUNT)
-	):
-		errors.append("baguette_giant_width_regions 必须大于0且不超过6格")
-	if (
-		result.baguette_giant_pierce_count < 1
-		or not is_equal_approx(baguette_giant_pierce_value, roundf(baguette_giant_pierce_value))
-	):
-		errors.append("baguette_giant_pierce_count 必须是至少1的整数")
-	if result.baguette_giant_duration_multiplier <= 0.0:
-		errors.append("baguette_giant_duration_multiplier 必须大于0")
-	if result.baguette_giant_satisfaction_multiplier <= 0.0:
-		errors.append("baguette_giant_satisfaction_multiplier 必须大于0")
 	var seen_ids: Dictionary[StringName, bool] = {}
 	var row_number: int = 1
 	for record: Dictionary in upgrades_sheet.to_records():

@@ -562,8 +562,8 @@ func _test_run_state() -> void:
 	_check(is_equal_approx(state.effective_satisfaction(potato), 12.0), "满足值按基础值加算")
 	state.level_food(&"potato")
 	_check(
-		is_equal_approx(state.effective_satisfaction(potato), 30.0),
-		"食材Lv.2的2.5倍自身倍率与全局倍率相乘"
+		is_equal_approx(state.effective_satisfaction(potato), 27.0),
+		"食材Lv.2的2.25倍独立倍率与糖的全局倍率相乘"
 	)
 	state.level_food(&"potato")
 	_check(state.food_level(&"potato") == 3, "食材等级最高为Lv.3")
@@ -602,10 +602,11 @@ func _test_run_state() -> void:
 
 	var sturdy: UpgradeData = UpgradeData.new()
 	sturdy.kind = UpgradeData.Kind.STURDY_CART
-	sturdy.value = 10.0
+	sturdy.value = 0.1
+	_check(sturdy.effect_text(100.0) == "耐久 +10点", "餐车改造按当前最大耐久显示实际点数")
 	state.apply_upgrade(sturdy)
-	_check(is_equal_approx(state.maximum_durability, 110.0), "最大耐久提高")
-	_check(is_equal_approx(state.current_durability, 110.0), "餐车改造同步提高当前耐久")
+	_check(is_equal_approx(state.maximum_durability, 110.0), "最大耐久按当前上限百分比提高")
+	_check(is_equal_approx(state.current_durability, 110.0), "餐车改造同步增加相同实际耐久")
 
 	state.take_durability_damage(40.0)
 	var repair: UpgradeData = UpgradeData.new()
@@ -649,6 +650,22 @@ func _test_run_state() -> void:
 			potato.projectile_speed * 1.25 * potato.base_lifetime * 1.5
 		),
 		"弹速与持续时间共同决定投射距离"
+	)
+	var mushroom: FoodData = load("res://data/foods/mushroom.tres") as FoodData
+	var mushroom_state: RunState = RunState.new()
+	var scallion: UpgradeData = UpgradeData.new()
+	scallion.kind = UpgradeData.Kind.SCALLION
+	scallion.value = 0.6
+	mushroom_state.apply_upgrade(scallion)
+	starch.value = 0.6
+	mushroom_state.apply_upgrade(starch)
+	_check(
+		is_equal_approx(mushroom_state.effective_projectile_radius(mushroom), mushroom.projectile_radius * 1.3),
+		"蘑菇只转译一半范围强化"
+	)
+	_check(
+		is_equal_approx(mushroom_state.effective_duration(mushroom), mushroom.base_lifetime * 1.3),
+		"蘑菇只转译一半持续强化"
 	)
 
 

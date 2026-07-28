@@ -125,6 +125,8 @@ var _special_upgrades_by_id: Dictionary[StringName, SpecialUpgradeData] = {}
 var _special_food_max_level: int = RunState.FOOD_MAX_LEVEL
 var _special_food_level_multiplier: float = RunState.FOOD_LEVEL_SATISFACTION_MULTIPLIER
 var _baguette_giant_interval_seconds: float = RunState.BAGUETTE_GIANT_INTERVAL_SECONDS
+var _baguette_giant_attack_speed_scale: float = RunState.BAGUETTE_GIANT_ATTACK_SPEED_SCALE
+var _baguette_giant_minimum_interval_seconds: float = RunState.BAGUETTE_GIANT_MINIMUM_INTERVAL_SECONDS
 var _baguette_giant_width_regions: float = RunState.BAGUETTE_GIANT_WIDTH_REGIONS
 var _baguette_giant_pierce_count: int = RunState.BAGUETTE_GIANT_PIERCE_COUNT
 var _baguette_giant_duration_multiplier: float = RunState.BAGUETTE_GIANT_DURATION_MULTIPLIER
@@ -166,6 +168,8 @@ func _ready() -> void:
 	state.food_max_level = _special_food_max_level
 	state.food_level_satisfaction_multiplier = _special_food_level_multiplier
 	state.baguette_giant_interval_seconds = _baguette_giant_interval_seconds
+	state.baguette_giant_attack_speed_scale = _baguette_giant_attack_speed_scale
+	state.baguette_giant_minimum_interval_seconds = _baguette_giant_minimum_interval_seconds
 	state.baguette_giant_width_regions = _baguette_giant_width_regions
 	state.baguette_giant_pierce_count = _baguette_giant_pierce_count
 	state.baguette_giant_duration_multiplier = _baguette_giant_duration_multiplier
@@ -262,6 +266,13 @@ func _load_weapon_balance() -> void:
 		WEAPON_WORKBOOK_PATH
 	)
 	if load_result.loaded_from_excel:
+		_baguette_giant_interval_seconds = load_result.baguette_giant_interval_seconds
+		_baguette_giant_attack_speed_scale = load_result.baguette_giant_attack_speed_scale
+		_baguette_giant_minimum_interval_seconds = load_result.baguette_giant_minimum_interval_seconds
+		_baguette_giant_width_regions = load_result.baguette_giant_width_regions
+		_baguette_giant_pierce_count = load_result.baguette_giant_pierce_count
+		_baguette_giant_duration_multiplier = load_result.baguette_giant_duration_multiplier
+		_baguette_giant_satisfaction_multiplier = load_result.baguette_giant_satisfaction_multiplier
 		for food: FoodData in load_result.foods:
 			_food_data_by_id[food.id] = food
 		if _food_data_by_id.has(&"potato"):
@@ -327,11 +338,6 @@ func _load_special_upgrade_balance() -> void:
 		_set_special_upgrades(load_result.upgrades)
 		_special_food_max_level = load_result.food_max_level
 		_special_food_level_multiplier = load_result.food_level_satisfaction_multiplier
-		_baguette_giant_interval_seconds = load_result.baguette_giant_interval_seconds
-		_baguette_giant_width_regions = load_result.baguette_giant_width_regions
-		_baguette_giant_pierce_count = load_result.baguette_giant_pierce_count
-		_baguette_giant_duration_multiplier = load_result.baguette_giant_duration_multiplier
-		_baguette_giant_satisfaction_multiplier = load_result.baguette_giant_satisfaction_multiplier
 		print(
 			"BALANCE_SPECIAL_UPGRADES_LOADED path=%s count=%d" % [
 				SPECIAL_UPGRADE_WORKBOOK_PATH,
@@ -1780,7 +1786,7 @@ func _build_prototype_upgrades() -> void:
 		_make_upgrade_range(&"sugar", "糖", UpgradeData.Kind.SUGAR, 0.05, 0.45, "%"),
 		_make_upgrade_range(&"quick_prep", "快速备餐", UpgradeData.Kind.QUICK_PREP, 0.02, 0.20, "%"),
 		_make_upgrade_range(&"light_cart", "轻便餐车", UpgradeData.Kind.LIGHT_CART, 50.0, 300.0, "速度"),
-		_make_upgrade_range(&"sturdy_cart", "餐车改造", UpgradeData.Kind.STURDY_CART, 5.0, 32.0, "点"),
+		_make_upgrade_range(&"sturdy_cart", "餐车改造", UpgradeData.Kind.STURDY_CART, 0.05, 0.32, "%"),
 		_make_upgrade_range(&"repair", "紧急维修", UpgradeData.Kind.REPAIR, 0.05, 0.40, "%"),
 		_make_upgrade_range(&"wine", "酒", UpgradeData.Kind.WINE, 0.10, 0.50, "%"),
 		_make_upgrade_range(&"scallion", "葱", UpgradeData.Kind.SCALLION, 0.10, 0.60, "%"),
@@ -1937,7 +1943,7 @@ func _build_fallback_special_upgrades() -> void:
 		_make_special_upgrade(&"mushroom", "蘑菇", SpecialUpgradeData.EffectKind.FOOD_CARD, &"mushroom", 1.0, true, "获得新食材并加入自动投喂", "提高自身基础满足值"),
 		_make_special_upgrade(&"serving", "全局加量", SpecialUpgradeData.EffectKind.SERVING, &"", 1.0, true, "当前与未来食材增加攻击份数", ""),
 		_make_special_upgrade(&"potato_aim", "瞄准投喂", SpecialUpgradeData.EffectKind.TARGET_AIM, &"potato", 1.0, false, "土豆发射时朝向当前目标", ""),
-		_make_special_upgrade(&"baguette_giant", "巨型法棍", SpecialUpgradeData.EffectKind.EVOLUTION, &"baguette", 1.0, false, "每3秒额外发射一根横跨四格、滚动直行的巨型法棍", ""),
+		_make_special_upgrade(&"baguette_giant", "巨型法棍", SpecialUpgradeData.EffectKind.EVOLUTION, &"baguette", 1.0, false, "以3秒基础间隔额外发射一根横跨四格、滚动直行的巨型法棍", ""),
 		_make_special_upgrade(&"mushroom_breath", "呼吸菌圈", SpecialUpgradeData.EffectKind.EVOLUTION, &"mushroom", 1.0, false, "蘑菇环绕半径按武器表周期与倍率呼吸", ""),
 		_make_special_upgrade(&"soy_sauce", "酱油", SpecialUpgradeData.EffectKind.PIERCE, &"", 1.0, true, "提高全部食材可命中目标数", ""),
 	])

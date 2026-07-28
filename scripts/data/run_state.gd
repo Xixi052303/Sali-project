@@ -6,8 +6,10 @@ signal inventory_changed
 
 const MINIMUM_INTERVAL: float = 1.0 / 60.0
 const FOOD_MAX_LEVEL: int = 3
-const FOOD_LEVEL_SATISFACTION_MULTIPLIER: float = 2.5
+const FOOD_LEVEL_SATISFACTION_MULTIPLIER: float = 2.25
 const BAGUETTE_GIANT_INTERVAL_SECONDS: float = 3.0
+const BAGUETTE_GIANT_ATTACK_SPEED_SCALE: float = 0.05
+const BAGUETTE_GIANT_MINIMUM_INTERVAL_SECONDS: float = 1.0
 const BAGUETTE_GIANT_WIDTH_REGIONS: float = 4.0
 const BAGUETTE_GIANT_PIERCE_COUNT: int = 999
 const BAGUETTE_GIANT_DURATION_MULTIPLIER: float = 1.5
@@ -47,8 +49,10 @@ var current_durability: float = 100.0
 # 特殊强化表可覆盖等级规则；默认值继续作为工作簿失败时的安全回退。
 var food_max_level: int = FOOD_MAX_LEVEL
 var food_level_satisfaction_multiplier: float = FOOD_LEVEL_SATISFACTION_MULTIPLIER
-# 巨型法棍参数由特殊强化表覆盖，并在表格失败时保留同规则的安全回退。
+# 巨型法棍参数由武器表覆盖，并在表格失败时保留同规则的安全回退。
 var baguette_giant_interval_seconds: float = BAGUETTE_GIANT_INTERVAL_SECONDS
+var baguette_giant_attack_speed_scale: float = BAGUETTE_GIANT_ATTACK_SPEED_SCALE
+var baguette_giant_minimum_interval_seconds: float = BAGUETTE_GIANT_MINIMUM_INTERVAL_SECONDS
 var baguette_giant_width_regions: float = BAGUETTE_GIANT_WIDTH_REGIONS
 var baguette_giant_pierce_count: int = BAGUETTE_GIANT_PIERCE_COUNT
 var baguette_giant_duration_multiplier: float = BAGUETTE_GIANT_DURATION_MULTIPLIER
@@ -183,8 +187,9 @@ func apply_upgrade(upgrade: UpgradeData, count_as_gate: bool = true) -> void:
 		UpgradeData.Kind.LIGHT_CART:
 			cart_speed_bonus += upgrade.value
 		UpgradeData.Kind.STURDY_CART:
-			maximum_durability += upgrade.value
-			current_durability += upgrade.value
+			var durability_gain: float = maximum_durability * maxf(0.0, upgrade.value)
+			maximum_durability += durability_gain
+			current_durability += durability_gain
 			durability_changed.emit(current_durability, maximum_durability, temporary_shield)
 		UpgradeData.Kind.REPAIR:
 			repair(maximum_durability * upgrade.value)
@@ -229,23 +234,43 @@ func effective_satisfaction(food: FoodData) -> float:
 
 
 func effective_interval(food: FoodData) -> float:
-	return maxf(MINIMUM_INTERVAL, food.base_interval / (1.0 + attack_speed_bonus))
+	var scaled_bonus: float = attack_speed_bonus * maxf(0.0, food.attack_speed_upgrade_scale)
+	return maxf(MINIMUM_INTERVAL, food.base_interval / (1.0 + scaled_bonus))
 
 
 func effective_projectile_speed(food: FoodData) -> float:
-	return food.projectile_speed * projectile_speed_multiplier
+	return food.projectile_speed * _scaled_upgrade_multiplier(
+		projectile_speed_multiplier,
+		food.wine_upgrade_scale
+	)
 
 
 func effective_orbit_angular_speed(food: FoodData) -> float:
-	return food.orbit_angular_speed * projectile_speed_multiplier
+	return food.orbit_angular_speed * _scaled_upgrade_multiplier(
+		projectile_speed_multiplier,
+		food.wine_upgrade_scale
+	)
 
 
 func effective_projectile_radius(food: FoodData) -> float:
-	return food.projectile_radius * range_multiplier
+	return food.projectile_radius * _scaled_upgrade_multiplier(
+		range_multiplier,
+		food.range_upgrade_scale
+	)
 
 
 func effective_duration(food: FoodData) -> float:
-	return food.base_lifetime * duration_multiplier
+	return food.base_lifetime * _scaled_upgrade_multiplier(
+		duration_multiplier,
+		food.duration_upgrade_scale
+	)
+
+
+# 巨型法棍只吸收少量全局攻速，并使用独立下限保护其构筑定位和画面节奏。
+func effective_giant_baguette_interval() -> float:
+	var scaled_bonus: float = attack_speed_bonus * maxf(0.0, baguette_giant_attack_speed_scale)
+	var minimum_interval: float = maxf(MINIMUM_INTERVAL, baguette_giant_minimum_interval_seconds)
+	return maxf(minimum_interval, baguette_giant_interval_seconds / (1.0 + scaled_bonus))
 
 
 func effective_pierce_count(food: FoodData) -> int:
@@ -255,6 +280,11 @@ func effective_pierce_count(food: FoodData) -> int:
 # 投射物射程由弹速与持续时间共同决定，两类强化会分别放大同一结果。
 func effective_projectile_distance(food: FoodData) -> float:
 	return effective_projectile_speed(food) * effective_duration(food)
+
+
+# 全局累计倍率只把超过1的强化部分交给食材转译，倍率0表示不继承该强化。
+func _scaled_upgrade_multiplier(global_multiplier: float, scale: float) -> float:
+	return 1.0 + maxf(0.0, global_multiplier - 1.0) * maxf(0.0, scale)
 
 
 func record_food_satisfaction(food_id: StringName, amount: float) -> void:

@@ -36,6 +36,12 @@ enum AimMode {
 @export var orbit_angular_speed: float = 3.2
 @export var breathing_period: float = 1.2
 @export var breathing_outer_multiplier: float = 2.0
+@export_group("Upgrade scaling")
+# 普通强化先全局累计，再按食材转译倍率换算，避免特殊攻击方式获得完整通用收益。
+@export var attack_speed_upgrade_scale: float = 1.0
+@export var wine_upgrade_scale: float = 1.0
+@export var range_upgrade_scale: float = 1.0
+@export var duration_upgrade_scale: float = 1.0
 
 
 func _init() -> void:

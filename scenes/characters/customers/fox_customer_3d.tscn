@@ -38,6 +38,9 @@ transform = Transform3D(3.1391647e-07, 0, -1, 0, 1, 0, 1, 0, 3.1391647e-07, 0, 0
 [node name="FoxModel" parent="PaperCustomerVisual/ModelRoot" index="0" unique_id=1021946416 instance=ExtResource("2_model")]
 transform = Transform3D(1.63472, 0, 0, 0, 1.63472, 0, 0, 0, 1.63472, -0.00015, 0, 0.029453)
 
+[node name="tripo_node_1bc673ec-f310-4784-ba86-549e604a5212" parent="PaperCustomerVisual/ModelRoot/FoxModel" index="0" unique_id=1625411918]
+transform = Transform3D(0.9961947, -0.08715574, 0, 0.08715574, 0.9961947, 0, 0, 0, 1, 9.153783e-05, 0, -0.0180175)
+
 [node name="Body" parent="PaperCustomerVisual" index="1"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.48, 0)
 visible = false

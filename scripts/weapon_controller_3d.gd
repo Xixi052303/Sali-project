@@ -87,7 +87,7 @@ func _tick_giant_baguette(food: FoodData, delta: float) -> void:
 		_giant_baguette_enabled = false
 		_giant_baguette_cooldown = 0.0
 		return
-	var interval: float = maxf(RunState.MINIMUM_INTERVAL, state.baguette_giant_interval_seconds)
+	var interval: float = state.effective_giant_baguette_interval()
 	if not _giant_baguette_enabled:
 		_giant_baguette_enabled = true
 		_giant_baguette_cooldown = interval

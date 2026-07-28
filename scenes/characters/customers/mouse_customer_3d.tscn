@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://daxlsgyb66i8h"]
 
-[ext_resource type="PackedScene" path="res://scenes/characters/customers/customer_base_3d.tscn" id="1_base"]
+[ext_resource type="PackedScene" uid="uid://dk1t3632u8d4" path="res://scenes/characters/customers/customer_base_3d.tscn" id="1_base"]
 [ext_resource type="PackedScene" uid="uid://baost0m6wesrs" path="res://assets/models/角色/敌人/普通食客/老鼠.glb" id="2_model"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2ud0j"]
@@ -32,36 +32,23 @@ size = Vector3(1.48, 0.14, 0.06)
 
 [node name="MouseCustomer3D" unique_id=1496391548 instance=ExtResource("1_base")]
 
-[node name="ModelRoot" parent="PaperCustomerVisual" index="0"]
-transform = Transform3D(3.1391647e-07, 0, -1, 0, 1, 0, 1, 0, 3.1391647e-07, 0, 0, 0)
-
-[node name="MouseModel" parent="PaperCustomerVisual/ModelRoot" index="0" unique_id=93700383 instance=ExtResource("2_model")]
+[node name="MouseModel" parent="PaperCustomerVisual/ModelRoot" parent_id_path=PackedInt32Array(1106591432) index="0" unique_id=93700383 instance=ExtResource("2_model")]
 transform = Transform3D(1.63614, 0, 0, 0, 1.63614, 0, 0, 0, 1.63614, -0.000175, 0, -0.001744)
 
-[node name="Body" parent="PaperCustomerVisual" index="1"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.48, 0)
+[node name="Body" parent="PaperCustomerVisual" parent_id_path=PackedInt32Array(314167009) index="1" unique_id=98443456]
 visible = false
 material_override = SubResource("StandardMaterial3D_2ud0j")
 mesh = SubResource("BoxMesh_evgw6")
 
-[node name="Head" parent="PaperCustomerVisual" index="2"]
-transform = Transform3D(0.9, 0, 0, 0, 0.72, 0, 0, 0, 0.14, 0, 1.18, 0)
+[node name="Head" parent="PaperCustomerVisual" parent_id_path=PackedInt32Array(314167009) index="2" unique_id=1449422728]
 visible = false
 material_override = SubResource("StandardMaterial3D_2pf5h")
 
-[node name="ContactShadow" parent="PaperCustomerVisual" index="3"]
-transform = Transform3D(1.82, 0, 0, 0, 0.05, 0, 0, 0, 0.56, 0, 0.03, 0)
-
-[node name="AppetiteBack" parent="PaperCustomerVisual" index="4"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.92, 0.08)
+[node name="AppetiteBack" parent="PaperCustomerVisual" parent_id_path=PackedInt32Array(314167009) index="4" unique_id=1132087781]
 mesh = SubResource("BoxMesh_i60a8")
 
-[node name="AppetiteFill" parent="PaperCustomerVisual" index="5"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.92, 0.14)
+[node name="AppetiteFill" parent="PaperCustomerVisual" parent_id_path=PackedInt32Array(314167009) index="5" unique_id=142251501]
 material_override = SubResource("StandardMaterial3D_am0up")
 mesh = SubResource("BoxMesh_x0k0r")
-
-[node name="AppetiteLabel" parent="PaperCustomerVisual" index="6"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.06, 0.18)
 
 [editable path="PaperCustomerVisual/ModelRoot/MouseModel"]

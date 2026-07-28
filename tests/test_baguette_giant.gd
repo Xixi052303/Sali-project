@@ -4,11 +4,13 @@ var _failures: int = 0
 
 
 func _init() -> void:
-	var load_result: GameplayExcelLoader.SpecialUpgradeLoadResult = (
-		GameplayExcelLoader.load_special_upgrades("res://balance_tables/特殊强化.xlsx")
+	var load_result: GameplayExcelLoader.WeaponLoadResult = (
+		GameplayExcelLoader.load_weapons("res://balance_tables/武器.xlsx")
 	)
 	_check(load_result.loaded_from_excel, "巨型法棍配置表可读取")
 	_check(is_equal_approx(load_result.baguette_giant_interval_seconds, 3.0), "发射间隔为3秒")
+	_check(is_equal_approx(load_result.baguette_giant_attack_speed_scale, 0.05), "攻速强化倍率为0.05")
+	_check(is_equal_approx(load_result.baguette_giant_minimum_interval_seconds, 1.0), "最快一秒发射一次")
 	_check(is_equal_approx(load_result.baguette_giant_width_regions, 4.0), "横向宽度为4格")
 	_check(load_result.baguette_giant_pierce_count == 999, "穿透为999")
 	_check(is_equal_approx(load_result.baguette_giant_duration_multiplier, 1.5), "持续倍率为1.5")
@@ -24,7 +26,7 @@ func _init() -> void:
 
 
 # 验证进化的独立节拍、投射物参数、朝向与道路平面碰撞。
-func _test_runtime(load_result: GameplayExcelLoader.SpecialUpgradeLoadResult) -> void:
+func _test_runtime(load_result: GameplayExcelLoader.WeaponLoadResult) -> void:
 	var run: RunController3D = RunController3D.new()
 	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
 	var cart: Cart3D = cart_scene.instantiate() as Cart3D
@@ -36,10 +38,20 @@ func _test_runtime(load_result: GameplayExcelLoader.SpecialUpgradeLoadResult) ->
 	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
 	var state: RunState = RunState.new()
 	state.baguette_giant_interval_seconds = load_result.baguette_giant_interval_seconds
+	state.baguette_giant_attack_speed_scale = load_result.baguette_giant_attack_speed_scale
+	state.baguette_giant_minimum_interval_seconds = load_result.baguette_giant_minimum_interval_seconds
 	state.baguette_giant_width_regions = load_result.baguette_giant_width_regions
 	state.baguette_giant_pierce_count = load_result.baguette_giant_pierce_count
 	state.baguette_giant_duration_multiplier = load_result.baguette_giant_duration_multiplier
 	state.baguette_giant_satisfaction_multiplier = load_result.baguette_giant_satisfaction_multiplier
+	state.attack_speed_bonus = 1.0
+	_check(
+		is_equal_approx(state.effective_giant_baguette_interval(), 3.0 / 1.05),
+		"巨型法棍只吸收5%的累计攻速"
+	)
+	state.attack_speed_bonus = 1000.0
+	_check(is_equal_approx(state.effective_giant_baguette_interval(), 1.0), "巨型法棍间隔下限为1秒")
+	state.attack_speed_bonus = 0.0
 	state.range_multiplier = 1.5
 	state.add_food(&"baguette")
 	state.enable_food_evolution(&"baguette_giant")

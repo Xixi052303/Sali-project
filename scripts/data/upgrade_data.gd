@@ -69,6 +69,10 @@ func effect_text(maximum_durability: float = 100.0) -> String:
 				"{repair_points}",
 				"+%.0f点" % (maximum_durability * value)
 			)
+			.replace(
+				"{sturdy_points}",
+				"+%.0f点" % (maximum_durability * value)
+			)
 		)
 	match kind:
 		Kind.SUGAR:
@@ -84,7 +88,7 @@ func effect_text(maximum_durability: float = 100.0) -> String:
 		Kind.LIGHT_CART:
 			return "移速 %s" % formatted_value()
 		Kind.STURDY_CART:
-			return "耐久 %s" % formatted_value()
+			return "耐久 +%.0f点" % (maximum_durability * value)
 		Kind.REPAIR:
 			return "恢复/护盾 +%.0f点" % (maximum_durability * value)
 	return formatted_value()

@@ -1,6 +1,6 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene format=3 uid="uid://dk1t3632u8d4"]
 
-[ext_resource type="Script" path="res://scripts/customer_3d.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://c1fx5a51t4ran" path="res://scripts/customer_3d.gd" id="1_script"]
 
 [sub_resource type="StandardMaterial3D" id="MatBody"]
 resource_local_to_scene = true
@@ -17,16 +17,13 @@ albedo_color = Color(0.505882, 0.568627, 0.470588, 1)
 roughness = 0.94
 
 [sub_resource type="SphereMesh" id="MeshHead"]
-radius = 0.5
-height = 1.0
 
 [sub_resource type="StandardMaterial3D" id="MatShadow"]
-albedo_color = Color(0.168627, 0.141176, 0.113725, 1)
-roughness = 1.0
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.1680183, 0.1428257, 0.11207495, 0.8)
 
 [sub_resource type="SphereMesh" id="MeshShadow"]
-radius = 0.5
-height = 1.0
 
 [sub_resource type="StandardMaterial3D" id="MatHealthBack"]
 albedo_color = Color(0.878431, 0.815686, 0.67451, 1)
@@ -45,59 +42,55 @@ roughness = 0.92
 resource_local_to_scene = true
 size = Vector3(1.48, 0.14, 0.06)
 
-[node name="Customer3D" type="Node3D"]
+[node name="Customer3D" type="Node3D" unique_id=362634180]
 script = ExtResource("1_script")
 
-[node name="PaperCustomerVisual" type="Node3D" parent="."]
+[node name="PaperCustomerVisual" type="Node3D" parent="." unique_id=314167009]
 unique_name_in_owner = true
 
-[node name="ModelRoot" type="Node3D" parent="PaperCustomerVisual"]
+[node name="ModelRoot" type="Node3D" parent="PaperCustomerVisual" unique_id=1106591432]
 unique_name_in_owner = true
-rotation = Vector3(0, -1.570796, 0)
+transform = Transform3D(3.1391647e-07, 0, -1, 0, 1, 0, 1, 0, 3.1391647e-07, 0, 0, 0)
 
-[node name="Body" type="MeshInstance3D" parent="PaperCustomerVisual"]
+[node name="Body" type="MeshInstance3D" parent="PaperCustomerVisual" unique_id=98443456]
 unique_name_in_owner = true
-position = Vector3(0, 0.48, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.48, 0)
 material_override = SubResource("MatBody")
 mesh = SubResource("MeshBody")
 
-[node name="Head" type="MeshInstance3D" parent="PaperCustomerVisual"]
+[node name="Head" type="MeshInstance3D" parent="PaperCustomerVisual" unique_id=1449422728]
 unique_name_in_owner = true
-position = Vector3(0, 1.18, 0)
-scale = Vector3(0.9, 0.72, 0.14)
+transform = Transform3D(0.9, 0, 0, 0, 0.72, 0, 0, 0, 0.14, 0, 1.18, 0)
 material_override = SubResource("MatHead")
 mesh = SubResource("MeshHead")
 
-[node name="ContactShadow" type="MeshInstance3D" parent="PaperCustomerVisual"]
+[node name="ContactShadow" type="MeshInstance3D" parent="PaperCustomerVisual" unique_id=524603034]
 unique_name_in_owner = true
-position = Vector3(0, 0.03, 0)
-scale = Vector3(1.82, 0.05, 0.56)
-cast_shadow = 0
+transform = Transform3D(1.82, 0, 0, 0, 0.05, 0, 0, 0, 0.56, 0, 0.03, 0)
 material_override = SubResource("MatShadow")
+cast_shadow = 0
 mesh = SubResource("MeshShadow")
 
-[node name="AppetiteBack" type="MeshInstance3D" parent="PaperCustomerVisual"]
+[node name="AppetiteBack" type="MeshInstance3D" parent="PaperCustomerVisual" unique_id=1132087781]
 unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.92, 0.08)
 visible = false
-position = Vector3(0, 1.92, 0.08)
-cast_shadow = 0
 material_override = SubResource("MatHealthBack")
+cast_shadow = 0
 mesh = SubResource("MeshHealthBack")
 
-[node name="AppetiteFill" type="MeshInstance3D" parent="PaperCustomerVisual"]
+[node name="AppetiteFill" type="MeshInstance3D" parent="PaperCustomerVisual" unique_id=142251501]
 unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.92, 0.14)
 visible = false
-position = Vector3(0, 1.92, 0.14)
-cast_shadow = 0
 material_override = SubResource("MatHealthFill")
+cast_shadow = 0
 mesh = SubResource("MeshHealthFill")
 
-[node name="AppetiteLabel" type="Label3D" parent="PaperCustomerVisual"]
+[node name="AppetiteLabel" type="Label3D" parent="PaperCustomerVisual" unique_id=904474782]
 unique_name_in_owner = true
-position = Vector3(0, 2.06, 0.18)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.06, 0.18)
 pixel_size = 0.01
-font_size = 64
-outline_size = 12
 modulate = Color(1, 0.941176, 0.784314, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
-alpha_cut = 0
+font_size = 64
