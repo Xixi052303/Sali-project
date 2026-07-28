@@ -3,6 +3,7 @@ extends Node3D
 
 const MISS_DISAPPEAR_DURATION: float = 0.2
 const VISUAL_CENTER_Y: float = 0.82
+const GIANT_BAGUETTE_ROLL_SPEED: float = 6.0
 # 三份尺寸来自对应 GLB 的本地 AABB，只用于把美术模型映射到既有表现尺度。
 const POTATO_MODEL_SIZE: Vector3 = Vector3(0.849609375, 0.716796875, 0.998046875)
 const BAGUETTE_MODEL_SIZE: Vector3 = Vector3(0.400390625, 0.330078125, 0.998046875)
@@ -32,8 +33,9 @@ var _orbit_base_radius: float = 1.2
 var _breathing_enabled: bool = false
 var _breathing_period: float = 1.2
 var _breathing_outer_multiplier: float = 2.0
-var _sweep_enabled: bool = false
-var _sweep_half_length: float = 2.4
+var _giant_baguette: bool = false
+var _giant_half_width: float = 0.0
+var _giant_roll_angle: float = 0.0
 @onready var _potato_visual: Node3D = %PotatoVisual
 @onready var _baguette_visual: Node3D = %BaguetteVisual
 @onready var _mushroom_visual: Node3D = %MushroomVisual
@@ -52,7 +54,8 @@ func configure(
 	target: Node3D,
 	should_home: bool,
 	orbit_phase: float,
-	sweep_enabled: bool,
+	giant_baguette: bool,
+	giant_width: float,
 	breathing_enabled: bool
 ) -> void:
 	_resolve_visual_nodes()
@@ -78,7 +81,9 @@ func configure(
 	_breathing_enabled = breathing_enabled
 	_breathing_period = maxf(0.1, food.breathing_period)
 	_breathing_outer_multiplier = maxf(1.0, food.breathing_outer_multiplier)
-	_sweep_enabled = sweep_enabled
+	_giant_baguette = giant_baguette
+	_giant_half_width = maxf(0.0, giant_width * 0.5)
+	_giant_roll_angle = 0.0
 	_configure_visual()
 
 
@@ -119,12 +124,15 @@ func _process_forward_motion(delta: float) -> void:
 		velocity = Vector3(sin(next_angle), 0.0, -cos(next_angle)) * _movement_speed
 	_previous_position = position
 	position += velocity * delta
-	var base_rotation: float = atan2(velocity.x, -velocity.z)
-	if _sweep_enabled:
-		var progress: float = 1.0 - _lifetime_remaining / maxf(0.001, _initial_lifetime)
-		rotation.y = base_rotation + lerpf(-PI * 0.5, PI * 0.5, progress)
-	else:
-		rotation.y = base_rotation
+	if _giant_baguette:
+		_giant_roll_angle = fmod(_giant_roll_angle + GIANT_BAGUETTE_ROLL_SPEED * delta, TAU)
+		quaternion = (
+			Quaternion(Vector3.UP, PI * 0.5)
+			* Quaternion(Vector3.FORWARD, _giant_roll_angle)
+		)
+		return
+	# 模型的前端沿本地-Z；绕Y轴需使用运动方向角的相反数。
+	rotation.y = atan2(-velocity.x, -velocity.z)
 
 
 func _process_orbit(delta: float) -> void:
@@ -183,17 +191,19 @@ func overlaps_target(target_position: Vector3, target_radius: float) -> bool:
 		Vector2(target_position.x, target_position.z),
 		radius + target_radius
 	)
-	if not _sweep_enabled:
+	if not _giant_baguette:
 		return movement_overlaps
-	var axis: Vector2 = Vector2(sin(rotation.y), -cos(rotation.y))
-	var center: Vector2 = Vector2(projectile_position.x, projectile_position.z)
+	# 巨型法棍横跨道路X轴，并用前后帧包围盒避免高弹速漏判。
 	var target: Vector2 = Vector2(target_position.x, target_position.z)
-	var start: Vector2 = center - axis * _sweep_half_length
-	var end: Vector2 = center + axis * _sweep_half_length
-	return (
-		movement_overlaps
-		or _segment_overlaps_target(start, end, target, radius + target_radius)
+	var min_x: float = minf(_previous_position.x, projectile_position.x) - _giant_half_width
+	var max_x: float = maxf(_previous_position.x, projectile_position.x) + _giant_half_width
+	var min_z: float = minf(_previous_position.z, projectile_position.z)
+	var max_z: float = maxf(_previous_position.z, projectile_position.z)
+	var closest: Vector2 = Vector2(
+		clampf(target.x, min_x, max_x),
+		clampf(target.y, min_z, max_z)
 	)
+	return closest.distance_to(target) <= radius + target_radius
 
 
 func _segment_overlaps_target(
@@ -247,7 +257,7 @@ func _configure_visual() -> void:
 	_baguette_visual.visible = food_id == &"baguette"
 	_mushroom_visual.visible = food_id == &"mushroom"
 	if food_id == &"baguette":
-		var baguette_length: float = _sweep_half_length * 2.0 if _sweep_enabled else 0.8
+		var baguette_length: float = _giant_half_width * 2.0 if _giant_baguette else 0.8
 		var baguette_width: float = maxf(0.2, radius * 1.5)
 		_baguette_visual.scale = Vector3(
 			baguette_width / BAGUETTE_MODEL_SIZE.x,

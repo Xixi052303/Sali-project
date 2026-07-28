@@ -330,10 +330,15 @@ func _test_projectile_evolutions() -> void:
 	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
 	run.add_child(cart)
 	run.cart = cart
+	var projectiles: Node3D = Node3D.new()
+	run.add_child(projectiles)
+	run.projectiles = projectiles
+	var state: RunState = RunState.new()
+	run.state = state
 	var baguette: FoodData = load("res://data/foods/baguette.tres") as FoodData
-	var sweep: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
-	run.add_child(sweep)
-	sweep.configure(
+	var giant: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	run.add_child(giant)
+	giant.configure(
 		run,
 		Vector3(3.6, 0.0, 5.0),
 		Vector3.FORWARD,
@@ -347,16 +352,57 @@ func _test_projectile_evolutions() -> void:
 		false,
 		0.0,
 		true,
+		Playfield.REGION_WIDTH * 4.0,
 		false
 	)
-	sweep.rotation.y = PI * 0.5
 	var target: Node3D = Node3D.new()
-	target.position = Vector3(5.0, 0.0, 5.0)
-	_check(sweep.overlaps_target(target.position, 0.2), "横扫法棍使用道路平面横向线段判定")
-	sweep.register_hit(target)
-	_check(not sweep.can_hit(target), "横扫法棍单个实例对同一目标最多结算一次")
+	target.position = Vector3(5.8, 0.0, 5.0)
+	_check(giant.overlaps_target(target.position, 0.2), "巨型法棍使用横跨四格的道路平面判定")
+	_check(not giant.overlaps_target(Vector3(6.8, 0.0, 5.0), 0.2), "巨型法棍不会命中四格宽度外目标")
+	giant.register_hit(target)
+	_check(not giant.can_hit(target), "巨型法棍单个实例对同一目标最多结算一次")
 	target.free()
-	sweep.free()
+	giant.free()
+
+	var aimed_baguette: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	run.add_child(aimed_baguette)
+	aimed_baguette.configure(
+		run,
+		Vector3(3.6, 0.0, 5.0),
+		Vector3(1.0, 0.0, -1.0),
+		baguette,
+		8.0,
+		7.0,
+		0.16,
+		1.2,
+		3,
+		null,
+		false,
+		0.0,
+		false,
+		0.0,
+		false
+	)
+	aimed_baguette._process_forward_motion(0.0)
+	_check(aimed_baguette.rotation.y < 0.0, "法棍朝向右前目标时模型向右旋转")
+	aimed_baguette.free()
+
+	state.add_food(&"baguette")
+	state.enable_food_evolution(&"baguette_giant")
+	var weapon: WeaponController3D = WeaponController3D.new()
+	run.add_child(weapon)
+	weapon.configure(run, cart, state)
+	weapon._tick_giant_baguette(baguette, 0.0)
+	weapon._tick_giant_baguette(baguette, 2.9)
+	_check(projectiles.get_child_count() == 0, "巨型法棍取得后等待完整三秒间隔")
+	weapon._tick_giant_baguette(baguette, 0.1)
+	_check(projectiles.get_child_count() == 1, "巨型法棍每三秒额外发射一根")
+	var fired_giant: FoodProjectile3D = projectiles.get_child(0) as FoodProjectile3D
+	_check(fired_giant._giant_baguette, "额外投射物标记为巨型法棍")
+	_check(not fired_giant.homing_enabled, "巨型法棍不跟踪目标")
+	_check(fired_giant.remaining_hits == 999, "巨型法棍读取999穿透配置")
+	_check(is_equal_approx(fired_giant._initial_lifetime, state.effective_duration(baguette) * 1.5), "巨型法棍持续时间为法棍的1.5倍")
+	_check(is_equal_approx(fired_giant.satisfaction, state.effective_satisfaction(baguette) * 3.0), "巨型法棍满足值为法棍的3倍")
 
 	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
 	var fast_projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
@@ -375,6 +421,7 @@ func _test_projectile_evolutions() -> void:
 		false,
 		0.0,
 		false,
+		0.0,
 		false
 	)
 	fast_projectile._process_forward_motion(0.333)
@@ -401,6 +448,7 @@ func _test_projectile_evolutions() -> void:
 		false,
 		0.0,
 		false,
+		0.0,
 		false
 	)
 	orbit._process_orbit(0.0)
@@ -433,6 +481,7 @@ func _test_projectile_evolutions() -> void:
 		false,
 		0.0,
 		false,
+		0.0,
 		false
 	)
 	faster_orbit._process_orbit(TAU * 1.5 / (mushroom.orbit_angular_speed * 1.5))
@@ -457,6 +506,7 @@ func _test_projectile_evolutions() -> void:
 		false,
 		0.0,
 		false,
+		0.0,
 		false
 	)
 	_check(
@@ -482,6 +532,7 @@ func _test_projectile_evolutions() -> void:
 		false,
 		0.0,
 		false,
+		0.0,
 		true
 	)
 	breathing_orbit._lifetime_remaining = (
@@ -924,24 +975,38 @@ func _test_resources() -> void:
 		basic.category == CustomerData.Category.NORMAL
 		and basic.behavior == CustomerData.Behavior.NONE
 		and basic.display_name == "小鼠食客"
-		and basic.model_scene != null,
-		"基础食客回退资源使用小鼠模型与无行为"
+		and basic.customer_scene != null,
+		"基础食客回退资源使用可预览小鼠场景与无行为"
 	)
 	_check(
 		fast.category == CustomerData.Category.NORMAL
 		and fast.behavior == CustomerData.Behavior.NONE
-		and fast.model_scene != null,
-		"急脚狐狸只通过属性形成差异"
+		and fast.customer_scene != null,
+		"急脚狐狸使用独立场景且只通过属性形成行为差异"
 	)
 	_check(
 		ranged.category == CustomerData.Category.NORMAL
 		and ranged.behavior == CustomerData.Behavior.RANGED
-		and ranged.model_scene != null,
-		"拍桌青蛙回退资源使用远程行为"
+		and ranged.customer_scene != null,
+		"拍桌青蛙回退资源使用独立场景与远程行为"
 	)
 	_check(elite != null and elite.occupied_regions == 6, "精英横跨六区")
 	_check(elite != null and elite.category == CustomerData.Category.ELITE, "精英身份独立于行为类型")
 	_check(elite != null and is_equal_approx(elite.appetite_multiplier, 1.5), "精英默认使用1.5倍基准胃口")
+	_check(elite != null and elite.customer_scene != null, "精英回退资源使用独立可预览场景")
+	var basic_scene_instance: Customer3D = basic.customer_scene.instantiate() as Customer3D
+	var basic_model_root: Node3D = basic_scene_instance.get_node("PaperCustomerVisual/ModelRoot") as Node3D
+	_check(basic_model_root.get_child_count() == 1, "小鼠模型已静态装配在食客场景中")
+	basic_scene_instance.free()
+	var elite_scene_instance: Customer3D = elite.customer_scene.instantiate() as Customer3D
+	var elite_shadow: MeshInstance3D = elite_scene_instance.get_node(
+		"PaperCustomerVisual/ContactShadow"
+	) as MeshInstance3D
+	_check(is_equal_approx(elite_shadow.scale.x, 5.82), "精英场景直接保存六区阴影宽度")
+	elite_shadow.scale.x = 6.1
+	elite_scene_instance.configure(elite, null, 1, 100.0)
+	_check(is_equal_approx(elite_shadow.scale.x, 6.1), "食客配置不覆盖编辑器阴影宽度")
+	elite_scene_instance.free()
 	_check(
 		basic.spawn_pattern_offset() == 0
 		and fast.spawn_pattern_offset() == 1
@@ -952,11 +1017,17 @@ func _test_resources() -> void:
 	_check(boss != null and is_equal_approx(boss.appetite_at(100.0), 300.0), "Boss默认使用3倍基准胃口")
 	var boss_scene: PackedScene = load("res://scenes/boss_3d.tscn") as PackedScene
 	var boss_instance: PrototypeBoss3D = boss_scene.instantiate() as PrototypeBoss3D
+	var boss_body: MeshInstance3D = boss_instance.get_node("Body") as MeshInstance3D
+	var boss_head: MeshInstance3D = boss_instance.get_node("Head") as MeshInstance3D
+	_check(boss_body.visible and boss_head.visible, "Boss占位视觉已静态装配在可预览场景中")
+	var boss_material: StandardMaterial3D = boss_body.material_override as StandardMaterial3D
+	boss_material.albedo_color = Color.MAGENTA
 	var boss_run: RunController3D = RunController3D.new()
 	var boss_cart: Cart3D = Cart3D.new()
 	boss_cart.position.z = 14.95819
 	boss_run.cart = boss_cart
 	boss_instance.configure(boss, boss_run, 100.0)
+	_check(boss_material.albedo_color == Color.MAGENTA, "Boss配置不覆盖编辑器材质颜色")
 	_check(
 		is_equal_approx(
 			boss_instance.position.z + PrototypeBoss3D.ENTRY_TRAVEL_DISTANCE,

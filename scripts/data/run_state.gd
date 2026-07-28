@@ -7,6 +7,11 @@ signal inventory_changed
 const MINIMUM_INTERVAL: float = 1.0 / 60.0
 const FOOD_MAX_LEVEL: int = 3
 const FOOD_LEVEL_SATISFACTION_MULTIPLIER: float = 2.5
+const BAGUETTE_GIANT_INTERVAL_SECONDS: float = 3.0
+const BAGUETTE_GIANT_WIDTH_REGIONS: float = 4.0
+const BAGUETTE_GIANT_PIERCE_COUNT: int = 999
+const BAGUETTE_GIANT_DURATION_MULTIPLIER: float = 1.5
+const BAGUETTE_GIANT_SATISFACTION_MULTIPLIER: float = 3.0
 
 
 class SpecialChoiceRecord:
@@ -42,6 +47,12 @@ var current_durability: float = 100.0
 # 特殊强化表可覆盖等级规则；默认值继续作为工作簿失败时的安全回退。
 var food_max_level: int = FOOD_MAX_LEVEL
 var food_level_satisfaction_multiplier: float = FOOD_LEVEL_SATISFACTION_MULTIPLIER
+# 巨型法棍参数由特殊强化表覆盖，并在表格失败时保留同规则的安全回退。
+var baguette_giant_interval_seconds: float = BAGUETTE_GIANT_INTERVAL_SECONDS
+var baguette_giant_width_regions: float = BAGUETTE_GIANT_WIDTH_REGIONS
+var baguette_giant_pierce_count: int = BAGUETTE_GIANT_PIERCE_COUNT
+var baguette_giant_duration_multiplier: float = BAGUETTE_GIANT_DURATION_MULTIPLIER
+var baguette_giant_satisfaction_multiplier: float = BAGUETTE_GIANT_SATISFACTION_MULTIPLIER
 # 同类百分比强化在整局内线性加算，后取得的食材直接继承累计结果。
 var satisfaction_multiplier: float = 1.0
 var attack_speed_bonus: float = 0.0

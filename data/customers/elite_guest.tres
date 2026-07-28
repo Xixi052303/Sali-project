@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="CustomerData" format=3 uid="uid://cxmke6xw32fsj"]
+[gd_resource type="Resource" script_class="CustomerData" load_steps=3 format=3 uid="uid://cxmke6xw32fsj"]
 
 [ext_resource type="Script" uid="uid://8lxx5m58jfe2" path="res://scripts/data/customer_data.gd" id="1_customer"]
+[ext_resource type="PackedScene" path="res://scenes/elite_customer_3d.tscn" id="2_scene"]
 
 [resource]
 script = ExtResource("1_customer")
@@ -12,3 +13,4 @@ appetite_multiplier = 1.5
 move_speed = 18.0
 occupied_regions = 6
 body_color = Color(0.51, 0.25, 0.24, 1)
+customer_scene = ExtResource("2_scene")

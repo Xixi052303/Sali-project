@@ -9,11 +9,12 @@ const REQUIRED_CUSTOMER_IDS: Array[StringName] = [
 	&"ranged_guest",
 	&"elite_guest",
 ]
-# 当前切片只把已有三种普通模板映射到已确认模型，不提前扩充食客机制。
-const CUSTOMER_MODEL_SCENES: Dictionary[StringName, PackedScene] = {
-	&"basic_guest": preload("res://assets/models/角色/敌人/普通食客/老鼠.glb"),
-	&"fast_guest": preload("res://assets/models/角色/敌人/普通食客/狐狸.glb"),
-	&"ranged_guest": preload("res://assets/models/角色/敌人/普通食客/青蛙.glb"),
+# 场景保存完整可预览视觉，Excel只选择既有模板，不在运行时拼装模型。
+const CUSTOMER_SCENES: Dictionary[StringName, PackedScene] = {
+	&"basic_guest": preload("res://scenes/basic_customer_3d.tscn"),
+	&"fast_guest": preload("res://scenes/fast_customer_3d.tscn"),
+	&"ranged_guest": preload("res://scenes/ranged_customer_3d.tscn"),
+	&"elite_guest": preload("res://scenes/elite_customer_3d.tscn"),
 }
 
 
@@ -50,6 +51,11 @@ class SpecialUpgradeLoadResult:
 	var upgrades: Array[SpecialUpgradeData] = []
 	var food_max_level: int = RunState.FOOD_MAX_LEVEL
 	var food_level_satisfaction_multiplier: float = RunState.FOOD_LEVEL_SATISFACTION_MULTIPLIER
+	var baguette_giant_interval_seconds: float = RunState.BAGUETTE_GIANT_INTERVAL_SECONDS
+	var baguette_giant_width_regions: float = RunState.BAGUETTE_GIANT_WIDTH_REGIONS
+	var baguette_giant_pierce_count: int = RunState.BAGUETTE_GIANT_PIERCE_COUNT
+	var baguette_giant_duration_multiplier: float = RunState.BAGUETTE_GIANT_DURATION_MULTIPLIER
+	var baguette_giant_satisfaction_multiplier: float = RunState.BAGUETTE_GIANT_SATISFACTION_MULTIPLIER
 	var loaded_from_excel: bool = false
 	var error_message: String = ""
 	var source_path: String = ""
@@ -101,7 +107,7 @@ static func _parse_customer_records(
 		var customer: CustomerData = CustomerData.new()
 		customer.id = customer_id
 		customer.display_name = str(record.get("显示名称", "")).strip_edges()
-		customer.model_scene = CUSTOMER_MODEL_SCENES.get(customer_id) as PackedScene
+		customer.customer_scene = CUSTOMER_SCENES.get(customer_id) as PackedScene
 		customer.category = _customer_category(record.get("身份层级"), row_number, errors)
 		customer.behavior = _customer_behavior(record.get("行为类型"), row_number, errors)
 		customer.appetite_multiplier = _required_number(
@@ -290,10 +296,52 @@ static func load_special_upgrades(path: String) -> SpecialUpgradeLoadResult:
 		"food_level_satisfaction_multiplier",
 		errors
 	)
+	result.baguette_giant_interval_seconds = _required_dictionary_number(
+		rules,
+		"baguette_giant_interval_seconds",
+		errors
+	)
+	result.baguette_giant_width_regions = _required_dictionary_number(
+		rules,
+		"baguette_giant_width_regions",
+		errors
+	)
+	var baguette_giant_pierce_value: float = _required_dictionary_number(
+		rules,
+		"baguette_giant_pierce_count",
+		errors
+	)
+	result.baguette_giant_pierce_count = int(baguette_giant_pierce_value)
+	result.baguette_giant_duration_multiplier = _required_dictionary_number(
+		rules,
+		"baguette_giant_duration_multiplier",
+		errors
+	)
+	result.baguette_giant_satisfaction_multiplier = _required_dictionary_number(
+		rules,
+		"baguette_giant_satisfaction_multiplier",
+		errors
+	)
 	if result.food_max_level < 1:
 		errors.append("food_max_level 必须至少为1")
 	if result.food_level_satisfaction_multiplier <= 0.0:
 		errors.append("food_level_satisfaction_multiplier 必须大于0")
+	if result.baguette_giant_interval_seconds <= 0.0:
+		errors.append("baguette_giant_interval_seconds 必须大于0")
+	if (
+		result.baguette_giant_width_regions <= 0.0
+		or result.baguette_giant_width_regions > float(Playfield.REGION_COUNT)
+	):
+		errors.append("baguette_giant_width_regions 必须大于0且不超过6格")
+	if (
+		result.baguette_giant_pierce_count < 1
+		or not is_equal_approx(baguette_giant_pierce_value, roundf(baguette_giant_pierce_value))
+	):
+		errors.append("baguette_giant_pierce_count 必须是至少1的整数")
+	if result.baguette_giant_duration_multiplier <= 0.0:
+		errors.append("baguette_giant_duration_multiplier 必须大于0")
+	if result.baguette_giant_satisfaction_multiplier <= 0.0:
+		errors.append("baguette_giant_satisfaction_multiplier 必须大于0")
 	var seen_ids: Dictionary[StringName, bool] = {}
 	var row_number: int = 1
 	for record: Dictionary in upgrades_sheet.to_records():

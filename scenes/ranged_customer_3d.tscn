@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/customer_3d.tscn" id="1_base"]
+[ext_resource type="PackedScene" uid="uid://4do0fcdm1fkw" path="res://assets/models/角色/敌人/普通食客/青蛙.glb" id="2_model"]
+
+[node name="RangedCustomer3D" instance=ExtResource("1_base")]
+
+[node name="FrogModel" parent="PaperCustomerVisual/ModelRoot" index="0" instance=ExtResource("2_model")]
+position = Vector3(-0.003499, 0, 0.001765)
+scale = Vector3(1.89963, 1.89963, 1.89963)
+
+[node name="Body" parent="PaperCustomerVisual" index="1"]
+visible = false
+
+[node name="Head" parent="PaperCustomerVisual" index="2"]
+visible = false
+
+[editable path="PaperCustomerVisual/ModelRoot/FrogModel"]

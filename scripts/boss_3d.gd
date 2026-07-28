@@ -28,8 +28,6 @@ var _attack_index: int = 0
 var _locked_target_x: float = 3.6
 var _direction: float = 1.0
 var _combat_z: float = 3.0
-@onready var _body_mesh: MeshInstance3D = %Body
-@onready var _head_mesh: MeshInstance3D = %Head
 @onready var _appetite_label: Label3D = %AppetiteLabel
 @onready var _telegraph_line: MeshInstance3D = %LineTelegraph
 @onready var _telegraph_area: MeshInstance3D = %AreaTelegraph
@@ -106,10 +104,8 @@ func hit_radius() -> float:
 
 
 func _resolve_visual_nodes() -> void:
-	if _body_mesh != null:
+	if _appetite_label != null:
 		return
-	_body_mesh = get_node("Body") as MeshInstance3D
-	_head_mesh = get_node("Head") as MeshInstance3D
 	_appetite_label = get_node("AppetiteLabel") as Label3D
 	_telegraph_line = get_node("LineTelegraph") as MeshInstance3D
 	_telegraph_area = get_node("AreaTelegraph") as MeshInstance3D
@@ -128,11 +124,6 @@ func _change_state(next_state: State) -> void:
 
 
 func _configure_visual() -> void:
-	var color: Color = data.body_color
-	var body_material: StandardMaterial3D = _body_mesh.material_override as StandardMaterial3D
-	body_material.albedo_color = color
-	var head_material: StandardMaterial3D = _head_mesh.material_override as StandardMaterial3D
-	head_material.albedo_color = color.lightened(0.1)
 	_appetite_label.text = str(ceili(remaining_appetite))
 	_telegraph_line.visible = false
 	_telegraph_area.visible = false

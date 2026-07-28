@@ -40,7 +40,7 @@ const CUSTOMER_WORKBOOK_PATH: String = "res://balance_tables/食客.xlsx"
 const WEAPON_WORKBOOK_PATH: String = "res://balance_tables/武器.xlsx"
 const NORMAL_UPGRADE_WORKBOOK_PATH: String = "res://balance_tables/普通强化.xlsx"
 const SPECIAL_UPGRADE_WORKBOOK_PATH: String = "res://balance_tables/特殊强化.xlsx"
-const CUSTOMER_SCENE: PackedScene = preload("res://scenes/customer_3d.tscn")
+const DEFAULT_CUSTOMER_SCENE: PackedScene = preload("res://scenes/customer_3d.tscn")
 const BOSS_SCENE: PackedScene = preload("res://scenes/boss_3d.tscn")
 const PROJECTILE_SCENE: PackedScene = preload("res://scenes/projectile_3d.tscn")
 const GATE_SCENE: PackedScene = preload("res://scenes/upgrade_gate_3d.tscn")
@@ -120,6 +120,11 @@ var _customer_data_by_id: Dictionary[StringName, CustomerData] = {}
 var _special_upgrades_by_id: Dictionary[StringName, SpecialUpgradeData] = {}
 var _special_food_max_level: int = RunState.FOOD_MAX_LEVEL
 var _special_food_level_multiplier: float = RunState.FOOD_LEVEL_SATISFACTION_MULTIPLIER
+var _baguette_giant_interval_seconds: float = RunState.BAGUETTE_GIANT_INTERVAL_SECONDS
+var _baguette_giant_width_regions: float = RunState.BAGUETTE_GIANT_WIDTH_REGIONS
+var _baguette_giant_pierce_count: int = RunState.BAGUETTE_GIANT_PIERCE_COUNT
+var _baguette_giant_duration_multiplier: float = RunState.BAGUETTE_GIANT_DURATION_MULTIPLIER
+var _baguette_giant_satisfaction_multiplier: float = RunState.BAGUETTE_GIANT_SATISFACTION_MULTIPLIER
 var _debug_invincible: bool = false
 # 食材卡取得后转为等级卡；进化按持有状态进入池，全局效果可以重复取得。
 var _special_choice_pool: Array[StringName] = [
@@ -128,7 +133,7 @@ var _special_choice_pool: Array[StringName] = [
 	&"mushroom",
 	&"serving",
 	&"potato_aim",
-	&"baguette_sweep",
+	&"baguette_giant",
 	&"mushroom_breath",
 	&"soy_sauce",
 ]
@@ -156,6 +161,11 @@ func _ready() -> void:
 	state.run_seed = _run_seed
 	state.food_max_level = _special_food_max_level
 	state.food_level_satisfaction_multiplier = _special_food_level_multiplier
+	state.baguette_giant_interval_seconds = _baguette_giant_interval_seconds
+	state.baguette_giant_width_regions = _baguette_giant_width_regions
+	state.baguette_giant_pierce_count = _baguette_giant_pierce_count
+	state.baguette_giant_duration_multiplier = _baguette_giant_duration_multiplier
+	state.baguette_giant_satisfaction_multiplier = _baguette_giant_satisfaction_multiplier
 	print("PLAYTEST_RUN_SEED value=%d" % _run_seed)
 	if _smoke_test:
 		# 烟雾测试只验证流程闭环，不让扩展后的普通波次提前终止自动跑局。
@@ -313,6 +323,11 @@ func _load_special_upgrade_balance() -> void:
 		_set_special_upgrades(load_result.upgrades)
 		_special_food_max_level = load_result.food_max_level
 		_special_food_level_multiplier = load_result.food_level_satisfaction_multiplier
+		_baguette_giant_interval_seconds = load_result.baguette_giant_interval_seconds
+		_baguette_giant_width_regions = load_result.baguette_giant_width_regions
+		_baguette_giant_pierce_count = load_result.baguette_giant_pierce_count
+		_baguette_giant_duration_multiplier = load_result.baguette_giant_duration_multiplier
+		_baguette_giant_satisfaction_multiplier = load_result.baguette_giant_satisfaction_multiplier
 		print(
 			"BALANCE_SPECIAL_UPGRADES_LOADED path=%s count=%d" % [
 				SPECIAL_UPGRADE_WORKBOOK_PATH,
@@ -548,19 +563,27 @@ func spawn_projectile(
 	speed: float,
 	radius: float,
 	target: Node3D,
-	orbit_phase: float = 0.0
+	orbit_phase: float = 0.0,
+	giant_baguette: bool = false
 ) -> void:
 	var projectile: FoodProjectile3D = PROJECTILE_SCENE.instantiate() as FoodProjectile3D
 	projectiles.add_child(projectile)
 	var should_home: bool = (
-		food.initial_tracking_mode == FoodData.TrackingMode.HOMING
-		or state.is_food_homing(food.id)
+		not giant_baguette
+		and (
+			food.initial_tracking_mode == FoodData.TrackingMode.HOMING
+			or state.is_food_homing(food.id)
+		)
 	)
-	var lifetime: float = state.effective_duration(food)
-	var hit_count: int = state.effective_pierce_count(food)
-	var sweep_enabled: bool = (
-		food.id == &"baguette"
-		and state.has_food_evolution(&"baguette_sweep")
+	var lifetime: float = (
+		state.effective_duration(food) * state.baguette_giant_duration_multiplier
+		if giant_baguette
+		else state.effective_duration(food)
+	)
+	var hit_count: int = (
+		state.baguette_giant_pierce_count
+		if giant_baguette
+		else state.effective_pierce_count(food)
 	)
 	var breathing_enabled: bool = (
 		food.id == &"mushroom"
@@ -579,7 +602,8 @@ func spawn_projectile(
 		target,
 		should_home,
 		orbit_phase,
-		sweep_enabled,
+		giant_baguette,
+		Playfield.REGION_WIDTH * state.baguette_giant_width_regions if giant_baguette else 0.0,
 		breathing_enabled
 	)
 
@@ -791,7 +815,7 @@ func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 
 func _spawn_customer_now(customer_data: CustomerData, scheduled_baseline_appetite: float = 0.0) -> void:
 	_spawn_counter += 1
-	var customer: Customer3D = CUSTOMER_SCENE.instantiate() as Customer3D
+	var customer: Customer3D = _instantiate_customer(customer_data)
 	var max_start: int = Playfield.REGION_COUNT - customer_data.occupied_regions
 	var first_region: int = (
 		_spawn_counter * 2 + customer_data.spawn_pattern_offset()
@@ -870,7 +894,7 @@ func _flush_scheduled_normal_customers(elapsed: float) -> void:
 func _spawn_elite_now() -> void:
 	_elite_started_at = state.elapsed_seconds
 	_spawn_counter += 1
-	var elite: Customer3D = CUSTOMER_SCENE.instantiate() as Customer3D
+	var elite: Customer3D = _instantiate_customer(elite_guest_data)
 	elite.position = Vector3(3.6, 0.0, Playfield.FORWARD_SPAWN_Z)
 	entities.add_child(elite)
 	var appetite: float = elite_guest_data.appetite_at(_current_baseline_appetite())
@@ -882,6 +906,18 @@ func _spawn_elite_now() -> void:
 	customers.append(elite)
 	hud.set_phase("精英检查 · 六区无法绕行")
 	hud.show_toast("六席贵客挡住整条路，尽快满足它！", Color("#f0c45f"))
+
+
+# 食客数据只选择完整预制场景；错误或缺失配置回退到通用纸片场景。
+func _instantiate_customer(customer_data: CustomerData) -> Customer3D:
+	var packed_scene: PackedScene = customer_data.customer_scene
+	if packed_scene == null:
+		packed_scene = DEFAULT_CUSTOMER_SCENE
+	var customer: Customer3D = packed_scene.instantiate() as Customer3D
+	if customer != null:
+		return customer
+	push_error("食客场景根节点必须继承 Customer3D: %s" % String(customer_data.id))
+	return DEFAULT_CUSTOMER_SCENE.instantiate() as Customer3D
 
 
 func _spawn_gate_now(_index: int, is_start_gate: bool, scheduled_baseline_appetite: float = 0.0) -> void:
@@ -1895,7 +1931,7 @@ func _build_fallback_special_upgrades() -> void:
 		_make_special_upgrade(&"mushroom", "蘑菇", SpecialUpgradeData.EffectKind.FOOD_CARD, &"mushroom", 1.0, true, "获得新食材并加入自动投喂", "提高自身基础满足值"),
 		_make_special_upgrade(&"serving", "全局加量", SpecialUpgradeData.EffectKind.SERVING, &"", 1.0, true, "当前与未来食材增加攻击份数", ""),
 		_make_special_upgrade(&"potato_aim", "瞄准投喂", SpecialUpgradeData.EffectKind.TARGET_AIM, &"potato", 1.0, false, "土豆发射时朝向当前目标", ""),
-		_make_special_upgrade(&"baguette_sweep", "横扫法棍", SpecialUpgradeData.EffectKind.EVOLUTION, &"baguette", 1.0, false, "旋转扫过道路，同一目标每根只结算一次", ""),
+		_make_special_upgrade(&"baguette_giant", "巨型法棍", SpecialUpgradeData.EffectKind.EVOLUTION, &"baguette", 1.0, false, "每3秒额外发射一根横跨四格、滚动直行的巨型法棍", ""),
 		_make_special_upgrade(&"mushroom_breath", "呼吸菌圈", SpecialUpgradeData.EffectKind.EVOLUTION, &"mushroom", 1.0, false, "蘑菇环绕半径按武器表周期与倍率呼吸", ""),
 		_make_special_upgrade(&"soy_sauce", "酱油", SpecialUpgradeData.EffectKind.PIERCE, &"", 1.0, true, "提高全部食材可命中目标数", ""),
 	])

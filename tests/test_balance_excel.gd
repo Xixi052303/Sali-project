@@ -125,15 +125,27 @@ func _test_customer_workbook() -> void:
 	var ranged: CustomerData = customers[&"ranged_guest"]
 	var elite: CustomerData = customers[&"elite_guest"]
 	_check(basic.display_name == "小鼠食客", "基础食客身份为小鼠")
-	_check(basic.model_scene != null and basic.model_scene.resource_path.ends_with("老鼠.glb"), "基础食客加载小鼠模型")
+	_check(
+		basic.customer_scene != null
+		and basic.customer_scene.resource_path.ends_with("basic_customer_3d.tscn"),
+		"基础食客加载可预览小鼠场景"
+	)
 	_check(is_equal_approx(basic.appetite_multiplier, 1.0), "基础食客保持1.0倍胃口")
 	_check(is_equal_approx(basic.move_speed, 42.0), "基础食客保持42px/s")
 	_check(fast.display_name == "急脚狐狸", "快速模板加载狐狸身份")
-	_check(fast.model_scene != null and fast.model_scene.resource_path.ends_with("狐狸.glb"), "快速模板加载狐狸模型")
+	_check(
+		fast.customer_scene != null
+		and fast.customer_scene.resource_path.ends_with("fast_customer_3d.tscn"),
+		"快速模板加载可预览狐狸场景"
+	)
 	_check(is_equal_approx(fast.appetite_multiplier, 0.75), "急脚食客保持0.75倍胃口")
 	_check(is_equal_approx(fast.move_speed, 96.0), "急脚食客保持96px/s")
 	_check(ranged.display_name == "拍桌青蛙", "远程模板加载青蛙身份")
-	_check(ranged.model_scene != null and ranged.model_scene.resource_path.ends_with("青蛙.glb"), "远程模板加载青蛙模型")
+	_check(
+		ranged.customer_scene != null
+		and ranged.customer_scene.resource_path.ends_with("ranged_customer_3d.tscn"),
+		"远程模板加载可预览青蛙场景"
+	)
 	_check(
 		ranged.category == CustomerData.Category.NORMAL
 		and ranged.behavior == CustomerData.Behavior.RANGED,
@@ -148,6 +160,11 @@ func _test_customer_workbook() -> void:
 		elite.category == CustomerData.Category.ELITE
 		and elite.behavior == CustomerData.Behavior.NONE,
 		"六席贵客由精英身份与无行为组合"
+	)
+	_check(
+		elite.customer_scene != null
+		and elite.customer_scene.resource_path.ends_with("elite_customer_3d.tscn"),
+		"六席贵客加载独立可预览场景"
 	)
 	_check(is_equal_approx(elite.move_speed, 18.0) and elite.occupied_regions == 6, "精英保持当前速度与六区占位")
 
@@ -189,6 +206,17 @@ func _test_special_upgrade_workbook() -> void:
 	_check(result.upgrades.size() >= 3, "特殊候选池至少可以组成三选一")
 	_check(result.food_max_level >= 1, "食材最高等级有效")
 	_check(result.food_level_satisfaction_multiplier > 0.0, "食材等级倍率有效")
+	_check(is_equal_approx(result.baguette_giant_interval_seconds, 3.0), "巨型法棍间隔由特殊强化表读取")
+	_check(is_equal_approx(result.baguette_giant_width_regions, 4.0), "巨型法棍宽度由特殊强化表读取")
+	_check(result.baguette_giant_pierce_count == 999, "巨型法棍穿透由特殊强化表读取")
+	_check(is_equal_approx(result.baguette_giant_duration_multiplier, 1.5), "巨型法棍持续倍率由特殊强化表读取")
+	_check(is_equal_approx(result.baguette_giant_satisfaction_multiplier, 3.0), "巨型法棍满足倍率由特殊强化表读取")
+	var giant_upgrade_found: bool = false
+	for upgrade: SpecialUpgradeData in result.upgrades:
+		if upgrade.id == &"baguette_giant":
+			giant_upgrade_found = true
+			break
+	_check(giant_upgrade_found, "特殊候选池包含巨型法棍进化")
 	var food_result: GameplayExcelLoader.WeaponLoadResult = GameplayExcelLoader.load_weapons(
 		"res://balance_tables/武器.xlsx"
 	)

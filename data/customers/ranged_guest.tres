@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="CustomerData" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/customer_data.gd" id="1_customer"]
-[ext_resource type="PackedScene" uid="uid://4do0fcdm1fkw" path="res://assets/models/角色/敌人/普通食客/青蛙.glb" id="2_model"]
+[ext_resource type="PackedScene" path="res://scenes/ranged_customer_3d.tscn" id="2_scene"]
 
 [resource]
 script = ExtResource("1_customer")
@@ -13,6 +13,6 @@ appetite_multiplier = 1.5
 move_speed = 28.0
 occupied_regions = 2
 body_color = Color(0.35, 0.31, 0.48, 1)
-model_scene = ExtResource("2_model")
+customer_scene = ExtResource("2_scene")
 attack_ratio = 0.08
 attack_interval = 3.4
