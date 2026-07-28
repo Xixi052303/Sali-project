@@ -2,51 +2,8 @@
 
 [ext_resource type="Script" path="res://scripts/projectile_3d.gd" id="1_script"]
 
-[sub_resource type="StandardMaterial3D" id="MatPotato"]
-resource_local_to_scene = true
-albedo_color = Color(0.886275, 0.713726, 0.313726, 1)
-roughness = 0.9
-
-[sub_resource type="SphereMesh" id="MeshPotato"]
-radius = 0.5
-height = 1.0
-
-[sub_resource type="StandardMaterial3D" id="MatBaguette"]
-resource_local_to_scene = true
-albedo_color = Color(0.760784, 0.470588, 0.211765, 1)
-roughness = 0.9
-
-[sub_resource type="BoxMesh" id="MeshBaguette"]
-resource_local_to_scene = true
-size = Vector3(0.24, 0.18, 0.8)
-
-[sub_resource type="StandardMaterial3D" id="MatMushroom"]
-resource_local_to_scene = true
-albedo_color = Color(0.454902, 0.658824, 0.309804, 1)
-roughness = 0.95
-
-[sub_resource type="SphereMesh" id="MeshMushroom"]
-radius = 0.5
-height = 0.72
-
 [node name="FoodProjectile3D" type="Node3D"]
 script = ExtResource("1_script")
 
-[node name="PotatoVisual" type="MeshInstance3D" parent="."]
+[node name="VisualRoot" type="Node3D" parent="."]
 unique_name_in_owner = true
-position = Vector3(0, 0.82, 0)
-scale = Vector3(0.32, 0.32, 0.32)
-material_override = SubResource("MatPotato")
-mesh = SubResource("MeshPotato")
-
-[node name="BaguetteVisual" type="MeshInstance3D" parent="."]
-unique_name_in_owner = true
-position = Vector3(0, 0.82, 0)
-material_override = SubResource("MatBaguette")
-mesh = SubResource("MeshBaguette")
-
-[node name="MushroomVisual" type="MeshInstance3D" parent="."]
-unique_name_in_owner = true
-position = Vector3(0, 0.82, 0)
-material_override = SubResource("MatMushroom")
-mesh = SubResource("MeshMushroom")

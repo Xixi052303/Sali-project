@@ -2,6 +2,13 @@ class_name FoodProjectile3D
 extends Node3D
 
 const MISS_DISAPPEAR_DURATION: float = 0.2
+const POTATO_MODEL_SCENE: PackedScene = preload("res://assets/models/投射物模型/土豆.glb")
+const BAGUETTE_MODEL_SCENE: PackedScene = preload("res://assets/models/投射物模型/法棍.glb")
+const MUSHROOM_MODEL_SCENE: PackedScene = preload("res://assets/models/投射物模型/蘑菇.glb")
+const VISUAL_CENTER_Y: float = 0.82
+const POTATO_MODEL_SIZE: Vector3 = Vector3(0.849609375, 0.716796875, 0.998046875)
+const BAGUETTE_MODEL_SIZE: Vector3 = Vector3(0.400390625, 0.330078125, 0.998046875)
+const MUSHROOM_MODEL_SIZE: Vector3 = Vector3(0.986328125, 0.998046875, 0.912109375)
 
 var run: RunController3D
 var velocity: Vector3 = Vector3.ZERO
@@ -30,10 +37,9 @@ var _breathing_period: float = 1.2
 var _breathing_outer_multiplier: float = 2.0
 var _sweep_enabled: bool = false
 var _sweep_half_length: float = 2.4
-@onready var _potato_visual: MeshInstance3D = %PotatoVisual
-@onready var _baguette_visual: MeshInstance3D = %BaguetteVisual
-@onready var _mushroom_visual: MeshInstance3D = %MushroomVisual
-@onready var _baguette_box: BoxMesh = _baguette_visual.mesh as BoxMesh
+@onready var _visual_root: Node3D = %VisualRoot
+# 每枚投射物只实例化自身食材模型，避免同时携带三份隐藏网格。
+var _food_visual: Node3D
 
 
 func configure(
@@ -221,9 +227,8 @@ func _begin_miss_disappear() -> void:
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_IN)
 	tween.tween_property(self, "scale", Vector3.ONE * 0.05, MISS_DISAPPEAR_DURATION)
-	tween.tween_property(_potato_visual, "transparency", 1.0, MISS_DISAPPEAR_DURATION)
-	tween.tween_property(_baguette_visual, "transparency", 1.0, MISS_DISAPPEAR_DURATION)
-	tween.tween_property(_mushroom_visual, "transparency", 1.0, MISS_DISAPPEAR_DURATION)
+	if _food_visual != null:
+		_tween_visual_transparency(tween, _food_visual)
 	tween.chain().tween_callback(queue_free)
 
 
@@ -232,30 +237,64 @@ func is_miss_disappearing() -> bool:
 
 
 func _resolve_visual_nodes() -> void:
-	if _potato_visual != null:
+	if _visual_root != null:
 		return
-	_potato_visual = get_node("PotatoVisual") as MeshInstance3D
-	_baguette_visual = get_node("BaguetteVisual") as MeshInstance3D
-	_mushroom_visual = get_node("MushroomVisual") as MeshInstance3D
-	_baguette_box = _baguette_visual.mesh as BoxMesh
+	_visual_root = get_node("VisualRoot") as Node3D
 
 
+# 按食材类型装配模型，并把美术尺寸映射到现有表现与判定尺度。
 func _configure_visual() -> void:
-	_potato_visual.visible = food_id == &"potato"
-	_baguette_visual.visible = food_id == &"baguette"
-	_mushroom_visual.visible = food_id == &"mushroom"
+	if _food_visual != null:
+		_food_visual.free()
+	var model_scene: PackedScene = POTATO_MODEL_SCENE
+	if food_id == &"baguette":
+		model_scene = BAGUETTE_MODEL_SCENE
+	elif food_id == &"mushroom":
+		model_scene = MUSHROOM_MODEL_SCENE
+	_food_visual = model_scene.instantiate() as Node3D
+	if _food_visual == null:
+		push_error("食材模型根节点必须继承 Node3D: %s" % String(food_id))
+		return
+	_visual_root.add_child(_food_visual)
 	if food_id == &"baguette":
 		var baguette_length: float = _sweep_half_length * 2.0 if _sweep_enabled else 0.8
-		_baguette_box.size = Vector3(maxf(0.2, radius * 1.5), 0.18, baguette_length)
-		var baguette_material: StandardMaterial3D = _baguette_visual.material_override as StandardMaterial3D
-		baguette_material.albedo_color = visual_color
+		var baguette_width: float = maxf(0.2, radius * 1.5)
+		_food_visual.scale = Vector3(
+			baguette_width / BAGUETTE_MODEL_SIZE.x,
+			0.18 / BAGUETTE_MODEL_SIZE.y,
+			baguette_length / BAGUETTE_MODEL_SIZE.z
+		)
+		_food_visual.position.y = VISUAL_CENTER_Y - 0.09
 	elif food_id == &"mushroom":
 		var mushroom_diameter: float = maxf(0.18, radius * 2.0)
-		_mushroom_visual.scale = Vector3.ONE * mushroom_diameter
-		var mushroom_material: StandardMaterial3D = _mushroom_visual.material_override as StandardMaterial3D
-		mushroom_material.albedo_color = visual_color
+		var mushroom_scale: float = mushroom_diameter / maxf(
+			MUSHROOM_MODEL_SIZE.x,
+			MUSHROOM_MODEL_SIZE.z
+		)
+		_food_visual.scale = Vector3.ONE * mushroom_scale
+		_food_visual.position.y = VISUAL_CENTER_Y - MUSHROOM_MODEL_SIZE.y * mushroom_scale * 0.5
 	else:
 		var diameter: float = maxf(0.1, radius * 2.0)
-		_potato_visual.scale = Vector3.ONE * diameter
-		var potato_material: StandardMaterial3D = _potato_visual.material_override as StandardMaterial3D
-		potato_material.albedo_color = visual_color
+		var potato_scale: float = diameter / maxf(POTATO_MODEL_SIZE.x, POTATO_MODEL_SIZE.z)
+		_food_visual.scale = Vector3.ONE * potato_scale
+		_food_visual.position.y = VISUAL_CENTER_Y - POTATO_MODEL_SIZE.y * potato_scale * 0.5
+
+
+# 导入模型可能包含多层网格，统一淡出所有可绘制子节点。
+func _tween_visual_transparency(tween: Tween, visual: Node3D) -> void:
+	if visual is GeometryInstance3D:
+		tween.tween_property(
+			visual as GeometryInstance3D,
+			"transparency",
+			1.0,
+			MISS_DISAPPEAR_DURATION
+		)
+	for child: Node in visual.find_children("*", "GeometryInstance3D", true, false):
+		var geometry: GeometryInstance3D = child as GeometryInstance3D
+		if geometry != null:
+			tween.tween_property(
+				geometry,
+				"transparency",
+				1.0,
+				MISS_DISAPPEAR_DURATION
+			)
