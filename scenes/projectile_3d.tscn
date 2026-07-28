@@ -1,9 +1,20 @@
-[gd_scene format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/projectile_3d.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://d2ybb8q0ik0jg" path="res://assets/models/投射物模型/土豆.glb" id="2_potato"]
+[ext_resource type="PackedScene" uid="uid://j67j4ykkn1kb" path="res://assets/models/投射物模型/法棍.glb" id="3_baguette"]
+[ext_resource type="PackedScene" uid="uid://bcycrl3414wq8" path="res://assets/models/投射物模型/蘑菇.glb" id="4_mushroom"]
 
 [node name="FoodProjectile3D" type="Node3D"]
 script = ExtResource("1_script")
 
-[node name="VisualRoot" type="Node3D" parent="."]
+[node name="PotatoVisual" parent="." instance=ExtResource("2_potato")]
 unique_name_in_owner = true
+
+[node name="BaguetteVisual" parent="." instance=ExtResource("3_baguette")]
+unique_name_in_owner = true
+visible = false
+
+[node name="MushroomVisual" parent="." instance=ExtResource("4_mushroom")]
+unique_name_in_owner = true
+visible = false
