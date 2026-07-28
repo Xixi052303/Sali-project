@@ -276,6 +276,9 @@ static func _parse_upgrade_sheet(
 		upgrade.display_name = str(record.get("显示名称", "")).strip_edges()
 		upgrade.kind = _upgrade_kind(record.get("类型"), row_number, errors, sheet_name)
 		upgrade.value_suffix = str(record.get("显示后缀", "")).strip_edges()
+		upgrade.effect_text_template = str(
+			record.get("门牌描述模板", "")
+		).strip_edges()
 		upgrade.configure_value_range(minimum_value, maximum_value)
 		if upgrade.display_name.is_empty():
 			errors.append("%s表第 %d 行显示名称不能为空" % [sheet_name, row_number])

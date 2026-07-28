@@ -17,6 +17,8 @@ enum Kind {
 @export var kind: Kind = Kind.SUGAR
 @export var value: float = 0.15
 @export var value_suffix: String = "%"
+# 门牌、奖励门和领取提示共用此模板；空值继续走按类型生成的安全文案。
+@export_multiline var effect_text_template: String = ""
 @export var minimum_value: float = 0.0
 @export var maximum_value: float = 0.0
 @export_range(0.0, 1.0, 0.001) var value_ratio: float = 0.0
@@ -58,6 +60,16 @@ func formatted_value() -> String:
 
 
 func effect_text(maximum_durability: float = 100.0) -> String:
+	if not effect_text_template.is_empty():
+		return (
+			effect_text_template
+			.replace("{name}", display_name)
+			.replace("{value}", formatted_value())
+			.replace(
+				"{repair_points}",
+				"+%.0f点" % (maximum_durability * value)
+			)
+		)
 	match kind:
 		Kind.SUGAR:
 			return "满足 %s" % formatted_value()
