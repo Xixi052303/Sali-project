@@ -1,17 +1,15 @@
-[gd_resource type="Resource" script_class="CustomerData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="CustomerData" format=3 uid="uid://mxo1tkedl7w2"]
 
-[ext_resource type="Script" path="res://scripts/data/customer_data.gd" id="1_customer"]
-[ext_resource type="PackedScene" path="res://scenes/ranged_customer_3d.tscn" id="2_scene"]
+[ext_resource type="Script" uid="uid://8lxx5m58jfe2" path="res://scripts/data/customer_data.gd" id="1_customer"]
+[ext_resource type="PackedScene" path="res://scenes/characters/customers/frog_customer_3d.tscn" id="2_scene"]
 
 [resource]
 script = ExtResource("1_customer")
 id = &"ranged_guest"
 display_name = "拍桌青蛙"
-category = 0
 behavior = 1
 appetite_multiplier = 1.5
 move_speed = 28.0
-occupied_regions = 2
 body_color = Color(0.35, 0.31, 0.48, 1)
 customer_scene = ExtResource("2_scene")
 attack_ratio = 0.08

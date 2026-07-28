@@ -36,8 +36,10 @@ var _breathing_outer_multiplier: float = 2.0
 var _giant_baguette: bool = false
 var _giant_half_width: float = 0.0
 var _giant_roll_angle: float = 0.0
+var _range_scale: float = 1.0
 @onready var _potato_visual: Node3D = %PotatoVisual
 @onready var _baguette_visual: Node3D = %BaguetteVisual
+@onready var _giant_baguette_visual: GiantBaguette3D = %GiantBaguetteVisual
 @onready var _mushroom_visual: Node3D = %MushroomVisual
 
 
@@ -66,6 +68,7 @@ func configure(
 	_movement_speed = speed
 	satisfaction = amount
 	radius = hit_radius_value
+	_range_scale = radius / maxf(0.001, Playfield.design_to_world(food.projectile_radius))
 	attack_kind = food.attack_kind
 	_lifetime_remaining = lifetime
 	_initial_lifetime = lifetime
@@ -126,10 +129,7 @@ func _process_forward_motion(delta: float) -> void:
 	position += velocity * delta
 	if _giant_baguette:
 		_giant_roll_angle = fmod(_giant_roll_angle + GIANT_BAGUETTE_ROLL_SPEED * delta, TAU)
-		quaternion = (
-			Quaternion(Vector3.UP, PI * 0.5)
-			* Quaternion(Vector3.FORWARD, _giant_roll_angle)
-		)
+		_giant_baguette_visual.set_roll_angle(_giant_roll_angle)
 		return
 	# 模型的前端沿本地-Z；绕Y轴需使用运动方向角的相反数。
 	rotation.y = atan2(-velocity.x, -velocity.z)
@@ -235,6 +235,7 @@ func _begin_miss_disappear() -> void:
 	tween.tween_property(self, "scale", Vector3.ONE * 0.05, MISS_DISAPPEAR_DURATION)
 	_tween_visual_transparency(tween, _potato_visual)
 	_tween_visual_transparency(tween, _baguette_visual)
+	_tween_visual_transparency(tween, _giant_baguette_visual)
 	_tween_visual_transparency(tween, _mushroom_visual)
 	tween.chain().tween_callback(queue_free)
 
@@ -248,23 +249,34 @@ func _resolve_visual_nodes() -> void:
 		return
 	_potato_visual = get_node("PotatoVisual") as Node3D
 	_baguette_visual = get_node("BaguetteVisual") as Node3D
+	_giant_baguette_visual = get_node("GiantBaguetteVisual") as GiantBaguette3D
 	_mushroom_visual = get_node("MushroomVisual") as Node3D
 
 
 # 按食材类型装配模型，并把美术尺寸映射到现有表现与判定尺度。
 func _configure_visual() -> void:
 	_potato_visual.visible = food_id == &"potato"
-	_baguette_visual.visible = food_id == &"baguette"
+	_baguette_visual.visible = food_id == &"baguette" and not _giant_baguette
+	_giant_baguette_visual.visible = food_id == &"baguette" and _giant_baguette
 	_mushroom_visual.visible = food_id == &"mushroom"
 	if food_id == &"baguette":
-		var baguette_length: float = _giant_half_width * 2.0 if _giant_baguette else 0.8
-		var baguette_width: float = maxf(0.2, radius * 1.5)
+		var baguette_length: float = 0.8 * _range_scale
+		var baguette_width: float = 0.2 * _range_scale
+		var baguette_height: float = 0.18 * _range_scale
+		if _giant_baguette:
+			_giant_baguette_visual.configure_dimensions(
+				_giant_half_width * 2.0,
+				baguette_width,
+				baguette_height
+			)
+			_giant_baguette_visual.position.y = VISUAL_CENTER_Y
+			return
 		_baguette_visual.scale = Vector3(
 			baguette_width / BAGUETTE_MODEL_SIZE.x,
-			0.18 / BAGUETTE_MODEL_SIZE.y,
+			baguette_height / BAGUETTE_MODEL_SIZE.y,
 			baguette_length / BAGUETTE_MODEL_SIZE.z
 		)
-		_baguette_visual.position.y = VISUAL_CENTER_Y - 0.09
+		_baguette_visual.position.y = VISUAL_CENTER_Y - baguette_height * 0.5
 	elif food_id == &"mushroom":
 		var mushroom_diameter: float = maxf(0.18, radius * 2.0)
 		var mushroom_scale: float = mushroom_diameter / maxf(

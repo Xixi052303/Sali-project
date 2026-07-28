@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/giant_baguette_3d.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://j67j4ykkn1kb" path="res://assets/models/投射物模型/法棍.glb" id="2_baguette"]
+
+[node name="GiantBaguette3D" type="Node3D"]
+rotation = Vector3(0, 1.5707963, 0)
+script = ExtResource("1_script")
+
+[node name="RollPivot" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="ModelScale" type="Node3D" parent="RollPivot"]
+unique_name_in_owner = true
+
+[node name="BaguetteModel" parent="RollPivot/ModelScale" instance=ExtResource("2_baguette")]
+position = Vector3(0, -0.16503906, 0)

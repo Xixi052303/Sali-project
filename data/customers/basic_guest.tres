@@ -1,16 +1,11 @@
-[gd_resource type="Resource" script_class="CustomerData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="CustomerData" format=3 uid="uid://baadmr2q8gkbg"]
 
-[ext_resource type="Script" path="res://scripts/data/customer_data.gd" id="1_customer"]
-[ext_resource type="PackedScene" path="res://scenes/basic_customer_3d.tscn" id="2_scene"]
+[ext_resource type="Script" uid="uid://8lxx5m58jfe2" path="res://scripts/data/customer_data.gd" id="1_customer"]
+[ext_resource type="PackedScene" path="res://scenes/characters/customers/mouse_customer_3d.tscn" id="2_scene"]
 
 [resource]
 script = ExtResource("1_customer")
-id = &"basic_guest"
 display_name = "小鼠食客"
-category = 0
-behavior = 0
-appetite_multiplier = 1.0
 move_speed = 42.0
-occupied_regions = 2
 body_color = Color(0.39, 0.47, 0.31, 1)
 customer_scene = ExtResource("2_scene")

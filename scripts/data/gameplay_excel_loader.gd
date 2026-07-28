@@ -11,10 +11,10 @@ const REQUIRED_CUSTOMER_IDS: Array[StringName] = [
 ]
 # 场景保存完整可预览视觉，Excel只选择既有模板，不在运行时拼装模型。
 const CUSTOMER_SCENES: Dictionary[StringName, PackedScene] = {
-	&"basic_guest": preload("res://scenes/basic_customer_3d.tscn"),
-	&"fast_guest": preload("res://scenes/fast_customer_3d.tscn"),
-	&"ranged_guest": preload("res://scenes/ranged_customer_3d.tscn"),
-	&"elite_guest": preload("res://scenes/elite_customer_3d.tscn"),
+	&"basic_guest": preload("res://scenes/characters/customers/mouse_customer_3d.tscn"),
+	&"fast_guest": preload("res://scenes/characters/customers/fox_customer_3d.tscn"),
+	&"ranged_guest": preload("res://scenes/characters/customers/frog_customer_3d.tscn"),
+	&"elite_guest": preload("res://scenes/characters/customers/elite_customer_3d.tscn"),
 }
 
 

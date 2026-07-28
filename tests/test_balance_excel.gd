@@ -127,7 +127,7 @@ func _test_customer_workbook() -> void:
 	_check(basic.display_name == "小鼠食客", "基础食客身份为小鼠")
 	_check(
 		basic.customer_scene != null
-		and basic.customer_scene.resource_path.ends_with("basic_customer_3d.tscn"),
+		and basic.customer_scene.resource_path.ends_with("mouse_customer_3d.tscn"),
 		"基础食客加载可预览小鼠场景"
 	)
 	_check(is_equal_approx(basic.appetite_multiplier, 1.0), "基础食客保持1.0倍胃口")
@@ -135,7 +135,7 @@ func _test_customer_workbook() -> void:
 	_check(fast.display_name == "急脚狐狸", "快速模板加载狐狸身份")
 	_check(
 		fast.customer_scene != null
-		and fast.customer_scene.resource_path.ends_with("fast_customer_3d.tscn"),
+		and fast.customer_scene.resource_path.ends_with("fox_customer_3d.tscn"),
 		"快速模板加载可预览狐狸场景"
 	)
 	_check(is_equal_approx(fast.appetite_multiplier, 0.75), "急脚食客保持0.75倍胃口")
@@ -143,7 +143,7 @@ func _test_customer_workbook() -> void:
 	_check(ranged.display_name == "拍桌青蛙", "远程模板加载青蛙身份")
 	_check(
 		ranged.customer_scene != null
-		and ranged.customer_scene.resource_path.ends_with("ranged_customer_3d.tscn"),
+		and ranged.customer_scene.resource_path.ends_with("frog_customer_3d.tscn"),
 		"远程模板加载可预览青蛙场景"
 	)
 	_check(

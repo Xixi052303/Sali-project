@@ -40,8 +40,12 @@ const CUSTOMER_WORKBOOK_PATH: String = "res://balance_tables/食客.xlsx"
 const WEAPON_WORKBOOK_PATH: String = "res://balance_tables/武器.xlsx"
 const NORMAL_UPGRADE_WORKBOOK_PATH: String = "res://balance_tables/普通强化.xlsx"
 const SPECIAL_UPGRADE_WORKBOOK_PATH: String = "res://balance_tables/特殊强化.xlsx"
-const DEFAULT_CUSTOMER_SCENE: PackedScene = preload("res://scenes/customer_3d.tscn")
-const BOSS_SCENE: PackedScene = preload("res://scenes/boss_3d.tscn")
+const DEFAULT_CUSTOMER_SCENE: PackedScene = preload(
+	"res://scenes/characters/customers/customer_base_3d.tscn"
+)
+const BOSS_SCENE: PackedScene = preload(
+	"res://scenes/characters/bosses/prototype_boss_3d.tscn"
+)
 const PROJECTILE_SCENE: PackedScene = preload("res://scenes/projectile_3d.tscn")
 const GATE_SCENE: PackedScene = preload("res://scenes/upgrade_gate_3d.tscn")
 const REWARD_GATE_SCENE: PackedScene = preload("res://scenes/upgrade_drop_3d.tscn")
@@ -603,9 +607,11 @@ func spawn_projectile(
 		should_home,
 		orbit_phase,
 		giant_baguette,
-		Playfield.REGION_WIDTH * state.baguette_giant_width_regions if giant_baguette else 0.0,
+		Playfield.REGION_WIDTH * state.baguette_giant_width_regions * state.range_multiplier if giant_baguette else 0.0,
 		breathing_enabled
 	)
+	if giant_baguette and is_instance_valid(background):
+		background.shake_camera()
 
 
 func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:

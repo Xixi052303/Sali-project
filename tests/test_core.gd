@@ -51,7 +51,9 @@ func _test_customer_cart_collision() -> void:
 	var field: Playfield = Playfield.new()
 	var state: RunState = RunState.new()
 	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
-	var customer_scene: PackedScene = load("res://scenes/customer_3d.tscn") as PackedScene
+	var customer_scene: PackedScene = load(
+		"res://scenes/characters/customers/customer_base_3d.tscn"
+	) as PackedScene
 	var cart: Cart3D = cart_scene.instantiate() as Cart3D
 	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
 	cart.scale = Vector3.ONE * 0.5
@@ -85,7 +87,9 @@ func _test_3d_plane_rules() -> void:
 	var state: RunState = RunState.new()
 	var run_scene: PackedScene = load("res://scenes/run_3d.tscn") as PackedScene
 	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
-	var customer_scene: PackedScene = load("res://scenes/customer_3d.tscn") as PackedScene
+	var customer_scene: PackedScene = load(
+		"res://scenes/characters/customers/customer_base_3d.tscn"
+	) as PackedScene
 	var gate_scene: PackedScene = load("res://scenes/upgrade_gate_3d.tscn") as PackedScene
 	var drop_scene: PackedScene = load("res://scenes/upgrade_drop_3d.tscn") as PackedScene
 	var run_scene_instance: Node3D = run_scene.instantiate() as Node3D
@@ -1015,7 +1019,9 @@ func _test_resources() -> void:
 		"四类食客保持原有生成错位序列"
 	)
 	_check(boss != null and is_equal_approx(boss.appetite_at(100.0), 300.0), "Boss默认使用3倍基准胃口")
-	var boss_scene: PackedScene = load("res://scenes/boss_3d.tscn") as PackedScene
+	var boss_scene: PackedScene = load(
+		"res://scenes/characters/bosses/prototype_boss_3d.tscn"
+	) as PackedScene
 	var boss_instance: PrototypeBoss3D = boss_scene.instantiate() as PrototypeBoss3D
 	var boss_body: MeshInstance3D = boss_instance.get_node("Body") as MeshInstance3D
 	var boss_head: MeshInstance3D = boss_instance.get_node("Head") as MeshInstance3D

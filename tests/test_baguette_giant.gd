@@ -14,6 +14,7 @@ func _init() -> void:
 	_check(is_equal_approx(load_result.baguette_giant_duration_multiplier, 1.5), "持续倍率为1.5")
 	_check(is_equal_approx(load_result.baguette_giant_satisfaction_multiplier, 3.0), "满足倍率为3")
 	_test_runtime(load_result)
+	_test_camera_shake()
 	if _failures == 0:
 		print("BAGUETTE_GIANT_TEST_OK")
 		quit(0)
@@ -39,9 +40,12 @@ func _test_runtime(load_result: GameplayExcelLoader.SpecialUpgradeLoadResult) ->
 	state.baguette_giant_pierce_count = load_result.baguette_giant_pierce_count
 	state.baguette_giant_duration_multiplier = load_result.baguette_giant_duration_multiplier
 	state.baguette_giant_satisfaction_multiplier = load_result.baguette_giant_satisfaction_multiplier
+	state.range_multiplier = 1.5
 	state.add_food(&"baguette")
 	state.enable_food_evolution(&"baguette_giant")
 	run.state = state
+	var background: WorldBackground3D = WorldBackground3D.new()
+	run.background = background
 	var baguette: FoodData = load("res://data/foods/baguette.tres") as FoodData
 	var weapon: WeaponController3D = WeaponController3D.new()
 	run.add_child(weapon)
@@ -59,11 +63,19 @@ func _test_runtime(load_result: GameplayExcelLoader.SpecialUpgradeLoadResult) ->
 	_check(not giant.homing_enabled and giant.tracking_target == null, "巨型法棍不追踪")
 	_check(giant.velocity.normalized().is_equal_approx(Vector3.FORWARD), "巨型法棍沿道路直线前进")
 	_check(giant.remaining_hits == 999, "巨型法棍应用独立穿透")
-	_check(is_equal_approx(giant._giant_half_width * 2.0, Playfield.REGION_WIDTH * 4.0), "巨型法棍应用四格宽度")
+	_check(is_equal_approx(giant._giant_half_width * 2.0, Playfield.REGION_WIDTH * 4.0 * 1.5), "巨型法棍以四格为基础同步应用范围倍率")
 	_check(is_equal_approx(giant._initial_lifetime, state.effective_duration(baguette) * 1.5), "巨型法棍应用持续倍率")
 	_check(is_equal_approx(giant.satisfaction, state.effective_satisfaction(baguette) * 3.0), "巨型法棍应用满足倍率")
-	_check(giant.overlaps_target(Vector3(5.8, 0.0, giant.position.z), 0.2), "四格范围内目标会被命中")
-	_check(not giant.overlaps_target(Vector3(6.8, 0.0, giant.position.z), 0.2), "四格范围外目标不会被命中")
+	_check(background._camera_shake_remaining > 0.0, "巨型法棍发射时调用可复用震屏入口")
+	var giant_dimensions: Vector3 = giant._giant_baguette_visual.model_scale() * GiantBaguette3D.MODEL_SIZE
+	_check(giant_dimensions.is_equal_approx(Vector3(0.3, 0.27, 6.0)), "巨型法棍范围扩大时长宽高同比增长")
+	var giant_model: Node3D = giant._giant_baguette_visual.get_node("RollPivot/ModelScale/BaguetteModel") as Node3D
+	_check((giant_model.position + Vector3(0.0, 0.16503906, 0.0)).is_zero_approx(), "巨型法棍模型几何中心对齐滚动原点")
+	giant._process_forward_motion(0.1)
+	var roll_pivot: Node3D = giant._giant_baguette_visual.get_node("RollPivot") as Node3D
+	_check(not is_zero_approx(roll_pivot.rotation.z), "巨型法棍由独立中心节点驱动滚动")
+	_check(giant.overlaps_target(Vector3(6.5, 0.0, giant.position.z), 0.2), "范围强化后的横向判定同步扩大")
+	_check(not giant.overlaps_target(Vector3(7.3, 0.0, giant.position.z), 0.2), "巨型法棍不会命中扩大范围外目标")
 
 	var projectile_scene: PackedScene = load("res://scenes/projectile_3d.tscn") as PackedScene
 	var aimed: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
@@ -75,7 +87,7 @@ func _test_runtime(load_result: GameplayExcelLoader.SpecialUpgradeLoadResult) ->
 		baguette,
 		8.0,
 		7.0,
-		0.16,
+		Playfield.design_to_world(baguette.projectile_radius) * 1.5,
 		1.2,
 		3,
 		null,
@@ -87,7 +99,27 @@ func _test_runtime(load_result: GameplayExcelLoader.SpecialUpgradeLoadResult) ->
 	)
 	aimed._process_forward_motion(0.0)
 	_check(aimed.rotation.y < 0.0, "普通法棍朝右前目标时模型向右旋转")
+	var aimed_visual: Node3D = aimed.get_node("BaguetteVisual") as Node3D
+	var aimed_dimensions: Vector3 = aimed_visual.scale * FoodProjectile3D.BAGUETTE_MODEL_SIZE
+	_check(aimed_dimensions.is_equal_approx(Vector3(0.3, 0.27, 1.2)), "普通法棍范围扩大时长宽高同比增长")
 	run.free()
+	background.free()
+
+
+# 震屏必须实际移动主相机，并在持续时间结束后精确归位。
+func _test_camera_shake() -> void:
+	var background_scene: PackedScene = load("res://scenes/world_background_3d.tscn") as PackedScene
+	var background: WorldBackground3D = background_scene.instantiate() as WorldBackground3D
+	get_root().add_child(background)
+	background.scrolling = false
+	var camera: Camera3D = background.get_node("PaperCamera") as Camera3D
+	var base_position: Vector3 = camera.position
+	background.shake_camera(0.05, 0.1)
+	background._process_camera_shake(0.02)
+	_check(not camera.position.is_equal_approx(base_position), "震屏期间主相机发生小幅位移")
+	background._process_camera_shake(0.2)
+	_check(camera.position.is_equal_approx(base_position), "震屏结束后主相机精确归位")
+	background.free()
 
 
 func _check(condition: bool, label: String) -> void:

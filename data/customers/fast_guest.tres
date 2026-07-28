@@ -1,16 +1,13 @@
-[gd_resource type="Resource" script_class="CustomerData" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="CustomerData" format=3 uid="uid://bsau67ejglmf2"]
 
-[ext_resource type="Script" path="res://scripts/data/customer_data.gd" id="1_customer"]
-[ext_resource type="PackedScene" path="res://scenes/fast_customer_3d.tscn" id="2_scene"]
+[ext_resource type="Script" uid="uid://8lxx5m58jfe2" path="res://scripts/data/customer_data.gd" id="1_customer"]
+[ext_resource type="PackedScene" uid="uid://gxqvrywhpcya" path="res://scenes/characters/customers/fox_customer_3d.tscn" id="2_scene"]
 
 [resource]
 script = ExtResource("1_customer")
 id = &"fast_guest"
 display_name = "急脚狐狸"
-category = 0
-behavior = 0
 appetite_multiplier = 0.75
 move_speed = 96.0
-occupied_regions = 2
 body_color = Color(0.55, 0.35, 0.25, 1)
 customer_scene = ExtResource("2_scene")
