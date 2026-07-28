@@ -17,8 +17,7 @@ class WeaponLoadResult:
 class NormalUpgradeLoadResult:
 	extends RefCounted
 
-	var gate_upgrades: Array[UpgradeData] = []
-	var reward_upgrades: Array[UpgradeData] = []
+	var upgrades: Array[UpgradeData] = []
 	var loaded_from_excel: bool = false
 	var error_message: String = ""
 	var source_path: String = ""
@@ -107,7 +106,7 @@ static func load_weapons(path: String) -> WeaponLoadResult:
 	return result
 
 
-# 读取普通门与食客奖励门的区间模板；每个实际选项仍由运行时独立抽百分位。
+# 普通门与食客奖励门共用同一候选池，每个实际选项仍由运行时独立抽百分位。
 static func load_normal_upgrades(path: String) -> NormalUpgradeLoadResult:
 	var result: NormalUpgradeLoadResult = NormalUpgradeLoadResult.new()
 	result.source_path = path
@@ -117,16 +116,12 @@ static func load_normal_upgrades(path: String) -> NormalUpgradeLoadResult:
 		return result
 	var workbook: ExcelReader47.ExcelWorkbook = read_result.workbook
 	var gate_sheet: ExcelReader47.ExcelSheet = workbook.get_sheet_by_name("普通门")
-	var reward_sheet: ExcelReader47.ExcelSheet = workbook.get_sheet_by_name("食客奖励")
-	if gate_sheet == null or reward_sheet == null:
-		return _normal_failure(result, "普通强化 Excel 必须包含“普通门”和“食客奖励”工作表")
+	if gate_sheet == null:
+		return _normal_failure(result, "普通强化 Excel 必须包含“普通门”工作表")
 	var errors: PackedStringArray = []
-	result.gate_upgrades = _parse_upgrade_sheet(gate_sheet, "普通门", errors)
-	result.reward_upgrades = _parse_upgrade_sheet(reward_sheet, "食客奖励", errors)
-	if result.gate_upgrades.size() < 2:
-		errors.append("普通门至少需要启用两项强化")
-	if result.reward_upgrades.is_empty():
-		errors.append("食客奖励至少需要启用一项强化")
+	result.upgrades = _parse_upgrade_sheet(gate_sheet, "普通门", errors)
+	if result.upgrades.size() < 2:
+		errors.append("普通门与食客奖励共用池至少需要启用两项强化")
 	if not errors.is_empty():
 		return _normal_failure(result, "；".join(errors))
 	result.loaded_from_excel = true
@@ -408,8 +403,7 @@ static func _weapon_failure(result: WeaponLoadResult, message: String) -> Weapon
 
 
 static func _normal_failure(result: NormalUpgradeLoadResult, message: String) -> NormalUpgradeLoadResult:
-	result.gate_upgrades.clear()
-	result.reward_upgrades.clear()
+	result.upgrades.clear()
 	result.error_message = message
 	return result
 

@@ -700,12 +700,19 @@ func _test_reward_gate_spacing() -> void:
 
 func _test_customer_reward_randomness() -> void:
 	var run: RunController3D = RunController3D.new()
-	run._build_drop_upgrades()
+	run._build_prototype_upgrades()
+	var pool_ids: Dictionary[StringName, bool] = {}
+	for template: UpgradeData in run._normal_upgrade_pool:
+		pool_ids[template.id] = true
+	var gate_options: Array[UpgradeData] = run._roll_normal_upgrade_options(2)
+	_check(gate_options.size() == 2, "普通门从共用池抽出两个候选")
+	_check(gate_options[0].id != gate_options[1].id, "普通门同次抽选无放回")
 	var first_kinds: Dictionary = {}
 	for seed_value: int in range(1, 17):
 		run._upgrade_rng.seed = seed_value
 		var reward: UpgradeData = run._roll_customer_reward()
 		first_kinds[reward.kind] = true
+		_check(pool_ids.has(reward.id), "食客奖励候选来自普通强化共用池")
 	_check(first_kinds.size() > 1, "首个食客奖励类型由随机数抽取而非固定为糖")
 	run.state = RunState.new()
 	run._upgrade_rng.seed = 1701

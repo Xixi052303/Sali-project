@@ -89,8 +89,8 @@ var _elite_started_at: float = 0.0
 var _boss_started_at: float = 0.0
 var _post_boss_started_at: float = 0.0
 var _debug_accumulator: float = 0.0
-var _upgrade_pairs: Array[UpgradeData] = []
-var _drop_upgrades: Array[UpgradeData] = []
+# 普通门双选与食客奖励单抽共同使用这份本局候选模板。
+var _normal_upgrade_pool: Array[UpgradeData] = []
 var _normal_wave_index: int = 0
 var _next_normal_spawn_time: float = 8.0
 var _scheduled_normal_customers: Array[ScheduledCustomerSpawn] = []
@@ -162,7 +162,6 @@ func _ready() -> void:
 	background.set_cart(cart)
 	weapon_controller.configure(self, cart, state)
 	_build_prototype_upgrades()
-	_build_drop_upgrades()
 	director.event_triggered.connect(_on_timeline_event)
 	cart.damaged.connect(_on_cart_damaged)
 	cart.destroyed.connect(_on_cart_destroyed)
@@ -242,19 +241,17 @@ func _load_weapon_balance() -> void:
 	)
 
 
-# 普通强化表分别驱动固定门和食客奖励门，非法时由原型硬编码区间回退。
+# 普通强化表以同一候选池驱动普通门和食客奖励门，非法时回退安全区间。
 func _load_normal_upgrade_balance() -> void:
 	var load_result: GameplayExcelLoader.NormalUpgradeLoadResult = (
 		GameplayExcelLoader.load_normal_upgrades(NORMAL_UPGRADE_WORKBOOK_PATH)
 	)
 	if load_result.loaded_from_excel:
-		_upgrade_pairs = load_result.gate_upgrades
-		_drop_upgrades = load_result.reward_upgrades
+		_normal_upgrade_pool = load_result.upgrades
 		print(
-			"BALANCE_NORMAL_UPGRADES_LOADED path=%s gate=%d reward=%d" % [
+			"BALANCE_NORMAL_UPGRADES_LOADED path=%s shared_pool=%d" % [
 				NORMAL_UPGRADE_WORKBOOK_PATH,
-				_upgrade_pairs.size(),
-				_drop_upgrades.size(),
+				_normal_upgrade_pool.size(),
 			]
 		)
 		return
@@ -798,7 +795,7 @@ func _spawn_elite_now() -> void:
 	hud.show_toast("六席贵客挡住整条路，尽快满足它！", Color("#f0c45f"))
 
 
-func _spawn_gate_now(index: int, is_start_gate: bool, scheduled_baseline_appetite: float = 0.0) -> void:
+func _spawn_gate_now(_index: int, is_start_gate: bool, scheduled_baseline_appetite: float = 0.0) -> void:
 	_spawn_counter += 1
 	var gate: UpgradeGate3D = GATE_SCENE.instantiate() as UpgradeGate3D
 	gates.add_child(gate)
@@ -820,10 +817,12 @@ func _spawn_gate_now(index: int, is_start_gate: bool, scheduled_baseline_appetit
 	var baseline_appetite: float = scheduled_baseline_appetite
 	if baseline_appetite <= 0.0:
 		baseline_appetite = _current_baseline_appetite()
-	var pair_start: int = (index * 2) % _upgrade_pairs.size()
-	var left: UpgradeData = _roll_gate_upgrade(_upgrade_pairs[pair_start])
-	var right: UpgradeData = _roll_gate_upgrade(_upgrade_pairs[(pair_start + 1) % _upgrade_pairs.size()])
-	gate.configure(self, left, right, false, baseline_appetite, _spawn_counter)
+	var options: Array[UpgradeData] = _roll_normal_upgrade_options(2)
+	if options.size() != 2:
+		push_error("NORMAL_UPGRADE_POOL_TOO_SMALL")
+		gate.queue_free()
+		return
+	gate.configure(self, options[0], options[1], false, baseline_appetite, _spawn_counter)
 
 
 func _start_boss() -> void:
@@ -1387,9 +1386,9 @@ func _string_name_array_to_strings(values: Array[StringName]) -> Array[String]:
 
 
 func _build_prototype_upgrades() -> void:
-	if not _upgrade_pairs.is_empty():
+	if not _normal_upgrade_pool.is_empty():
 		return
-	_upgrade_pairs = [
+	_normal_upgrade_pool = [
 		_make_upgrade_range(&"sugar", "糖", UpgradeData.Kind.SUGAR, 0.05, 0.45, "%"),
 		_make_upgrade_range(&"quick_prep", "快速备餐", UpgradeData.Kind.QUICK_PREP, 0.02, 0.20, "%"),
 		_make_upgrade_range(&"light_cart", "轻便餐车", UpgradeData.Kind.LIGHT_CART, 50.0, 300.0, "速度"),
@@ -1398,21 +1397,6 @@ func _build_prototype_upgrades() -> void:
 		_make_upgrade_range(&"wine", "酒", UpgradeData.Kind.WINE, 0.10, 0.50, "%"),
 		_make_upgrade_range(&"scallion", "葱", UpgradeData.Kind.SCALLION, 0.10, 0.60, "%"),
 		_make_upgrade_range(&"starch", "淀粉", UpgradeData.Kind.STARCH, 0.15, 0.75, "%"),
-	]
-
-
-func _build_drop_upgrades() -> void:
-	if not _drop_upgrades.is_empty():
-		return
-	_drop_upgrades = [
-		_make_upgrade_range(&"drop_sugar", "糖", UpgradeData.Kind.SUGAR, 0.05, 0.45, "%"),
-		_make_upgrade_range(&"drop_quick", "备餐", UpgradeData.Kind.QUICK_PREP, 0.02, 0.20, "%"),
-		_make_upgrade_range(&"drop_wine", "酒", UpgradeData.Kind.WINE, 0.10, 0.50, "%"),
-		_make_upgrade_range(&"drop_scallion", "葱", UpgradeData.Kind.SCALLION, 0.10, 0.60, "%"),
-		_make_upgrade_range(&"drop_starch", "淀粉", UpgradeData.Kind.STARCH, 0.15, 0.75, "%"),
-		_make_upgrade_range(&"drop_light", "轻车", UpgradeData.Kind.LIGHT_CART, 50.0, 300.0, "速度"),
-		_make_upgrade_range(&"drop_sturdy", "餐车改造", UpgradeData.Kind.STURDY_CART, 5.0, 32.0, "点"),
-		_make_upgrade_range(&"drop_repair", "紧急维修", UpgradeData.Kind.REPAIR, 0.05, 0.40, "%"),
 	]
 
 
@@ -1438,6 +1422,18 @@ func _roll_gate_upgrade(template: UpgradeData) -> UpgradeData:
 	var rolled: UpgradeData = template.duplicate() as UpgradeData
 	rolled.set_value_ratio(_upgrade_rng.randf())
 	return rolled
+
+
+# 普通门取两项、食客奖励取一项；同次抽选无放回且各自独立生成数值。
+func _roll_normal_upgrade_options(option_count: int) -> Array[UpgradeData]:
+	var available: Array[UpgradeData] = _normal_upgrade_pool.duplicate()
+	var options: Array[UpgradeData] = []
+	var target_count: int = mini(maxi(option_count, 0), available.size())
+	while options.size() < target_count:
+		var index: int = _upgrade_rng.randi_range(0, available.size() - 1)
+		options.append(_roll_gate_upgrade(available[index]))
+		available.remove_at(index)
+	return options
 
 
 # 开局门从已解锁池无放回抽取；只有一种食材时两侧显示同一候选。
@@ -1487,11 +1483,10 @@ func _food_data_for_id(food_id: StringName) -> FoodData:
 	return null
 
 
-# 普通食客生成时随机锁定奖励类型与百分位，胃口和奖励门共享这一结果。
+# 普通食客从普通强化共用池锁定一项及其百分位，胃口和奖励门共享结果。
 func _roll_customer_reward() -> UpgradeData:
-	var template_index: int = _upgrade_rng.randi_range(0, _drop_upgrades.size() - 1)
-	var template: UpgradeData = _drop_upgrades[template_index]
-	return _roll_gate_upgrade(template)
+	var options: Array[UpgradeData] = _roll_normal_upgrade_options(1)
+	return options[0] if not options.is_empty() else null
 
 
 # 从当前有效池完全随机抽出三个不同选项；不做新食材或进化保底。

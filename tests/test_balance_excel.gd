@@ -35,17 +35,14 @@ func _test_normal_upgrade_workbook() -> void:
 		GameplayExcelLoader.load_normal_upgrades("res://balance_tables/普通强化.xlsx")
 	)
 	_check(result.loaded_from_excel, "普通强化 Excel 可读取")
-	_check(result.gate_upgrades.size() >= 2, "普通门至少有两个候选")
-	_check(not result.reward_upgrades.is_empty(), "食客奖励门至少有一个候选")
-	for upgrade: UpgradeData in result.gate_upgrades:
-		_check(upgrade.uses_value_range, "普通门候选使用可成长区间")
-		_check(upgrade.maximum_value >= upgrade.minimum_value, "普通门数值区间有效")
-		_check(not upgrade.effect_text_template.is_empty(), "普通门文案模板由 Excel 提供")
+	_check(result.upgrades.size() >= 2, "普通门与食客奖励共用池至少有两个候选")
+	for upgrade: UpgradeData in result.upgrades:
+		_check(upgrade.uses_value_range, "共用候选使用可成长区间")
+		_check(upgrade.maximum_value >= upgrade.minimum_value, "共用候选数值区间有效")
+		_check(not upgrade.effect_text_template.is_empty(), "共用候选文案模板由 Excel 提供")
 		var rendered_text: String = upgrade.effect_text()
-		_check(not rendered_text.is_empty(), "普通门文案模板可以生成实际门牌文本")
-		_check(not rendered_text.contains("{"), "普通门文案占位符已替换")
-	for upgrade: UpgradeData in result.reward_upgrades:
-		_check(not upgrade.effect_text_template.is_empty(), "食客奖励门文案模板由 Excel 提供")
+		_check(not rendered_text.is_empty(), "共用候选文案模板可以生成实际门牌文本")
+		_check(not rendered_text.contains("{"), "共用候选文案占位符已替换")
 
 
 func _test_special_upgrade_workbook() -> void:
