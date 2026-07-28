@@ -74,13 +74,17 @@ func show_toast(text: String, color: Color = PAPER) -> void:
 # 每次展示时只按本轮候选重建按钮，固定界面结构均保留在 hud.tscn 中。
 func show_special_choices(
 	choice_ids: Array[StringName],
-	food_levels: Dictionary[StringName, int] = {},
+	choice_texts: Dictionary[StringName, String] = {},
 	title: String = "六席贵客满意了！挑一份特别赏赐"
 ) -> void:
 	for child: Node in _choice_buttons.get_children():
 		child.free()
 	for choice_id: StringName in choice_ids:
-		_add_choice_button(_choice_buttons, choice_id, _special_choice_text(choice_id, food_levels))
+		_add_choice_button(
+			_choice_buttons,
+			choice_id,
+			choice_texts.get(choice_id, String(choice_id))
+		)
 	_choice_overlay.visible = true
 	_choice_title.text = title
 
@@ -92,38 +96,6 @@ func hide_special_choices() -> void:
 func show_results(title: String, body: String) -> void:
 	_results_overlay.visible = true
 	_results_label.text = "%s\n\n%s" % [title, body]
-
-
-func _special_choice_text(
-	choice_id: StringName,
-	food_levels: Dictionary[StringName, int] = {}
-) -> String:
-	if choice_id in [&"potato", &"baguette", &"mushroom"]:
-		var display_names: Dictionary[StringName, String] = {
-			&"potato": "土豆",
-			&"baguette": "法棍",
-			&"mushroom": "蘑菇",
-		}
-		var current_level: int = food_levels.get(choice_id, 0)
-		if current_level <= 0:
-			return "%s\n获得新食材并加入自动投喂" % display_names[choice_id]
-		return "%s Lv.%d → Lv.%d\n自身基础满足值 ×1.5" % [
-			display_names[choice_id],
-			current_level,
-			current_level + 1,
-		]
-	match choice_id:
-		&"serving":
-			return "全局加量\n当前与未来食材各多发一份"
-		&"potato_aim":
-			return "瞄准投喂\n土豆发射时朝向当前目标"
-		&"baguette_sweep":
-			return "横扫法棍\n旋转扫过道路，同一目标每根只结算一次"
-		&"mushroom_breath":
-			return "呼吸菌圈\n蘑菇当前环绕半径每1.2秒在一至两倍间呼吸"
-		&"soy_sauce":
-			return "酱油\n所有当前与未来食材穿透次数 +1"
-	return String(choice_id)
 
 
 func _add_choice_button(parent: VBoxContainer, choice_id: StringName, text: String) -> void:

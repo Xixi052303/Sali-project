@@ -39,6 +39,9 @@ class SpecialChoiceRecord:
 
 var maximum_durability: float = 100.0
 var current_durability: float = 100.0
+# 特殊强化表可覆盖等级规则；默认值继续作为工作簿失败时的安全回退。
+var food_max_level: int = FOOD_MAX_LEVEL
+var food_level_satisfaction_multiplier: float = FOOD_LEVEL_SATISFACTION_MULTIPLIER
 # 同类百分比强化在整局内线性加算，后取得的食材直接继承累计结果。
 var satisfaction_multiplier: float = 1.0
 var attack_speed_bonus: float = 0.0
@@ -95,7 +98,7 @@ func food_level(food_id: StringName) -> int:
 
 
 func can_level_food(food_id: StringName) -> bool:
-	return has_food(food_id) and food_level(food_id) < FOOD_MAX_LEVEL
+	return has_food(food_id) and food_level(food_id) < food_max_level
 
 
 func level_food(food_id: StringName) -> int:
@@ -202,7 +205,7 @@ func repair(amount: float) -> void:
 
 func effective_satisfaction(food: FoodData) -> float:
 	var level_multiplier: float = pow(
-		FOOD_LEVEL_SATISFACTION_MULTIPLIER,
+		food_level_satisfaction_multiplier,
 		maxi(0, food_level(food.id) - 1)
 	)
 	return food.base_satisfaction * level_multiplier * satisfaction_multiplier

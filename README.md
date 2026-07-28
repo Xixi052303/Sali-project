@@ -44,15 +44,17 @@ Godot 4.7 制作的竖屏移动端直接 3D 纸艺玩法竖切片。当前使用
 - 未命中的食材会在`0.2s`内快速缩小淡出；食客奖励门优先保留在食客原位置附近。
 - 720×1280、19.5:9和20:9竖屏适配结构。
 
-策划案中尚未确认的概率、区间和正式角色内容仍然是原型值。当前时间轴以
-`balance_tables/时间轴.xlsx`为运行主源，其他已接入数值仍主要存放在`data/`资源中。
+策划案中尚未确认的概率、区间和正式角色内容仍然是原型值。当前时间轴、武器、普通强化和
+特殊强化分别以`balance_tables/`中的同名工作簿为运行主源；场景装配的食材资源与脚本默认值
+保留为读取失败时的安全回退。
 投射物只在发射瞬间确定方向；数据层已预留按食材开启追踪的特殊强化接口。
 每局会输出随机种子，并将候选、选择、食材等级、逐食材满足贡献、精英/Boss耗时和耐久变化写入本地测试记录。可使用`--run-seed=<整数>`复现候选序列。
 
 ## 数值表
 
-时间轴可以直接在`balance_tables/时间轴.xlsx`中修改。保存并关闭工作簿后重新开始本局或重新运行
-`run_3d.tscn`，游戏会读取最新保存值；运行中的既有单局不会热替换，以免重复触发已经发生的事件。
+时间轴、武器、普通强化和特殊强化可以直接在`balance_tables/`的对应小表中修改。保存并关闭
+工作簿后重新开始本局或重新运行`run_3d.tscn`，游戏会读取最新保存值；运行中的既有单局不会
+热替换，以免已生成对象、候选池和累计状态前后不一致。
 
 ## 街景手动调整
 
@@ -60,8 +62,8 @@ Godot 4.7 制作的竖屏移动端直接 3D 纸艺玩法竖切片。当前使用
 
 道路五层的贴图、宽度和高度调整见[道路分层手调指南](docs/technical/道路分层手调指南.md)。六个循环路段统一实例化`road_segment_3d.tscn`。
 
-成功读取时输出`BALANCE_TIMELINE_LOADED`。表格缺失或校验失败时输出
-`BALANCE_TIMELINE_FALLBACK`，并使用`data/timelines/vertical_slice.tres`作为安全回退。
+成功读取时输出对应的`BALANCE_*_LOADED`。表格缺失或校验失败时输出对应的
+`BALANCE_*_FALLBACK`，并使用场景装配资源或脚本默认值作为安全回退。
 
 ## 自动校验
 
@@ -71,13 +73,19 @@ Godot 4.7 制作的竖屏移动端直接 3D 纸艺玩法竖切片。当前使用
 Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tests/test_core.gd
 ```
 
+Excel 数值链专项测试：
+
+```powershell
+Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tests/test_balance_excel.gd
+```
+
 完整流程烟雾测试：
 
 ```powershell
 Godot_v4.7-stable_win64_console.exe --headless --fixed-fps 60 --path . --quit-after 4000 -- --smoke-test
 ```
 
-成功时会输出 `CORE_TESTS_OK` 与 `SMOKE_TEST_OK`。
+成功时分别输出`CORE_TESTS_OK`、`BALANCE_EXCEL_TEST_OK`与`SMOKE_TEST_OK`。
 
 ## 目录
 

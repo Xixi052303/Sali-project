@@ -36,6 +36,9 @@ class ScheduledCustomerSpawn:
 	var baseline_appetite: float = 1.0
 
 const TIMELINE_WORKBOOK_PATH: String = "res://balance_tables/时间轴.xlsx"
+const WEAPON_WORKBOOK_PATH: String = "res://balance_tables/武器.xlsx"
+const NORMAL_UPGRADE_WORKBOOK_PATH: String = "res://balance_tables/普通强化.xlsx"
+const SPECIAL_UPGRADE_WORKBOOK_PATH: String = "res://balance_tables/特殊强化.xlsx"
 const CUSTOMER_SCENE: PackedScene = preload("res://scenes/customer_3d.tscn")
 const BOSS_SCENE: PackedScene = preload("res://scenes/boss_3d.tscn")
 const PROJECTILE_SCENE: PackedScene = preload("res://scenes/projectile_3d.tscn")
@@ -108,6 +111,11 @@ var _run_seed: int = 0
 var _active_special_choices: Array[StringName] = []
 var _special_choice_source: StringName = &""
 var _smoke_minimum_gate_customer_gap: float = INF
+# Excel 加载结果只在本局内存中生效，避免改写场景引用的共享 Resource。
+var _food_data_by_id: Dictionary[StringName, FoodData] = {}
+var _special_upgrades_by_id: Dictionary[StringName, SpecialUpgradeData] = {}
+var _special_food_max_level: int = RunState.FOOD_MAX_LEVEL
+var _special_food_level_multiplier: float = RunState.FOOD_LEVEL_SATISFACTION_MULTIPLIER
 # 食材卡取得后转为等级卡；进化按持有状态进入池，全局效果可以重复取得。
 var _special_choice_pool: Array[StringName] = [
 	&"potato",
@@ -123,6 +131,9 @@ var _special_choice_pool: Array[StringName] = [
 
 func _ready() -> void:
 	_load_timeline_balance()
+	_load_weapon_balance()
+	_load_normal_upgrade_balance()
+	_load_special_upgrade_balance()
 	_smoke_test = OS.get_cmdline_user_args().has("--smoke-test")
 	var requested_seed: int = _requested_run_seed()
 	if _smoke_test:
@@ -137,6 +148,8 @@ func _ready() -> void:
 			_run_seed = _upgrade_rng.seed
 	state = RunState.new()
 	state.run_seed = _run_seed
+	state.food_max_level = _special_food_max_level
+	state.food_level_satisfaction_multiplier = _special_food_level_multiplier
 	print("PLAYTEST_RUN_SEED value=%d" % _run_seed)
 	if _smoke_test:
 		# 烟雾测试只验证流程闭环，不让扩展后的普通波次提前终止自动跑局。
@@ -188,6 +201,118 @@ func _load_timeline_balance() -> void:
 				load_result.error_message,
 			]
 		)
+
+
+# 武器表成功时替换本局数据引用；失败时继续使用场景装配的 FoodData。
+func _load_weapon_balance() -> void:
+	var load_result: GameplayExcelLoader.WeaponLoadResult = GameplayExcelLoader.load_weapons(
+		WEAPON_WORKBOOK_PATH
+	)
+	if load_result.loaded_from_excel:
+		for food: FoodData in load_result.foods:
+			_food_data_by_id[food.id] = food
+		if _food_data_by_id.has(&"potato"):
+			potato_data = _food_data_by_id[&"potato"]
+		if _food_data_by_id.has(&"baguette"):
+			baguette_data = _food_data_by_id[&"baguette"]
+		if _food_data_by_id.has(&"mushroom"):
+			mushroom_data = _food_data_by_id[&"mushroom"]
+		if not unlocked_foods.is_empty():
+			var replaced_unlocks: Array[FoodData] = []
+			for configured_food: FoodData in unlocked_foods:
+				if configured_food == null:
+					continue
+				replaced_unlocks.append(
+					_food_data_by_id.get(configured_food.id, configured_food)
+				)
+			unlocked_foods = replaced_unlocks
+		print(
+			"BALANCE_WEAPONS_LOADED path=%s count=%d" % [
+				WEAPON_WORKBOOK_PATH,
+				load_result.foods.size(),
+			]
+		)
+		return
+	_register_fallback_foods()
+	push_warning(
+		"BALANCE_WEAPONS_FALLBACK path=%s reason=%s" % [
+			WEAPON_WORKBOOK_PATH,
+			load_result.error_message,
+		]
+	)
+
+
+# 普通强化表分别驱动固定门和食客奖励门，非法时由原型硬编码区间回退。
+func _load_normal_upgrade_balance() -> void:
+	var load_result: GameplayExcelLoader.NormalUpgradeLoadResult = (
+		GameplayExcelLoader.load_normal_upgrades(NORMAL_UPGRADE_WORKBOOK_PATH)
+	)
+	if load_result.loaded_from_excel:
+		_upgrade_pairs = load_result.gate_upgrades
+		_drop_upgrades = load_result.reward_upgrades
+		print(
+			"BALANCE_NORMAL_UPGRADES_LOADED path=%s gate=%d reward=%d" % [
+				NORMAL_UPGRADE_WORKBOOK_PATH,
+				_upgrade_pairs.size(),
+				_drop_upgrades.size(),
+			]
+		)
+		return
+	push_warning(
+		"BALANCE_NORMAL_UPGRADES_FALLBACK path=%s reason=%s" % [
+			NORMAL_UPGRADE_WORKBOOK_PATH,
+			load_result.error_message,
+		]
+	)
+
+
+# 特殊表控制候选池、说明和可调效果量，未知效果不会进入运行时。
+func _load_special_upgrade_balance() -> void:
+	var load_result: GameplayExcelLoader.SpecialUpgradeLoadResult = (
+		GameplayExcelLoader.load_special_upgrades(SPECIAL_UPGRADE_WORKBOOK_PATH)
+	)
+	var target_error: String = _special_upgrade_target_error(load_result.upgrades)
+	if load_result.loaded_from_excel and target_error.is_empty():
+		_set_special_upgrades(load_result.upgrades)
+		_special_food_max_level = load_result.food_max_level
+		_special_food_level_multiplier = load_result.food_level_satisfaction_multiplier
+		print(
+			"BALANCE_SPECIAL_UPGRADES_LOADED path=%s count=%d" % [
+				SPECIAL_UPGRADE_WORKBOOK_PATH,
+				_special_choice_pool.size(),
+			]
+		)
+		return
+	_build_fallback_special_upgrades()
+	push_warning(
+		"BALANCE_SPECIAL_UPGRADES_FALLBACK path=%s reason=%s" % [
+			SPECIAL_UPGRADE_WORKBOOK_PATH,
+			target_error if not target_error.is_empty() else load_result.error_message,
+		]
+	)
+
+
+func _register_fallback_foods() -> void:
+	_food_data_by_id.clear()
+	for food: FoodData in [potato_data, baguette_data, mushroom_data]:
+		if food != null:
+			_food_data_by_id[food.id] = food
+
+
+func _special_upgrade_target_error(upgrades: Array[SpecialUpgradeData]) -> String:
+	for upgrade: SpecialUpgradeData in upgrades:
+		if upgrade.effect_kind not in [
+			SpecialUpgradeData.EffectKind.FOOD_CARD,
+			SpecialUpgradeData.EffectKind.TARGET_AIM,
+			SpecialUpgradeData.EffectKind.EVOLUTION,
+		]:
+			continue
+		if _food_data_for_id(upgrade.target_id) == null:
+			return "特殊强化 %s 的目标ID不存在于武器表: %s" % [
+				String(upgrade.id),
+				String(upgrade.target_id),
+			]
+	return ""
 
 
 func _process(delta: float) -> void:
@@ -862,35 +987,33 @@ func _on_special_choice_selected(choice_id: StringName) -> void:
 	if not _active_special_choices.has(choice_id):
 		push_error("SPECIAL_CHOICE_REJECTED choice=%s" % String(choice_id))
 		return
+	var upgrade: SpecialUpgradeData = _special_upgrades_by_id.get(choice_id)
+	if upgrade == null:
+		push_error("SPECIAL_CHOICE_DATA_MISSING choice=%s" % String(choice_id))
+		return
 	get_tree().paused = false
 	state.record_special_choice(choice_id)
-	match choice_id:
-		&"potato":
-			_apply_food_card(potato_data)
-		&"baguette":
-			_apply_food_card(baguette_data)
-		&"mushroom":
-			_apply_food_card(mushroom_data)
-		&"serving":
-			state.servings += 1
-			state.add_special(&"serving")
-			hud.show_toast("全局加量：每种食材多发一份")
-		&"potato_aim":
-			state.enable_target_aim(&"potato")
-			state.add_special(&"potato_aim")
-			hud.show_toast("瞄准投喂：土豆发射时朝向当前目标")
-		&"baguette_sweep":
-			state.enable_food_evolution(&"baguette_sweep")
-			state.add_special(&"baguette_sweep")
-			hud.show_toast("横扫法棍：每根法棍旋转扫过道路，同一目标只结算一次")
-		&"mushroom_breath":
-			state.enable_food_evolution(&"mushroom_breath")
-			state.add_special(&"mushroom_breath")
-			hud.show_toast("呼吸菌圈：蘑菇环绕半径每1.2秒扩缩一次")
-		&"soy_sauce":
-			state.add_pierce_bonus()
-			state.add_special(&"soy_sauce")
-			hud.show_toast("酱油：所有食材穿透次数 +1")
+	match upgrade.effect_kind:
+		SpecialUpgradeData.EffectKind.FOOD_CARD:
+			_apply_food_card(_food_data_for_id(upgrade.target_id))
+		SpecialUpgradeData.EffectKind.SERVING:
+			var serving_amount: int = maxi(1, roundi(upgrade.effect_value))
+			state.servings += serving_amount
+			state.add_special(choice_id)
+			hud.show_toast("%s：每种食材多发 %d 份" % [upgrade.display_name, serving_amount])
+		SpecialUpgradeData.EffectKind.TARGET_AIM:
+			state.enable_target_aim(upgrade.target_id)
+			state.add_special(choice_id)
+			hud.show_toast("%s：%s" % [upgrade.display_name, upgrade.description])
+		SpecialUpgradeData.EffectKind.EVOLUTION:
+			state.enable_food_evolution(choice_id)
+			state.add_special(choice_id)
+			hud.show_toast("%s：%s" % [upgrade.display_name, upgrade.description])
+		SpecialUpgradeData.EffectKind.PIERCE:
+			var pierce_amount: int = maxi(1, roundi(upgrade.effect_value))
+			state.add_pierce_bonus(pierce_amount)
+			state.add_special(choice_id)
+			hud.show_toast("%s：所有食材穿透次数 +%d" % [upgrade.display_name, pierce_amount])
 	_active_special_choices.clear()
 	hud.hide_special_choices()
 	phase = Phase.FORWARD
@@ -934,7 +1057,7 @@ func _show_special_choices(source: StringName, title: String) -> void:
 		)
 		return
 	state.record_special_offer(source, _active_special_choices)
-	hud.show_special_choices(_active_special_choices, state.food_levels, title)
+	hud.show_special_choices(_active_special_choices, _special_choice_texts(_active_special_choices), title)
 	if _smoke_test:
 		_on_special_choice_selected(_active_special_choices[0])
 	else:
@@ -948,9 +1071,10 @@ func _apply_food_card(food: FoodData) -> void:
 		var next_level: int = state.level_food(food.id)
 		state.add_special(StringName("%s_level_%d" % [String(food.id), next_level]))
 		hud.show_toast(
-			"%s升至 Lv.%d：自身基础满足值 ×1.5" % [
+			"%s升至 Lv.%d：自身基础满足值 ×%.2f" % [
 				food.display_name,
 				next_level,
+				state.food_level_satisfaction_multiplier,
 			]
 		)
 		return
@@ -1263,6 +1387,8 @@ func _string_name_array_to_strings(values: Array[StringName]) -> Array[String]:
 
 
 func _build_prototype_upgrades() -> void:
+	if not _upgrade_pairs.is_empty():
+		return
 	_upgrade_pairs = [
 		_make_upgrade_range(&"sugar", "糖", UpgradeData.Kind.SUGAR, 0.05, 0.45, "%"),
 		_make_upgrade_range(&"quick_prep", "快速备餐", UpgradeData.Kind.QUICK_PREP, 0.02, 0.20, "%"),
@@ -1276,6 +1402,8 @@ func _build_prototype_upgrades() -> void:
 
 
 func _build_drop_upgrades() -> void:
+	if not _drop_upgrades.is_empty():
+		return
 	_drop_upgrades = [
 		_make_upgrade_range(&"drop_sugar", "糖", UpgradeData.Kind.SUGAR, 0.05, 0.45, "%"),
 		_make_upgrade_range(&"drop_quick", "备餐", UpgradeData.Kind.QUICK_PREP, 0.02, 0.20, "%"),
@@ -1327,7 +1455,10 @@ func _roll_start_food_options() -> Array[UpgradeData]:
 
 # 当前原型未配置解锁子集时，三种已装配食材共同构成默认解锁池。
 func _available_start_foods() -> Array[FoodData]:
-	var configured_foods: Array[FoodData] = unlocked_foods
+	var configured_foods: Array[FoodData] = unlocked_foods.duplicate()
+	if configured_foods.is_empty() and not _food_data_by_id.is_empty():
+		for food: FoodData in _food_data_by_id.values():
+			configured_foods.append(food)
 	if configured_foods.is_empty():
 		configured_foods = [potato_data, baguette_data, mushroom_data]
 	var available: Array[FoodData] = []
@@ -1348,6 +1479,8 @@ func _make_start_food_option(food: FoodData) -> UpgradeData:
 
 
 func _food_data_for_id(food_id: StringName) -> FoodData:
+	if _food_data_by_id.has(food_id):
+		return _food_data_by_id[food_id]
 	for food: FoodData in _available_start_foods():
 		if food.id == food_id:
 			return food
@@ -1363,6 +1496,7 @@ func _roll_customer_reward() -> UpgradeData:
 
 # 从当前有效池完全随机抽出三个不同选项；不做新食材或进化保底。
 func _roll_special_choices() -> Array[StringName]:
+	_ensure_special_upgrade_data()
 	var available: Array[StringName] = []
 	for choice_id: StringName in _special_choice_pool:
 		if _special_choice_is_valid(choice_id):
@@ -1377,24 +1511,111 @@ func _roll_special_choices() -> Array[StringName]:
 
 
 func _special_choice_is_valid(choice_id: StringName) -> bool:
-	match choice_id:
-		&"potato", &"baguette", &"mushroom":
-			return state.food_level(choice_id) < RunState.FOOD_MAX_LEVEL
-		&"potato_aim":
-			return state.has_food(&"potato") and not state.is_food_target_aimed(&"potato")
-		&"baguette_sweep":
+	_ensure_special_upgrade_data()
+	var upgrade: SpecialUpgradeData = _special_upgrades_by_id.get(choice_id)
+	if upgrade == null:
+		return false
+	match upgrade.effect_kind:
+		SpecialUpgradeData.EffectKind.FOOD_CARD:
+			return state.food_level(upgrade.target_id) < state.food_max_level
+		SpecialUpgradeData.EffectKind.TARGET_AIM:
 			return (
-				state.has_food(&"baguette")
-				and not state.has_food_evolution(&"baguette_sweep")
+				state.has_food(upgrade.target_id)
+				and not state.is_food_target_aimed(upgrade.target_id)
 			)
-		&"mushroom_breath":
+		SpecialUpgradeData.EffectKind.EVOLUTION:
 			return (
-				state.has_food(&"mushroom")
-				and not state.has_food_evolution(&"mushroom_breath")
+				state.has_food(upgrade.target_id)
+				and not state.has_food_evolution(upgrade.id)
 			)
-		&"serving", &"soy_sauce":
-			return true
+		SpecialUpgradeData.EffectKind.SERVING, SpecialUpgradeData.EffectKind.PIERCE:
+			return upgrade.repeatable or not state.specials.has(upgrade.id)
 	return false
+
+
+func _ensure_special_upgrade_data() -> void:
+	if _special_upgrades_by_id.is_empty():
+		_build_fallback_special_upgrades()
+
+
+func _set_special_upgrades(upgrades: Array[SpecialUpgradeData]) -> void:
+	_special_upgrades_by_id.clear()
+	_special_choice_pool.clear()
+	for upgrade: SpecialUpgradeData in upgrades:
+		_special_upgrades_by_id[upgrade.id] = upgrade
+		_special_choice_pool.append(upgrade.id)
+
+
+# 回退池完整保留当前实现，确保三个 Excel 任一损坏时仍可开始新局。
+func _build_fallback_special_upgrades() -> void:
+	_set_special_upgrades([
+		_make_special_upgrade(&"potato", "土豆", SpecialUpgradeData.EffectKind.FOOD_CARD, &"potato", 1.0, true, "获得新食材并加入自动投喂", "提高自身基础满足值"),
+		_make_special_upgrade(&"baguette", "法棍", SpecialUpgradeData.EffectKind.FOOD_CARD, &"baguette", 1.0, true, "获得新食材并加入自动投喂", "提高自身基础满足值"),
+		_make_special_upgrade(&"mushroom", "蘑菇", SpecialUpgradeData.EffectKind.FOOD_CARD, &"mushroom", 1.0, true, "获得新食材并加入自动投喂", "提高自身基础满足值"),
+		_make_special_upgrade(&"serving", "全局加量", SpecialUpgradeData.EffectKind.SERVING, &"", 1.0, true, "当前与未来食材增加攻击份数", ""),
+		_make_special_upgrade(&"potato_aim", "瞄准投喂", SpecialUpgradeData.EffectKind.TARGET_AIM, &"potato", 1.0, false, "土豆发射时朝向当前目标", ""),
+		_make_special_upgrade(&"baguette_sweep", "横扫法棍", SpecialUpgradeData.EffectKind.EVOLUTION, &"baguette", 1.0, false, "旋转扫过道路，同一目标每根只结算一次", ""),
+		_make_special_upgrade(&"mushroom_breath", "呼吸菌圈", SpecialUpgradeData.EffectKind.EVOLUTION, &"mushroom", 1.0, false, "蘑菇环绕半径按武器表周期与倍率呼吸", ""),
+		_make_special_upgrade(&"soy_sauce", "酱油", SpecialUpgradeData.EffectKind.PIERCE, &"", 1.0, true, "提高全部食材可命中目标数", ""),
+	])
+
+
+func _make_special_upgrade(
+	id: StringName,
+	display_name: String,
+	effect_kind: SpecialUpgradeData.EffectKind,
+	target_id: StringName,
+	effect_value: float,
+	repeatable: bool,
+	description: String,
+	upgrade_description: String
+) -> SpecialUpgradeData:
+	var upgrade: SpecialUpgradeData = SpecialUpgradeData.new()
+	upgrade.id = id
+	upgrade.display_name = display_name
+	upgrade.effect_kind = effect_kind
+	upgrade.target_id = target_id
+	upgrade.effect_value = effect_value
+	upgrade.repeatable = repeatable
+	upgrade.description = description
+	upgrade.upgrade_description = upgrade_description
+	return upgrade
+
+
+func _special_choice_texts(choice_ids: Array[StringName]) -> Dictionary[StringName, String]:
+	var texts: Dictionary[StringName, String] = {}
+	for choice_id: StringName in choice_ids:
+		var upgrade: SpecialUpgradeData = _special_upgrades_by_id.get(choice_id)
+		if upgrade == null:
+			texts[choice_id] = String(choice_id)
+			continue
+		if upgrade.effect_kind == SpecialUpgradeData.EffectKind.FOOD_CARD:
+			var current_level: int = state.food_level(upgrade.target_id)
+			if current_level <= 0:
+				texts[choice_id] = "%s\n%s" % [upgrade.display_name, upgrade.description]
+			else:
+				texts[choice_id] = "%s Lv.%d → Lv.%d\n%s ×%.2f" % [
+					upgrade.display_name,
+					current_level,
+					current_level + 1,
+					upgrade.upgrade_description,
+					state.food_level_satisfaction_multiplier,
+				]
+			continue
+		if upgrade.effect_kind == SpecialUpgradeData.EffectKind.SERVING:
+			texts[choice_id] = "%s\n当前与未来食材各多发 %d 份" % [
+				upgrade.display_name,
+				maxi(1, roundi(upgrade.effect_value)),
+			]
+			continue
+		if upgrade.effect_kind == SpecialUpgradeData.EffectKind.PIERCE:
+			texts[choice_id] = "%s\n所有当前与未来食材穿透次数 +%d" % [
+				upgrade.display_name,
+				maxi(1, roundi(upgrade.effect_value)),
+			]
+			continue
+		texts[choice_id] = "%s\n%s" % [upgrade.display_name, upgrade.description]
+	return texts
 
 
 func _current_baseline_appetite() -> float:
