@@ -203,6 +203,12 @@ func repair(amount: float) -> void:
 	durability_changed.emit(current_durability, maximum_durability, temporary_shield)
 
 
+# Debug与后续奖励统一通过该入口增加护盾，避免外部改写状态后漏发HUD刷新信号。
+func add_temporary_shield(amount: float) -> void:
+	temporary_shield += maxf(amount, 0.0)
+	durability_changed.emit(current_durability, maximum_durability, temporary_shield)
+
+
 func effective_satisfaction(food: FoodData) -> float:
 	var level_multiplier: float = pow(
 		food_level_satisfaction_multiplier,

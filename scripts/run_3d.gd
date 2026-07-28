@@ -77,6 +77,7 @@ const PLAYTEST_RECORD_PATH: String = "user://playtest_runs.jsonl"
 @onready var weapon_controller: WeaponController3D = %WeaponController3D
 @onready var director: EncounterDirector = %EncounterDirector
 @onready var hud: GameHud = %Hud
+@onready var debug_menu: DebugMenu = %DebugMenu
 
 var world_scroll_speed: float = 2.05
 var state: RunState
@@ -116,6 +117,7 @@ var _food_data_by_id: Dictionary[StringName, FoodData] = {}
 var _special_upgrades_by_id: Dictionary[StringName, SpecialUpgradeData] = {}
 var _special_food_max_level: int = RunState.FOOD_MAX_LEVEL
 var _special_food_level_multiplier: float = RunState.FOOD_LEVEL_SATISFACTION_MULTIPLIER
+var _debug_invincible: bool = false
 # 食材卡取得后转为等级卡；进化按持有状态进入池，全局效果可以重复取得。
 var _special_choice_pool: Array[StringName] = [
 	&"potato",
@@ -168,6 +170,9 @@ func _ready() -> void:
 	state.durability_changed.connect(hud.set_durability)
 	hud.special_choice_selected.connect(_on_special_choice_selected)
 	hud.restart_requested.connect(_on_restart_requested)
+	debug_menu.action_requested.connect(_on_debug_action_requested)
+	debug_menu.menu_opened.connect(_on_debug_menu_opened)
+	debug_menu.menu_closed.connect(_on_debug_menu_closed)
 	hud.set_durability(
 		state.current_durability,
 		state.maximum_durability,
@@ -346,6 +351,7 @@ func _process(delta: float) -> void:
 				state.customers_satisfied,
 			]
 		)
+		_refresh_debug_menu()
 
 
 func is_world_scrolling() -> bool:
@@ -576,6 +582,9 @@ func on_customer_reward_gate_collected(upgrade: UpgradeData) -> void:
 
 
 func damage_cart(amount: float, source: String) -> void:
+	if _debug_invincible:
+		hud.show_toast("DEBUG 无敌：已忽略 %s 的伤害" % source, Color("#a9e69d"))
+		return
 	var durability_before: float = state.current_durability
 	var shield_before: float = state.temporary_shield
 	if cart.take_damage(amount):
@@ -1192,6 +1201,263 @@ func _on_cart_destroyed() -> void:
 func _on_restart_requested() -> void:
 	get_tree().paused = false
 	get_tree().reload_current_scene()
+
+
+# Debug菜单只发送动作ID，所有局内写操作继续集中在单局控制器及RunState中。
+func _on_debug_action_requested(action_id: StringName) -> void:
+	var feedback: String = ""
+	var success: bool = true
+	match action_id:
+		&"speed_0_5":
+			Engine.time_scale = 0.5
+			feedback = "局内速度已设为 0.5×"
+		&"speed_1":
+			Engine.time_scale = 1.0
+			feedback = "局内速度已恢复为 1×"
+		&"speed_2":
+			Engine.time_scale = 2.0
+			feedback = "局内速度已设为 2×"
+		&"speed_5":
+			Engine.time_scale = 5.0
+			feedback = "局内速度已设为 5×"
+		&"advance_30":
+			if phase == Phase.FORWARD or phase == Phase.BOSS:
+				state.elapsed_seconds += 30.0
+				hud.set_time(state.elapsed_seconds)
+				feedback = "局内时间已前进 30 秒，关闭菜单后继续触发时间轴"
+			else:
+				success = false
+				feedback = "当前阶段不能推进时间"
+		&"restart":
+			Engine.time_scale = 1.0
+			_on_restart_requested()
+			return
+		&"restore_cart":
+			state.repair(state.maximum_durability - state.current_durability)
+			feedback = "餐车耐久已修满"
+		&"add_shield":
+			state.add_temporary_shield(100.0)
+			feedback = "临时护盾已增加 100"
+		&"toggle_invincible":
+			_debug_invincible = not _debug_invincible
+			feedback = "餐车无敌已%s" % ("开启" if _debug_invincible else "关闭")
+		&"unlock_all_foods":
+			var unlocked_count: int = _debug_unlock_all_foods()
+			feedback = "已解锁全部食材（新增 %d 种）" % unlocked_count
+		&"max_all_foods":
+			var level_count: int = _debug_max_all_foods()
+			feedback = "全部食材已满级（提升 %d 级）" % level_count
+		&"unlock_all_specials":
+			var special_count: int = _debug_unlock_all_specials()
+			feedback = "全部特殊能力已解锁（新增 %d 项）" % special_count
+		&"random_normal_upgrade":
+			if _normal_upgrade_pool.is_empty():
+				success = false
+				feedback = "普通强化池为空"
+			else:
+				var upgrade: UpgradeData = _roll_normal_upgrade_options(1)[0]
+				upgrade.set_value_ratio(1.0)
+				state.apply_upgrade(upgrade)
+				cart.play_upgrade_feedback(upgrade.rarity_color)
+				feedback = "已取得满品质强化：%s" % upgrade.display_name
+		&"all_normal_upgrades":
+			var upgrade_count: int = _debug_apply_all_normal_upgrades()
+			feedback = "全部普通强化已各增加 1 层（%d 项）" % upgrade_count
+		&"spawn_basic":
+			success = _debug_queue_customer(basic_guest_data)
+			feedback = "已排队生成普通食客" if success else "只有前进阶段可生成食客"
+		&"spawn_fast":
+			success = _debug_queue_customer(fast_guest_data)
+			feedback = "已排队生成快速食客" if success else "只有前进阶段可生成食客"
+		&"spawn_ranged":
+			success = _debug_queue_customer(ranged_guest_data)
+			feedback = "已排队生成远程食客" if success else "只有前进阶段可生成食客"
+		&"spawn_elite":
+			if phase == Phase.FORWARD:
+				_normal_waves_suspended = true
+				_queue_elite()
+				feedback = "已排队生成精英食客"
+			else:
+				success = false
+				feedback = "只有前进阶段可生成精英食客"
+		&"spawn_gate":
+			if phase == Phase.FORWARD:
+				_queue_gate(-1, false, _current_baseline_appetite())
+				feedback = "已排队生成普通强化门"
+			else:
+				success = false
+				feedback = "只有前进阶段可生成强化门"
+		&"start_boss":
+			if phase == Phase.FORWARD:
+				_normal_waves_suspended = true
+				_scheduled_normal_customers.clear()
+				_begin_boss()
+				feedback = "Boss 已开始，关闭菜单后进入战斗"
+			else:
+				success = false
+				feedback = "只有前进阶段可直接开始 Boss"
+		&"satisfy_targets":
+			var target_count: int = _debug_satisfy_targets()
+			success = target_count > 0
+			feedback = ("已瞬间满足 %d 个当前目标" % target_count) if success else "当前没有可满足的目标"
+		&"clear_forward":
+			if phase == Phase.FORWARD:
+				_clear_forward_objects()
+				_scheduled_normal_customers.clear()
+				_normal_waves_suspended = false
+				_next_normal_spawn_time = state.elapsed_seconds + 1.0
+				feedback = "食客、门、奖励与投射物已清空"
+			else:
+				success = false
+				feedback = "只有前进阶段可清空路面对象"
+		&"toggle_hud":
+			hud.visible = not hud.visible
+			feedback = "正式 HUD 已%s" % ("显示" if hud.visible else "隐藏")
+		_:
+			success = false
+			feedback = "未知 Debug 操作：%s" % String(action_id)
+	debug_menu.show_feedback(feedback, success)
+	_refresh_debug_menu()
+
+
+func _on_debug_menu_closed() -> void:
+	if phase == Phase.CHOICE or phase == Phase.RESULTS or phase == Phase.FAILED:
+		get_tree().paused = true
+
+
+func _on_debug_menu_opened() -> void:
+	cart.cancel_pointer_input()
+	_refresh_debug_menu()
+
+
+func _refresh_debug_menu() -> void:
+	if debug_menu == null or state == null:
+		return
+	var food_texts: PackedStringArray = []
+	for food_id: StringName in state.foods:
+		var food: FoodData = _food_data_for_id(food_id)
+		var display_name: String = food.display_name if food != null else String(food_id)
+		food_texts.append("%s Lv.%d" % [display_name, state.food_level(food_id)])
+	var boss_text: String = "无"
+	if boss != null and is_instance_valid(boss) and boss.active:
+		boss_text = "%.0f / %.0f" % [boss.remaining_appetite, boss.maximum_appetite]
+	debug_menu.set_status_text((
+		"阶段：%s  时间：%02d:%02d  速度：%.1f×\n"
+		+ "耐久：%.0f / %.0f  护盾：%.0f  无敌：%s\n"
+		+ "食材：%s\n"
+		+ "食客：%d  门：%d  奖励门：%d  投射物：%d  Boss：%s"
+	) % [
+			_debug_phase_name(),
+			floori(state.elapsed_seconds / 60.0),
+			floori(state.elapsed_seconds) % 60,
+			Engine.time_scale,
+			state.current_durability,
+			state.maximum_durability,
+			state.temporary_shield,
+			"开" if _debug_invincible else "关",
+			"、".join(food_texts) if not food_texts.is_empty() else "尚未装车",
+			customers.size(),
+			gates.get_child_count(),
+			drops.get_child_count(),
+			projectiles.get_child_count(),
+			boss_text,
+		]
+	)
+	debug_menu.set_toggle_states(_debug_invincible, hud.visible)
+
+
+func _debug_phase_name() -> String:
+	match phase:
+		Phase.INTRO:
+			return "准备"
+		Phase.FORWARD:
+			return "前进"
+		Phase.CHOICE:
+			return "特别赏赐"
+		Phase.BOSS:
+			return "Boss"
+		Phase.RESULTS:
+			return "结算"
+		Phase.FAILED:
+			return "失败"
+	return "未知"
+
+
+func _debug_unlock_all_foods() -> int:
+	var unlocked_count: int = 0
+	for food: FoodData in _food_data_by_id.values():
+		if state.has_food(food.id):
+			continue
+		weapon_controller.add_food(food)
+		unlocked_count += 1
+	return unlocked_count
+
+
+func _debug_max_all_foods() -> int:
+	_debug_unlock_all_foods()
+	var level_count: int = 0
+	for food_id: StringName in state.foods:
+		while state.can_level_food(food_id):
+			state.level_food(food_id)
+			level_count += 1
+	return level_count
+
+
+func _debug_unlock_all_specials() -> int:
+	_debug_unlock_all_foods()
+	_ensure_special_upgrade_data()
+	var unlocked_count: int = 0
+	# 可重复能力只补到一层，使“一键解锁”保持幂等且不意外堆叠数值。
+	for upgrade: SpecialUpgradeData in _special_upgrades_by_id.values():
+		if upgrade.effect_kind == SpecialUpgradeData.EffectKind.FOOD_CARD:
+			continue
+		if state.specials.has(upgrade.id):
+			continue
+		match upgrade.effect_kind:
+			SpecialUpgradeData.EffectKind.SERVING:
+				state.servings += maxi(1, roundi(upgrade.effect_value))
+			SpecialUpgradeData.EffectKind.TARGET_AIM:
+				state.enable_target_aim(upgrade.target_id)
+			SpecialUpgradeData.EffectKind.EVOLUTION:
+				state.enable_food_evolution(upgrade.id)
+			SpecialUpgradeData.EffectKind.PIERCE:
+				state.add_pierce_bonus(maxi(1, roundi(upgrade.effect_value)))
+		state.add_special(upgrade.id)
+		unlocked_count += 1
+	return unlocked_count
+
+
+func _debug_apply_all_normal_upgrades() -> int:
+	var applied_count: int = 0
+	for template: UpgradeData in _normal_upgrade_pool:
+		var upgrade: UpgradeData = template.duplicate() as UpgradeData
+		upgrade.set_value_ratio(1.0)
+		state.apply_upgrade(upgrade)
+		applied_count += 1
+	if applied_count > 0:
+		cart.play_upgrade_feedback(Color("#f0c45f"))
+	return applied_count
+
+
+func _debug_queue_customer(customer_data: CustomerData) -> bool:
+	if phase != Phase.FORWARD or customer_data == null:
+		return false
+	_queue_customer(customer_data, _current_baseline_appetite())
+	return true
+
+
+func _debug_satisfy_targets() -> int:
+	if boss != null and is_instance_valid(boss) and boss.active:
+		boss.receive_satisfaction(boss.remaining_appetite)
+		return 1
+	var satisfied_count: int = 0
+	var active_customers: Array[Customer3D] = customers.duplicate()
+	for customer: Customer3D in active_customers:
+		if not is_instance_valid(customer) or not customer.active:
+			continue
+		customer.receive_satisfaction(customer.remaining_appetite)
+		satisfied_count += 1
+	return satisfied_count
 
 
 func _clear_forward_objects() -> void:

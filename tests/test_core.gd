@@ -93,6 +93,8 @@ func _test_3d_plane_rules() -> void:
 	var scene_cart: Cart3D = run_scene_instance.get_node("Cart3D") as Cart3D
 	_check(scene_cart != null, "3D主场景保留可编辑餐车节点")
 	_check(scene_cart.scale.is_equal_approx(Vector3.ONE * 0.5), "3D主场景餐车长宽高均缩小为一半")
+	var scene_debug_menu: DebugMenu = run_scene_instance.get_node("DebugMenu") as DebugMenu
+	_check(scene_debug_menu != null, "3D主场景装配独立Debug菜单")
 	run_scene_instance.free()
 	var cart: Cart3D = cart_scene.instantiate() as Cart3D
 	var editor_position: Vector3 = Vector3(2.75, 0.25, 12.25)
@@ -103,6 +105,10 @@ func _test_3d_plane_rules() -> void:
 	_check(is_equal_approx(cart.target_x, editor_position.x), "餐车横移目标从编辑器初始位置开始")
 	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
 	_check(Playfield.FORWARD_SPAWN_Z <= -32.0, "前方生成点覆盖四段道路可见距离")
+	cart._primary_touch_active = true
+	cart._mouse_drag_active = true
+	cart.cancel_pointer_input()
+	_check(not cart._primary_touch_active and not cart._mouse_drag_active, "Debug菜单打开时结束餐车拖拽")
 	var basic_data: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
 	var customer: Customer3D = customer_scene.instantiate() as Customer3D
 	customer.configure(basic_data, null, 1, 32.0)
@@ -520,6 +526,8 @@ func _test_run_state() -> void:
 	_check(is_equal_approx(state.temporary_shield, 0.0), "受击优先消耗临时护盾")
 	_check(is_equal_approx(state.current_durability, 104.0), "护盾耗尽后剩余伤害扣除耐久")
 	_check(is_equal_approx(state.durability_lost, 46.0), "护盾吸收量不计入实际耐久损失")
+	state.add_temporary_shield(100.0)
+	_check(is_equal_approx(state.temporary_shield, 100.0), "Debug护盾入口直接增加临时护盾")
 	_check(
 		repair.effect_text(state.maximum_durability) == "恢复/护盾 +22点",
 		"紧急维修门同时说明恢复与溢出护盾"

@@ -78,6 +78,11 @@ func take_damage(amount: float) -> bool:
 	return true
 
 
+func cancel_pointer_input() -> void:
+	_primary_touch_active = false
+	_mouse_drag_active = false
+
+
 func collision_rect_xz() -> Rect2:
 	var collision_scale: Vector2 = Vector2(absf(_base_scale.x), absf(_base_scale.z))
 	return Rect2(
