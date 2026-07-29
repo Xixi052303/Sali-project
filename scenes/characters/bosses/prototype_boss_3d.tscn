@@ -42,6 +42,204 @@ top_radius = 1.1
 bottom_radius = 1.1
 height = 0.03
 
+[sub_resource type="Animation" id="Animation_boss_reset"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("LineAttackAnchor/LineAttackRig:scale")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(1, 1, 1)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("LineAttackAnchor/LineAttackRig/LineTelegraph:visible")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [false]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("AreaAttackAnchor/AreaAttackRig:scale")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(1, 1, 1)]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("AreaAttackAnchor/AreaAttackRig/AreaTelegraph:visible")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [false]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Body:scale")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(1, 1, 1)]
+}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("LineAttackAnchor/LineAttackRig:position")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/6/type = "value"
+tracks/6/imported = false
+tracks/6/enabled = true
+tracks/6/path = NodePath("AreaAttackAnchor/AreaAttackRig:position")
+tracks/6/interp = 1
+tracks/6/loop_wrap = true
+tracks/6/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_boss_line"]
+resource_name = "line_attack"
+length = 1.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("LineAttackAnchor/LineAttackRig/LineTelegraph:visible")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 1),
+"transitions": PackedFloat32Array(1, 1),
+"update": 1,
+"values": [true, false]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("LineAttackAnchor/LineAttackRig:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.62, 0.9, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(1, 1, 0.03), Vector3(1, 1, 0.34), Vector3(1, 1, 1), Vector3(1.08, 1, 1)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("LineAttackAnchor/LineAttackRig:position")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.45, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0.05, 0, 0), Vector3(-0.035, 0, 0), Vector3(0, 0, 0)]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Body:scale")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.28, 0.76, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(1, 1, 1), Vector3(1.08, 0.94, 1), Vector3(0.96, 1.08, 1), Vector3(1, 1, 1)]
+}
+
+[sub_resource type="Animation" id="Animation_boss_area"]
+resource_name = "area_attack"
+length = 1.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("AreaAttackAnchor/AreaAttackRig/AreaTelegraph:visible")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 1),
+"transitions": PackedFloat32Array(1, 1),
+"update": 1,
+"values": [true, false]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("AreaAttackAnchor/AreaAttackRig:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.5, 0.86, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(0.15, 1, 0.15), Vector3(0.48, 1, 0.48), Vector3(1, 1, 1), Vector3(1.12, 1, 1.12)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("AreaAttackAnchor/AreaAttackRig:position")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.42, 0.72, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0, 0.04, 0), Vector3(0, -0.02, 0), Vector3(0, 0, 0)]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Body:scale")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.3, 0.75, 1),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(1, 1, 1), Vector3(1.1, 0.92, 1.05), Vector3(0.95, 1.1, 0.96), Vector3(1, 1, 1)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_boss_attacks"]
+_data = {
+"RESET": SubResource("Animation_boss_reset"),
+"area_attack": SubResource("Animation_boss_area"),
+"line_attack": SubResource("Animation_boss_line")
+}
+
 [node name="PrototypeBoss3D" type="Node3D"]
 script = ExtResource("1_script")
 
@@ -75,14 +273,42 @@ modulate = Color(1, 0.878431, 0.603922, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 alpha_cut = 0
 
-[node name="LineTelegraph" type="MeshInstance3D" parent="."]
+[node name="AttackOrigin" type="Marker3D" parent="."]
 unique_name_in_owner = true
+position = Vector3(0, 1.35, 0.15)
+
+[node name="LineAttackAnchor" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="LineAttackRig" type="Node3D" parent="LineAttackAnchor"]
+
+[node name="LineTelegraph" type="MeshInstance3D" parent="LineAttackAnchor/LineAttackRig"]
+unique_name_in_owner = true
+visible = false
 cast_shadow = 0
 material_override = SubResource("MatTelegraph")
 mesh = SubResource("MeshLine")
 
-[node name="AreaTelegraph" type="MeshInstance3D" parent="."]
+[node name="LineImpactMarker" type="Marker3D" parent="LineAttackAnchor/LineAttackRig"]
 unique_name_in_owner = true
+
+[node name="AreaAttackAnchor" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="AreaAttackRig" type="Node3D" parent="AreaAttackAnchor"]
+
+[node name="AreaTelegraph" type="MeshInstance3D" parent="AreaAttackAnchor/AreaAttackRig"]
+unique_name_in_owner = true
+visible = false
 cast_shadow = 0
 material_override = SubResource("MatTelegraph")
 mesh = SubResource("MeshArea")
+
+[node name="AreaImpactMarker" type="Marker3D" parent="AreaAttackAnchor/AreaAttackRig"]
+unique_name_in_owner = true
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+unique_name_in_owner = true
+libraries = {
+"": SubResource("AnimationLibrary_boss_attacks")
+}

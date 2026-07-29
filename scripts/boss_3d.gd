@@ -15,6 +15,8 @@ enum State {
 
 const COMBAT_DISTANCE_FROM_CART: float = 8.0
 const ENTRY_TRAVEL_DISTANCE: float = 4.2
+const LINE_ATTACK_ANIMATION: StringName = &"line_attack"
+const AREA_ATTACK_ANIMATION: StringName = &"area_attack"
 
 var data: BossPatternData
 var run: RunController3D
@@ -25,14 +27,18 @@ var active: bool = false
 var _state: State = State.ENTER
 var _state_time: float = 0.0
 var _attack_index: int = 0
-var _locked_target_x: float = 3.6
+# 每次攻击开始时锁定完整道路坐标，动画锚点与代码命中共享同一目标快照。
+var _locked_target_position: Vector3 = Vector3(3.6, 0.0, Playfield.CART_Z)
 var _direction: float = 1.0
 var _combat_z: float = 3.0
 @onready var _appetite_label: Label3D = %AppetiteLabel
+@onready var _line_attack_anchor: Node3D = %LineAttackAnchor
+@onready var _area_attack_anchor: Node3D = %AreaAttackAnchor
 @onready var _telegraph_line: MeshInstance3D = %LineTelegraph
 @onready var _telegraph_area: MeshInstance3D = %AreaTelegraph
+@onready var _line_impact_marker: Marker3D = %LineImpactMarker
+@onready var _animation_player: AnimationPlayer = %AnimationPlayer
 @onready var _line_box: BoxMesh = _telegraph_line.mesh as BoxMesh
-@onready var _telegraph_material: StandardMaterial3D = _telegraph_line.material_override as StandardMaterial3D
 
 
 # Boss 登场时把当前基准胃口与资源倍率结算为本场固定胃口。
@@ -67,16 +73,16 @@ func _process(delta: float) -> void:
 				_direction *= -1.0
 				position.x = clampf(position.x, 1.8, 5.4)
 			if _state_time >= 2.2:
-				_locked_target_x = run.cart.position.x
+				_locked_target_position = run.cart.position
 				_change_state(State.TELEGRAPH_LINE if _attack_index % 2 == 0 else State.TELEGRAPH_AREA)
 		State.TELEGRAPH_LINE:
 			if _state_time >= data.telegraph_duration:
-				if absf(run.cart.position.x - _locked_target_x) <= 0.54:
+				if absf(run.cart.position.x - _locked_target_position.x) <= 0.54:
 					run.damage_cart(remaining_appetite * data.line_attack_ratio, "Boss直线投掷")
 				_finish_attack()
 		State.TELEGRAPH_AREA:
 			if _state_time >= data.telegraph_duration:
-				if absf(run.cart.position.x - _locked_target_x) <= 1.1:
+				if absf(run.cart.position.x - _locked_target_position.x) <= 1.1:
 					run.damage_cart(remaining_appetite * data.area_attack_ratio, "Boss范围攻击")
 				_finish_attack()
 		State.RECOVER:
@@ -84,7 +90,6 @@ func _process(delta: float) -> void:
 				_change_state(State.MOVE)
 		State.DONE:
 			pass
-	_update_telegraph()
 
 
 func receive_satisfaction(amount: float) -> void:
@@ -104,16 +109,20 @@ func hit_radius() -> float:
 
 
 func _resolve_visual_nodes() -> void:
-	if _appetite_label != null:
+	if _animation_player != null:
 		return
 	_appetite_label = get_node("AppetiteLabel") as Label3D
-	_telegraph_line = get_node("LineTelegraph") as MeshInstance3D
-	_telegraph_area = get_node("AreaTelegraph") as MeshInstance3D
+	_line_attack_anchor = get_node("LineAttackAnchor") as Node3D
+	_area_attack_anchor = get_node("AreaAttackAnchor") as Node3D
+	_telegraph_line = get_node("LineAttackAnchor/LineAttackRig/LineTelegraph") as MeshInstance3D
+	_telegraph_area = get_node("AreaAttackAnchor/AreaAttackRig/AreaTelegraph") as MeshInstance3D
+	_line_impact_marker = get_node("LineAttackAnchor/LineAttackRig/LineImpactMarker") as Marker3D
+	_animation_player = get_node("AnimationPlayer") as AnimationPlayer
 	_line_box = _telegraph_line.mesh as BoxMesh
-	_telegraph_material = _telegraph_line.material_override as StandardMaterial3D
 
 
 func _finish_attack() -> void:
+	_reset_attack_animation()
 	_attack_index += 1
 	_change_state(State.RECOVER)
 
@@ -121,25 +130,38 @@ func _finish_attack() -> void:
 func _change_state(next_state: State) -> void:
 	_state = next_state
 	_state_time = 0.0
+	if next_state == State.TELEGRAPH_LINE:
+		_play_attack_animation(LINE_ATTACK_ANIMATION)
+	elif next_state == State.TELEGRAPH_AREA:
+		_play_attack_animation(AREA_ATTACK_ANIMATION)
+	elif next_state == State.DONE:
+		_reset_attack_animation()
 
 
 func _configure_visual() -> void:
 	_appetite_label.text = str(ceili(remaining_appetite))
-	_telegraph_line.visible = false
-	_telegraph_area.visible = false
+	_reset_attack_animation()
 
 
-func _update_telegraph() -> void:
-	_telegraph_line.visible = _state == State.TELEGRAPH_LINE
-	_telegraph_area.visible = _state == State.TELEGRAPH_AREA
-	if not _telegraph_line.visible and not _telegraph_area.visible:
-		return
-	var progress: float = clampf(_state_time / maxf(0.001, data.telegraph_duration), 0.0, 1.0)
-	_telegraph_material.albedo_color = Color(0.91, 0.22, 0.06, 0.16 + progress * 0.3)
-	var target_offset_x: float = _locked_target_x - position.x
-	var cart_offset_z: float = run.cart_destination_z() - position.z
-	if _telegraph_line.visible:
-		_line_box.size = Vector3(1.08, 0.03, absf(cart_offset_z))
-		_telegraph_line.position = Vector3(target_offset_x, 0.02, cart_offset_z * 0.5)
+# RESET轨道是动画编辑器与运行时共同认可的基础姿态，避免攻击结束时停在半帧缩放上。
+func _reset_attack_animation() -> void:
+	_animation_player.stop()
+	_animation_player.play(&"RESET")
+	_animation_player.advance(0.0)
+	_animation_player.stop()
+
+
+# 代码只放置动态锚点；轨迹节点的局部位移、缩放和显隐完全交给动画资源。
+func _play_attack_animation(animation_name: StringName) -> void:
+	var target_offset: Vector3 = _locked_target_position - position
+	if animation_name == LINE_ATTACK_ANIMATION:
+		_line_attack_anchor.position = Vector3(target_offset.x, 0.02, 0.0)
+		_line_box.size = Vector3(1.08, 0.03, absf(target_offset.z))
+		_telegraph_line.position = Vector3(0.0, 0.0, target_offset.z * 0.5)
+		_line_impact_marker.position = Vector3(0.0, 0.0, target_offset.z)
 	else:
-		_telegraph_area.position = Vector3(target_offset_x, 0.02, cart_offset_z)
+		_area_attack_anchor.position = Vector3(target_offset.x, 0.02, target_offset.z)
+	var attack_animation: Animation = _animation_player.get_animation(animation_name)
+	var authored_duration: float = attack_animation.length if attack_animation != null else 1.0
+	var animation_speed: float = authored_duration / maxf(0.001, data.telegraph_duration)
+	_animation_player.play(animation_name, -1.0, animation_speed)

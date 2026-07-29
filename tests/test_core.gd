@@ -114,8 +114,33 @@ func _test_3d_plane_rules() -> void:
 	cart.position = editor_position
 	cart.scale = Vector3.ONE * 0.5
 	cart.configure(state, field)
+	cart._visual_root = cart.get_node("PaperCartVisual") as Node3D
 	_check(cart.position.is_equal_approx(editor_position), "餐车配置不会覆盖编辑器设置的初始位置")
 	_check(is_equal_approx(cart.target_x, editor_position.x), "餐车横移目标从编辑器初始位置开始")
+	_check(is_equal_approx(cart.target_z, editor_position.z), "餐车纵移目标从编辑器初始位置开始")
+	var movement_boss: PrototypeBoss3D = PrototypeBoss3D.new()
+	movement_boss.position = Vector3(3.6, 0.0, 6.0)
+	cart.begin_boss_movement(movement_boss)
+	var boss_boundary_z: float = cart.boss_minimum_z()
+	_check(boss_boundary_z > movement_boss.position.z, "Boss纵向边界在Boss与餐车主体之间保留间距")
+	cart.position = Vector3(3.6, 0.25, 12.25)
+	cart.target_x = 6.0
+	cart.target_z = 9.85
+	cart._physics_process(0.1)
+	_check(
+		is_equal_approx(Vector2(cart.position.x - 3.6, cart.position.z - 12.25).length(), 0.9),
+		"Boss战斜向移动与原横移使用相同合速度"
+	)
+	cart.position.z = boss_boundary_z - 1.0
+	cart.target_z = movement_boss.position.z - 2.0
+	cart._physics_process(0.1)
+	_check(cart.position.z >= boss_boundary_z, "Boss战餐车不能越过Boss前边界")
+	cart.end_boss_movement()
+	_check(is_equal_approx(cart.position.z, editor_position.z), "Boss战结束后餐车恢复开战站位")
+	cart.target_z = movement_boss.position.z
+	cart._physics_process(0.1)
+	_check(is_equal_approx(cart.position.z, editor_position.z), "普通阶段忽略纵向目标并维持横移")
+	movement_boss.free()
 	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
 	_check(Playfield.FORWARD_SPAWN_Z <= -32.0, "前方生成点覆盖四段道路可见距离")
 	cart._primary_touch_active = true
@@ -1084,6 +1109,18 @@ func _test_resources() -> void:
 	var boss_body: MeshInstance3D = boss_instance.get_node("Body") as MeshInstance3D
 	var boss_head: MeshInstance3D = boss_instance.get_node("Head") as MeshInstance3D
 	_check(boss_body.visible and boss_head.visible, "Boss占位视觉已静态装配在可预览场景中")
+	var boss_animation_player: AnimationPlayer = boss_instance.get_node("AnimationPlayer") as AnimationPlayer
+	_check(
+		boss_animation_player.has_animation(&"line_attack")
+		and boss_animation_player.has_animation(&"area_attack"),
+		"Boss直线与范围预警使用可编辑AnimationPlayer动画"
+	)
+	_check(
+		boss_instance.get_node_or_null("AttackOrigin") is Marker3D
+		and boss_instance.get_node_or_null("LineAttackAnchor/LineAttackRig/LineImpactMarker") is Marker3D
+		and boss_instance.get_node_or_null("AreaAttackAnchor/AreaAttackRig/AreaImpactMarker") is Marker3D,
+		"Boss攻击场景保留代码可读取的生成与落点Marker3D"
+	)
 	var boss_material: StandardMaterial3D = boss_body.material_override as StandardMaterial3D
 	boss_material.albedo_color = Color.MAGENTA
 	var boss_run: RunController3D = RunController3D.new()

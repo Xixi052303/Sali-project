@@ -11,6 +11,11 @@ const COLLISION_RECT: Rect2 = Rect2(-0.96, -1.5, 1.92, 2.17)
 var state: RunState
 var playfield: Playfield
 var target_x: float = 3.6
+var target_z: float = Playfield.CART_Z
+# Boss 战期间保留开战站位作为后方边界，结束后也据此恢复普通横移状态。
+var _default_z: float = Playfield.CART_Z
+var _boss_movement_active: bool = false
+var _boss_target: PrototypeBoss3D
 var _primary_touch_active: bool = false
 var _mouse_drag_active: bool = false
 var _invincible_remaining: float = 0.0
@@ -26,6 +31,8 @@ func configure(run_state: RunState, field: Playfield) -> void:
 	playfield = field
 	_base_scale = scale
 	target_x = position.x
+	target_z = position.z
+	_default_z = position.z
 
 
 func _physics_process(delta: float) -> void:
@@ -42,7 +49,14 @@ func _physics_process(delta: float) -> void:
 		BASE_MOVE_SPEED * clampf(state.cart_base_speed_factor, 0.0, 1.0)
 		+ Playfield.design_to_world(state.effective_cart_speed_bonus(BASE_MOVE_SPEED_DESIGN))
 	)
-	position.x = move_toward(position.x, target_x, speed * delta)
+	var current_position: Vector2 = Vector2(position.x, position.z)
+	var movement_target: Vector2 = Vector2(target_x, target_z if _boss_movement_active else position.z)
+	var next_position: Vector2 = current_position.move_toward(movement_target, speed * delta)
+	next_position.x = playfield.clamp_cart_x(next_position.x)
+	if _boss_movement_active:
+		next_position.y = clampf(next_position.y, boss_minimum_z(), _default_z)
+	position.x = next_position.x
+	position.z = next_position.y
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -53,20 +67,71 @@ func _unhandled_input(event: InputEvent) -> void:
 		if touch.index == 0:
 			_primary_touch_active = touch.pressed
 			if touch.pressed:
-				target_x = playfield.clamp_cart_x(Playfield.design_to_world(touch.position.x))
+				_set_pointer_target(touch.position)
 	elif event is InputEventScreenDrag:
 		var drag: InputEventScreenDrag = event
 		if drag.index == 0 and _primary_touch_active:
-			target_x = playfield.clamp_cart_x(Playfield.design_to_world(drag.position.x))
+			_set_pointer_target(drag.position)
 	elif event is InputEventMouseButton:
 		var mouse_button: InputEventMouseButton = event
 		if mouse_button.button_index == MOUSE_BUTTON_LEFT:
 			_mouse_drag_active = mouse_button.pressed
 			if mouse_button.pressed:
-				target_x = playfield.clamp_cart_x(Playfield.design_to_world(mouse_button.position.x))
+				_set_pointer_target(mouse_button.position)
 	elif event is InputEventMouseMotion and _mouse_drag_active:
 		var mouse_motion: InputEventMouseMotion = event
-		target_x = playfield.clamp_cart_x(Playfield.design_to_world(mouse_motion.position.x))
+		_set_pointer_target(mouse_motion.position)
+
+
+# 普通阶段沿用设计像素横移；Boss 阶段把指针投影到道路平面以同时取得 X/Z 目标。
+func _set_pointer_target(screen_position: Vector2) -> void:
+	if not _boss_movement_active:
+		target_x = playfield.clamp_cart_x(Playfield.design_to_world(screen_position.x))
+		return
+	var ground_position: Vector3 = _screen_to_ground(screen_position)
+	target_x = playfield.clamp_cart_x(ground_position.x)
+	target_z = clampf(ground_position.z, boss_minimum_z(), _default_z)
+
+
+# 斜俯相机下用地面射线恢复真实道路坐标；无活动相机时维持现有横向映射。
+func _screen_to_ground(screen_position: Vector2) -> Vector3:
+	var camera: Camera3D = get_viewport().get_camera_3d()
+	if camera == null:
+		return Vector3(Playfield.design_to_world(screen_position.x), 0.0, target_z)
+	var ray_origin: Vector3 = camera.project_ray_origin(screen_position)
+	var ray_direction: Vector3 = camera.project_ray_normal(screen_position)
+	if is_zero_approx(ray_direction.y):
+		return Vector3(Playfield.design_to_world(screen_position.x), 0.0, target_z)
+	var ray_distance: float = -ray_origin.y / ray_direction.y
+	if ray_distance < 0.0:
+		return Vector3(Playfield.design_to_world(screen_position.x), 0.0, target_z)
+	return ray_origin + ray_direction * ray_distance
+
+
+# Boss 模式只扩展纵向自由度，二维合速度继续复用现有横移速度。
+func begin_boss_movement(active_boss: PrototypeBoss3D) -> void:
+	_boss_target = active_boss
+	_boss_movement_active = is_instance_valid(_boss_target)
+	_default_z = position.z
+	target_z = position.z
+
+
+func end_boss_movement() -> void:
+	_boss_movement_active = false
+	_boss_target = null
+	position.z = _default_z
+	target_z = _default_z
+
+
+# 前边界包含 Boss 命中半径与餐车前缘，避免视觉主体相交后才被判定为越过。
+func boss_minimum_z() -> float:
+	if not _boss_movement_active or not is_instance_valid(_boss_target):
+		return _default_z
+	var cart_forward_extent: float = absf(COLLISION_RECT.position.y * _base_scale.z)
+	return minf(
+		_default_z,
+		_boss_target.position.z + _boss_target.hit_radius() + cart_forward_extent
+	)
 
 
 func take_damage(amount: float) -> bool:

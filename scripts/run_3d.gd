@@ -1268,8 +1268,9 @@ func _begin_boss() -> void:
 	boss = BOSS_SCENE.instantiate() as PrototypeBoss3D
 	entities.add_child(boss)
 	boss.configure(boss_data, self, _current_baseline_appetite())
+	cart.begin_boss_movement(boss)
 	boss.satisfied.connect(_on_boss_satisfied)
-	hud.set_phase("Boss服务 · 躲开预警并自动反击")
+	hud.set_phase("Boss服务 · 自由移动并自动反击")
 	hud.show_toast("前进停止！危险预警后会出现反击窗口", Color("#ff7957"))
 
 
@@ -1539,6 +1540,7 @@ func _on_boss_satisfied() -> void:
 	state.boss_durations.append(state.boss_duration)
 	_bosses_completed += 1
 	state.customers_satisfied += 1
+	cart.end_boss_movement()
 	phase = Phase.CHOICE
 	_boss_reward_pending = true
 	hud.set_phase("Boss赏赐 · 特别三选一")
