@@ -89,6 +89,7 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 
 - `RunController3D`（`scripts/run_3d.gd`）：拥有单局阶段、3D运行对象集合、生成、选择、Boss 和结算的跨系统编排。
 - `RunState`（`scripts/data/run_state.gd`）：拥有局内耐久、强化、食材、特殊能力和统计状态。
+- `ProgressionStore`（`scripts/data/progression_store.gd`）：在最终Boss结算时把首胜完成/后续内容解锁资格标记持久化到`user://progression.cfg`；不提前定义具体解锁内容树。
 - `Playfield`（`scripts/playfield.gd`）：定义道路边界、六个逻辑区域和餐车活动范围。
 - `EncounterDirector`与`EncounterTimeline`：按路程进度触发显式事件；`balance_tables/时间轴.xlsx`保存三段有效时间胃口曲线、独立总路程、路程事件与普通门/波次数量，`TimelineExcelLoader`生成运行时Resource，`data/timelines/vertical_slice.tres`负责失败回退，`RunController3D._advance_distance_spawns()`按路程生成普通门与普通食客组合。
 - `GameplayExcelLoader`：读取`战斗规则.xlsx`、`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`和`特殊强化.xlsx`，生成本局战斗参数与独立的`CustomerData`、`FoodData`、`UpgradeData`、`SpecialUpgradeData`；读取失败时由脚本安全值、场景资源或`RunController3D`默认池回退，食客表按当前四个必需ID整体回退。
@@ -100,9 +101,9 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 
 当前普通强化候选和部分特殊选择由 `RunController3D` 在运行时构建，并非全部来自 `.tres`。修改数据前必须先确认事实源位于具体 Resource、脚本构建逻辑还是 GDD。
 
-### 设计与实现差异
+### 设计与实现状态
 
-现行 GDD 的目标单局约 8 分钟、约 50 次普通强化门、6 只精英和 2 场 Boss；当前可运行竖切片约 3 分钟，包含 12 道普通强化门、1 只精英和 1 场 Boss。工程任务必须把前者标为“目标设计”、后者标为“当前实现”，除非用户明确要求同步，否则不得自动扩充原型。
+现行 GDD 与当前可运行实现均采用约 8 分钟的正式流程骨架：50 次普通强化门、250 个普通波次（按当前密度约 312 只普通食客）、6 只精英和 2 场 Boss。工程任务仍须把未接入的正式内容、表现和局外系统标为“目标设计”，不能因为流程骨架已接入就声称整套设计已经实现。
 
 ## 项目专属实现约束
 
@@ -126,13 +127,19 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
   Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tests/test_core.gd
   ```
 
+- Excel 运行主源、读取适配器或数据回退改动：在核心测试后运行 Excel 数值链专项测试。
+
+  ```powershell
+  Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tests/test_balance_excel.gd
+  ```
+
 - 主流程、阶段切换、生成、Boss、HUD 或场景装配改动：在核心测试后运行完整流程烟雾测试。
 
   ```powershell
-  Godot_v4.7-stable_win64_console.exe --headless --path . --quit-after 20000 -- --smoke-test
+  Godot_v4.7-stable_win64_console.exe --headless --fixed-fps 60 --path . --quit-after 4000 -- --smoke-test
   ```
 
-- 成功标志分别为 `CORE_TESTS_OK` 和 `SMOKE_TEST_OK`；同时检查输出中没有新增的脚本解析、资源加载或场景依赖错误。
+- 成功标志分别为 `CORE_TESTS_OK`、`BALANCE_EXCEL_TEST_OK`和`SMOKE_TEST_OK`；同时检查输出中没有新增的脚本解析、资源加载或场景依赖错误。
 - 上述命令只表示参数基线；Codex 实际调用时还必须先获得非沙箱执行批准，确认直接使用 Godot 4.7 官方控制台程序，并按验证流程注入本次运行独立的 `APPDATA`、`LOCALAPPDATA` 和 `tmp/` 日志路径。
 - 输入、HUD、边界或表现改动还需检查 `720 × 1280`、`405 × 720` 和目标移动端比例。
 - Android 导出配置改动检查 `export_presets.cfg`；没有用户要求时不构建、签名或覆盖 APK。

@@ -6,6 +6,7 @@ var _failures: int = 0
 func _init() -> void:
 	_test_playfield()
 	_test_customer_cart_collision()
+	_test_progression_store()
 	_test_cart_invincibility_duration()
 	_test_3d_plane_rules()
 	_test_baguette_targeting()
@@ -63,13 +64,19 @@ func _test_customer_cart_collision() -> void:
 	cart.scale = Vector3.ONE * 0.5
 	cart.configure(state, field)
 	var basic_data: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
+	var reward_upgrade: UpgradeData = UpgradeData.new()
+	reward_upgrade.configure_value_range(0.05, 0.45, 0.6)
 	var customer: Customer3D = customer_scene.instantiate() as Customer3D
-	customer.configure(basic_data, null, 1, 32.0)
+	customer.configure(basic_data, null, 1, 32.0, reward_upgrade)
 	var appetite_back: MeshInstance3D = customer.get_node("PaperCustomerVisual/AppetiteBack") as MeshInstance3D
 	var appetite_fill: MeshInstance3D = customer.get_node("PaperCustomerVisual/AppetiteFill") as MeshInstance3D
 	var appetite_label: Label3D = customer.get_node("PaperCustomerVisual/AppetiteLabel") as Label3D
 	_check(not appetite_back.visible and not appetite_fill.visible, "3D食客不显示胃口进度条")
 	_check(appetite_label.font_size >= 64, "3D食客使用显眼数字显示胃口")
+	_check(
+		appetite_label.modulate.is_equal_approx(reward_upgrade.rarity_color),
+		"3D普通食客的胃口数字使用其奖励稀有度色"
+	)
 	var cart_collision: Rect2 = cart.collision_rect_xz()
 	_check(cart_collision.size.is_equal_approx(Vector2(0.96, 1.085)), "半尺寸餐车同步使用半尺寸碰撞矩形")
 	customer.position = Vector3(1.6, 0.0, 9.5)
@@ -91,6 +98,36 @@ func _test_customer_cart_collision() -> void:
 	cart.free()
 	field.free()
 	run.free()
+
+
+func _test_progression_store() -> void:
+	var test_path: String = "user://test_progression_store.cfg"
+	var absolute_path: String = ProjectSettings.globalize_path(test_path)
+	if FileAccess.file_exists(test_path):
+		DirAccess.remove_absolute(absolute_path)
+	var first_result: int = ProgressionStore.record_final_boss_first_clear(test_path)
+	var repeated_result: int = ProgressionStore.record_final_boss_first_clear(test_path)
+	_check(
+		first_result == ProgressionStore.UnlockResult.UNLOCKED_NOW,
+		"最终Boss首次通关会建立后续内容解锁记录"
+	)
+	_check(
+		repeated_result == ProgressionStore.UnlockResult.ALREADY_UNLOCKED,
+		"最终Boss重复通关会识别既有解锁记录"
+	)
+	var config: ConfigFile = ConfigFile.new()
+	var load_error: Error = config.load(test_path)
+	_check(
+		load_error == OK
+		and bool(config.get_value(
+			ProgressionStore.CONTENT_UNLOCKS_SECTION,
+			ProgressionStore.FINAL_BOSS_FIRST_CLEAR_KEY,
+			false
+		)),
+		"最终Boss首胜状态以持久化布尔值保存"
+	)
+	if FileAccess.file_exists(test_path):
+		DirAccess.remove_absolute(absolute_path)
 
 
 func _test_cart_invincibility_duration() -> void:
@@ -161,6 +198,38 @@ func _test_3d_plane_rules() -> void:
 	cart._physics_process(0.1)
 	_check(is_equal_approx(cart.position.z, editor_position.z), "普通阶段忽略纵向目标并维持横移")
 	movement_boss.free()
+	var locked_attack_position: Vector3 = Vector3(3.6, 0.0, 12.25)
+	var attack_origin: Vector3 = Vector3(3.6, 0.0, 4.25)
+	_check(
+		PrototypeBoss3D.line_attack_hits(
+			locked_attack_position,
+			attack_origin,
+			locked_attack_position
+		),
+		"Boss直线攻击命中锁定点"
+	)
+	_check(
+		not PrototypeBoss3D.line_attack_hits(
+			locked_attack_position + Vector3(0.0, 0.0, 0.01),
+			attack_origin,
+			locked_attack_position
+		),
+		"餐车沿Z轴移出可见直线末端后躲开攻击"
+	)
+	_check(
+		PrototypeBoss3D.area_attack_hits(
+			locked_attack_position,
+			locked_attack_position
+		),
+		"Boss范围攻击命中锁定点"
+	)
+	_check(
+		not PrototypeBoss3D.area_attack_hits(
+			locked_attack_position + Vector3(0.0, 0.0, PrototypeBoss3D.AREA_ATTACK_RADIUS + 0.01),
+			locked_attack_position
+		),
+		"餐车沿Z轴移出可见范围圆后躲开攻击"
+	)
 	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
 	_check(Playfield.FORWARD_SPAWN_Z <= -32.0, "前方生成点覆盖四段道路可见距离")
 	cart._primary_touch_active = true
@@ -1051,11 +1120,17 @@ func _test_timeline() -> void:
 	_check(
 		is_equal_approx(timeline.course_distance, 1310.763)
 		and timeline.normal_gate_count == 50
-		and timeline.normal_wave_count == 235
-		and timeline.expected_normal_customer_count() == 293,
-		"正式流程以独立总路程排布50门、235波和293只普通食客"
+		and timeline.normal_wave_count == 250
+		and timeline.expected_normal_customer_count() == 312,
+		"正式流程以独立总路程排布50门、250波和312只普通食客"
 	)
 	_check(timeline.event_ids.count("start_gate") == 1, "正式流程包含一道开局食材门")
+	var start_gate_index: int = timeline.event_ids.find("start_gate")
+	_check(
+		start_gate_index >= 0
+		and is_equal_approx(timeline.event_progresses[start_gate_index], 0.01),
+		"正式开局食材门位于总路程1%进度"
+	)
 	_check(timeline.event_ids.count("elite") == 6, "正式流程包含六次精英检查")
 	_check(timeline.event_ids.count("boss") == 2, "正式流程包含两场Boss")
 	var first_boss_index: int = timeline.event_ids.find("boss")
@@ -1173,14 +1248,37 @@ func _test_resources() -> void:
 	)
 	_check(is_equal_approx(mushroom.breathing_period, 1.2), "蘑菇呼吸扩圈固定为1.2秒周期")
 	_check(is_equal_approx(mushroom.breathing_outer_multiplier, 2.0), "蘑菇呼吸扩圈外沿为两倍基础半径")
-	_check(is_equal_approx(potato.projectile_speed * potato.base_lifetime / 1280.0, 0.8), "土豆基础持续约0.8屏")
-	_check(is_equal_approx(baguette.projectile_speed * baguette.base_lifetime / 1280.0, 0.6), "法棍基础持续约0.6屏")
+	_check(
+		is_equal_approx(potato.projectile_speed, 680.0)
+		and is_equal_approx(potato.base_lifetime, 1.3473684)
+		and is_equal_approx(
+			roundf(
+				potato.projectile_speed * potato.base_lifetime / 1280.0 * 100.0
+			) / 100.0,
+			0.72
+		),
+		"土豆回退参数保持当前约0.72屏基础射程"
+	)
+	_check(
+		is_equal_approx(baguette.base_satisfaction, 10.0)
+		and is_equal_approx(baguette.base_interval, 1.0)
+		and is_equal_approx(baguette.projectile_speed, 2000.0)
+		and is_equal_approx(baguette.base_lifetime, 0.5)
+		and is_equal_approx(
+			roundf(
+				baguette.projectile_speed * baguette.base_lifetime / 1280.0 * 100.0
+			) / 100.0,
+			0.78
+		),
+		"法棍回退参数保持当前约0.78屏基础射程与10点理论DPS"
+	)
 	_check(
 		basic.category == CustomerData.Category.NORMAL
 		and basic.behavior == CustomerData.Behavior.NONE
-		and basic.display_name == "小鼠食客"
+		and basic.id == &"basic_guest"
+		and not basic.display_name.is_empty()
 		and basic.customer_scene != null,
-		"基础食客回退资源使用可预览小鼠场景与无行为"
+		"基础食客回退资源保留ID、非空显示名、可预览场景与无行为"
 	)
 	_check(
 		fast.category == CustomerData.Category.NORMAL
@@ -1194,7 +1292,10 @@ func _test_resources() -> void:
 		and ranged.customer_scene != null,
 		"拍桌青蛙回退资源使用独立场景与远程行为"
 	)
-	_check(elite != null and elite.occupied_regions == 6, "精英横跨六区")
+	_check(
+		elite != null and elite.occupied_regions == 6 and is_zero_approx(elite.move_speed),
+		"精英横跨六区且不主动移动"
+	)
 	_check(elite != null and elite.category == CustomerData.Category.ELITE, "精英身份独立于行为类型")
 	_check(elite != null and is_equal_approx(elite.appetite_multiplier, 1.5), "精英默认使用1.5倍基准胃口")
 	_check(elite != null and elite.customer_scene != null, "精英回退资源使用独立可预览场景")
@@ -1231,7 +1332,31 @@ func _test_resources() -> void:
 		and boss_instance.get_node_or_null("AreaAttackAnchor/AreaAttackRig/AreaImpactMarker") is Marker3D,
 		"Boss攻击场景保留代码可读取的生成与落点Marker3D"
 	)
+	var line_telegraph: MeshInstance3D = boss_instance.get_node(
+		"LineAttackAnchor/LineAttackRig/LineTelegraph"
+	) as MeshInstance3D
+	var area_telegraph: MeshInstance3D = boss_instance.get_node(
+		"AreaAttackAnchor/AreaAttackRig/AreaTelegraph"
+	) as MeshInstance3D
+	var line_mesh: BoxMesh = line_telegraph.mesh as BoxMesh
+	var area_mesh: CylinderMesh = area_telegraph.mesh as CylinderMesh
+	_check(
+		is_equal_approx(line_mesh.size.x, PrototypeBoss3D.LINE_ATTACK_WIDTH)
+		and is_equal_approx(area_mesh.top_radius, PrototypeBoss3D.AREA_ATTACK_RADIUS)
+		and is_equal_approx(area_mesh.bottom_radius, PrototypeBoss3D.AREA_ATTACK_RADIUS),
+		"Boss攻击命中范围与可见预警几何使用同一尺寸"
+	)
 	var boss_material: StandardMaterial3D = boss_body.material_override as StandardMaterial3D
+	var boss_appetite_back: MeshInstance3D = boss_instance.get_node("AppetiteBack") as MeshInstance3D
+	var boss_appetite_fill: MeshInstance3D = boss_instance.get_node("AppetiteFill") as MeshInstance3D
+	var boss_appetite_label: Label3D = boss_instance.get_node("AppetiteLabel") as Label3D
+	var boss_fill_mesh: BoxMesh = boss_appetite_fill.mesh as BoxMesh
+	_check(
+		boss_appetite_back.visible
+		and boss_appetite_fill.visible
+		and is_equal_approx(boss_fill_mesh.size.x, PrototypeBoss3D.APPETITE_FILL_WIDTH),
+		"Boss独立显示可编辑纸条胃口条"
+	)
 	boss_material.albedo_color = Color.MAGENTA
 	var boss_run: RunController3D = RunController3D.new()
 	var boss_cart: Cart3D = Cart3D.new()
@@ -1245,6 +1370,12 @@ func _test_resources() -> void:
 			boss_cart.position.z - PrototypeBoss3D.COMBAT_DISTANCE_FROM_CART
 		),
 		"Boss战位随餐车纵坐标调整并保持基础食材可达"
+	)
+	boss_instance.receive_satisfaction(boss_instance.maximum_appetite * 0.5)
+	_check(
+		is_equal_approx(boss_appetite_fill.scale.x, 0.5)
+		and boss_appetite_label.text.to_int() == ceili(boss_instance.maximum_appetite * 0.5),
+		"Boss纸条填充与数字同步反映剩余胃口"
 	)
 	boss_instance.free()
 	boss_cart.free()

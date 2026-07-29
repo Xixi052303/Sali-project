@@ -152,6 +152,8 @@ var _current_speed_tier: int = -1
 var _crosswind_sign: float = 1.0
 var _post_boss_active: bool = false
 var _playtest_record_saved: bool = false
+# 最终Boss结算时记录持久化结果，供结算文案和试玩记录共同使用。
+var _final_boss_unlock_status: StringName = &"not_checked"
 var _post_boss_satisfaction_start: Dictionary[StringName, float] = {}
 var _post_boss_durability_lost_start: float = 0.0
 var _post_boss_gate_choices_start: int = 0
@@ -1598,9 +1600,6 @@ func _on_special_choice_selected(choice_id: StringName) -> void:
 		_boss_reward_pending = false
 		if boss != null and is_instance_valid(boss):
 			boss.queue_free()
-		if _bosses_completed >= 2:
-			_finish_run()
-			return
 	phase = Phase.FORWARD
 	_normal_waves_suspended = false
 	background.scrolling = true
@@ -1613,6 +1612,11 @@ func _on_boss_satisfied() -> void:
 	_bosses_completed += 1
 	state.customers_satisfied += 1
 	cart.end_boss_movement()
+	if _bosses_completed >= 2:
+		if boss != null and is_instance_valid(boss):
+			boss.queue_free()
+		_finish_run()
+		return
 	phase = Phase.CHOICE
 	_boss_reward_pending = true
 	hud.set_phase("Boss赏赐 · 特别三选一")
@@ -1662,9 +1666,13 @@ func _finish_run() -> void:
 	if phase == Phase.RESULTS:
 		return
 	phase = Phase.RESULTS
+	var unlock_message: String = _record_final_boss_unlock()
 	_save_playtest_record(&"completed")
 	hud.set_phase("构筑验证完成")
-	hud.show_results("最终Boss满意离场，八分钟服务完成！", _build_results_text())
+	hud.show_results(
+		"最终Boss满意离场，八分钟服务完成！",
+		"%s\n\n%s" % [unlock_message, _build_results_text()]
+	)
 	if _smoke_test:
 		if state.gate_choices != _expected_gate_count():
 			push_error(
@@ -1709,9 +1717,9 @@ func _finish_run() -> void:
 			Engine.time_scale = 1.0
 			get_tree().quit(1)
 			return
-		if state.special_choice_records.size() != 8:
+		if state.special_choice_records.size() != 7:
 			push_error(
-				"SMOKE_TEST_FAILED special_choices=%d expected=8"
+				"SMOKE_TEST_FAILED special_choices=%d expected=7"
 				% state.special_choice_records.size()
 			)
 			Engine.time_scale = 1.0
@@ -1735,6 +1743,21 @@ func _finish_run() -> void:
 		get_tree().quit(0)
 	else:
 		get_tree().paused = true
+
+
+# 首胜状态保存失败只影响持久化提示，不阻断本局完成与结算。
+func _record_final_boss_unlock() -> String:
+	var unlock_result: int = ProgressionStore.record_final_boss_first_clear()
+	match unlock_result:
+		ProgressionStore.UnlockResult.UNLOCKED_NOW:
+			_final_boss_unlock_status = &"unlocked_now"
+			return "首次通关：后续内容已标记为解锁（具体内容待后续接入）。"
+		ProgressionStore.UnlockResult.ALREADY_UNLOCKED:
+			_final_boss_unlock_status = &"already_unlocked"
+			return "后续内容：已解锁（具体内容待后续接入）。"
+		_:
+			_final_boss_unlock_status = &"save_failed"
+			return "首次通关完成；后续内容解锁状态保存失败，请保留本局记录。"
 
 
 func _expected_gate_count() -> int:
@@ -2282,6 +2305,7 @@ func _save_playtest_record(outcome: StringName) -> void:
 		"normal_defeats": state.normal_defeats,
 		"normal_customers_spawned": state.normal_customers_spawned,
 		"collided_defeats": state.collided_defeats,
+		"final_boss_unlock_status": String(_final_boss_unlock_status),
 		"post_boss_performance": _build_post_boss_performance_record(),
 	}
 	var file: FileAccess

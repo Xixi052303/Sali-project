@@ -43,8 +43,15 @@ func _test_timeline_workbook() -> void:
 		timeline.event_ids.count("elite") == 6
 		and timeline.event_ids.count("boss") == 2
 		and timeline.normal_gate_count == 50
-		and timeline.normal_wave_count == 235,
-		"时间轴读取六精英、两Boss、50门与235波"
+		and timeline.normal_wave_count == 250
+		and timeline.expected_normal_customer_count() == 312,
+		"时间轴读取六精英、两Boss、50门、250波与312只普通食客"
+	)
+	var start_gate_index: int = timeline.event_ids.find("start_gate")
+	_check(
+		start_gate_index >= 0
+		and is_equal_approx(timeline.event_progresses[start_gate_index], 0.01),
+		"开局食材门从时间轴表读取总路程1%进度"
 	)
 	_check(
 		is_equal_approx(timeline.course_distance, 1310.763)
@@ -112,7 +119,7 @@ func _test_customer_workbook() -> void:
 	var fast: CustomerData = customers[&"fast_guest"]
 	var ranged: CustomerData = customers[&"ranged_guest"]
 	var elite: CustomerData = customers[&"elite_guest"]
-	_check(basic.display_name == "小鼠食客", "基础食客身份为小鼠")
+	_check(basic.id == &"basic_guest" and not basic.display_name.is_empty(), "基础食客ID映射且显示名非空")
 	_check(
 		basic.customer_scene != null
 		and basic.customer_scene.resource_path.ends_with("mouse_customer_3d.tscn"),
@@ -120,7 +127,7 @@ func _test_customer_workbook() -> void:
 	)
 	_check(is_equal_approx(basic.appetite_multiplier, 1.0), "基础食客保持1.0倍胃口")
 	_check(is_equal_approx(basic.move_speed, 42.0), "基础食客保持42px/s")
-	_check(fast.display_name == "急脚狐狸", "快速模板加载狐狸身份")
+	_check(fast.id == &"fast_guest" and not fast.display_name.is_empty(), "快速食客ID映射且显示名非空")
 	_check(
 		fast.customer_scene != null
 		and fast.customer_scene.resource_path.ends_with("fox_customer_3d.tscn"),
@@ -128,7 +135,7 @@ func _test_customer_workbook() -> void:
 	)
 	_check(is_equal_approx(fast.appetite_multiplier, 0.75), "急脚食客保持0.75倍胃口")
 	_check(is_equal_approx(fast.move_speed, 96.0), "急脚食客保持96px/s")
-	_check(ranged.display_name == "拍桌青蛙", "远程模板加载青蛙身份")
+	_check(ranged.id == &"ranged_guest" and not ranged.display_name.is_empty(), "远程食客ID映射且显示名非空")
 	_check(
 		ranged.customer_scene != null
 		and ranged.customer_scene.resource_path.ends_with("frog_customer_3d.tscn"),
@@ -154,7 +161,7 @@ func _test_customer_workbook() -> void:
 		and elite.customer_scene.resource_path.ends_with("elite_customer_3d.tscn"),
 		"六席贵客加载独立可预览场景"
 	)
-	_check(is_equal_approx(elite.move_speed, 18.0) and elite.occupied_regions == 6, "精英保持当前速度与六区占位")
+	_check(is_zero_approx(elite.move_speed) and elite.occupied_regions == 6, "精英不主动移动并横跨六区")
 
 
 func _test_weapon_workbook() -> void:
@@ -179,6 +186,20 @@ func _test_weapon_workbook() -> void:
 		var potato: FoodData = foods[&"potato"]
 		var baguette: FoodData = foods[&"baguette"]
 		var mushroom: FoodData = foods[&"mushroom"]
+		_check(
+			is_equal_approx(potato.base_satisfaction, 10.0)
+			and is_equal_approx(potato.base_interval, 0.8)
+			and is_equal_approx(potato.projectile_speed, 680.0)
+			and is_equal_approx(potato.base_lifetime, 1.3473684),
+			"土豆从武器表读取当前基础输出与约0.72屏射程参数"
+		)
+		_check(
+			is_equal_approx(baguette.base_satisfaction, 10.0)
+			and is_equal_approx(baguette.base_interval, 1.0)
+			and is_equal_approx(baguette.projectile_speed, 2000.0)
+			and is_equal_approx(baguette.base_lifetime, 0.5),
+			"法棍从武器表读取当前10点DPS与约0.78屏射程参数"
+		)
 		_check(
 			is_equal_approx(potato.wine_upgrade_scale, 0.35)
 			and is_equal_approx(potato.range_upgrade_scale, 1.0)

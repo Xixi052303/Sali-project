@@ -4,6 +4,7 @@
 
 [resource]
 script = ExtResource("1_food")
+projectile_speed = 680.0
 projectile_radius = 17.0
 base_lifetime = 1.3473684
 visual_color = Color(0.89, 0.71, 0.29, 1)

@@ -27,9 +27,9 @@ enum AimMode {
 @export var homing_turn_speed: float = 4.5
 @export var base_satisfaction: float = 10.0
 @export var base_interval: float = 0.8
-@export var projectile_speed: float = 760.0
-@export var projectile_radius: float = 16.0
-@export var base_lifetime: float = 1.6
+@export var projectile_speed: float = 680.0
+@export var projectile_radius: float = 17.0
+@export var base_lifetime: float = 1.3473684
 @export var pierce_count: int = 1
 @export var visual_color: Color = Color("#e2b650")
 @export_group("Orbiting attack")
