@@ -166,8 +166,6 @@ func _refresh_labels() -> void:
 	_right_health_label.visible = not start_food_gate
 	_left_health_label.text = str(ceili(left_base_health))
 	_right_health_label.text = str(ceili(right_base_health))
-	_left_health_label.modulate = Color("#fff0c8")
-	_right_health_label.modulate = Color("#fff0c8")
 	_refresh_rarity_colors()
 
 
@@ -181,7 +179,7 @@ func _label_text(upgrade: UpgradeData, maximum_durability: float) -> String:
 	]
 
 
-# 门板颜色始终来自当前奖励稀有度，隐藏升值层跨档时立即刷新。
+# 门板与公开胃口数字共享当前奖励稀有度，隐藏升值层跨档时同步刷新。
 func _refresh_rarity_colors() -> void:
 	var left_material: StandardMaterial3D = _left_mesh.material_override as StandardMaterial3D
 	var right_material: StandardMaterial3D = _right_mesh.material_override as StandardMaterial3D
@@ -191,6 +189,8 @@ func _refresh_rarity_colors() -> void:
 		return
 	left_material.albedo_color = left_upgrade.rarity_color.darkened(0.22)
 	right_material.albedo_color = right_upgrade.rarity_color.darkened(0.22)
+	_left_health_label.modulate = left_upgrade.rarity_color
+	_right_health_label.modulate = right_upgrade.rarity_color
 
 
 func _refresh_feedback() -> void:

@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://04vx7d8dlmc4"
 path.s3tc="res://.godot/imported/河狸_tripo_image_6103d7e1-01b2-4064-8a34-61e58f057686_0_1.jpg-860b93baad0448eb973f5052a412f672.s3tc.ctex"
+path.etc2="res://.godot/imported/河狸_tripo_image_6103d7e1-01b2-4064-8a34-61e58f057686_0_1.jpg-860b93baad0448eb973f5052a412f672.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/角色/敌人/普通食客/河狸_tripo_image_6103d7e1-01b2-4064-8a34-61e58f057686_0_1.jpg"
-dest_files=["res://.godot/imported/河狸_tripo_image_6103d7e1-01b2-4064-8a34-61e58f057686_0_1.jpg-860b93baad0448eb973f5052a412f672.s3tc.ctex"]
+dest_files=["res://.godot/imported/河狸_tripo_image_6103d7e1-01b2-4064-8a34-61e58f057686_0_1.jpg-860b93baad0448eb973f5052a412f672.s3tc.ctex", "res://.godot/imported/河狸_tripo_image_6103d7e1-01b2-4064-8a34-61e58f057686_0_1.jpg-860b93baad0448eb973f5052a412f672.etc2.ctex"]
 
 [params]
 

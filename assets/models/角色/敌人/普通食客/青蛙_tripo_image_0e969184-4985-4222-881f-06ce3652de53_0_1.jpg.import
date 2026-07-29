@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://dgvbukumfjlcr"
 path.s3tc="res://.godot/imported/青蛙_tripo_image_0e969184-4985-4222-881f-06ce3652de53_0_1.jpg-63cbbb8c084427eb84f19fe0a182cbff.s3tc.ctex"
+path.etc2="res://.godot/imported/青蛙_tripo_image_0e969184-4985-4222-881f-06ce3652de53_0_1.jpg-63cbbb8c084427eb84f19fe0a182cbff.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/角色/敌人/普通食客/青蛙_tripo_image_0e969184-4985-4222-881f-06ce3652de53_0_1.jpg"
-dest_files=["res://.godot/imported/青蛙_tripo_image_0e969184-4985-4222-881f-06ce3652de53_0_1.jpg-63cbbb8c084427eb84f19fe0a182cbff.s3tc.ctex"]
+dest_files=["res://.godot/imported/青蛙_tripo_image_0e969184-4985-4222-881f-06ce3652de53_0_1.jpg-63cbbb8c084427eb84f19fe0a182cbff.s3tc.ctex", "res://.godot/imported/青蛙_tripo_image_0e969184-4985-4222-881f-06ce3652de53_0_1.jpg-63cbbb8c084427eb84f19fe0a182cbff.etc2.ctex"]
 
 [params]
 

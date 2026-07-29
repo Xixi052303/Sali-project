@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bkwyf8it48qs1"
 path.s3tc="res://.godot/imported/野猪_tripo_image_7418c4ae-907c-4fbe-9794-384a5ded68bc_0_1.jpg-a744d87a5bf2fbebac354839c62a6d01.s3tc.ctex"
+path.etc2="res://.godot/imported/野猪_tripo_image_7418c4ae-907c-4fbe-9794-384a5ded68bc_0_1.jpg-a744d87a5bf2fbebac354839c62a6d01.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/角色/敌人/普通食客/野猪_tripo_image_7418c4ae-907c-4fbe-9794-384a5ded68bc_0_1.jpg"
-dest_files=["res://.godot/imported/野猪_tripo_image_7418c4ae-907c-4fbe-9794-384a5ded68bc_0_1.jpg-a744d87a5bf2fbebac354839c62a6d01.s3tc.ctex"]
+dest_files=["res://.godot/imported/野猪_tripo_image_7418c4ae-907c-4fbe-9794-384a5ded68bc_0_1.jpg-a744d87a5bf2fbebac354839c62a6d01.s3tc.ctex", "res://.godot/imported/野猪_tripo_image_7418c4ae-907c-4fbe-9794-384a5ded68bc_0_1.jpg-a744d87a5bf2fbebac354839c62a6d01.etc2.ctex"]
 
 [params]
 

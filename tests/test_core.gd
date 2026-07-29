@@ -277,18 +277,30 @@ func _test_3d_plane_rules() -> void:
 	var gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
 	gate.configure(null, left_upgrade, right_upgrade, false, 100.0, 1)
 	var left_health_label: Label3D = gate.get_node("LeftHealthLabel") as Label3D
+	var right_health_label: Label3D = gate.get_node("RightHealthLabel") as Label3D
 	var left_health_back: MeshInstance3D = gate.get_node("LeftHealthBack") as MeshInstance3D
 	var left_health_fill: MeshInstance3D = gate.get_node("LeftHealthFill") as MeshInstance3D
 	var left_panel: MeshInstance3D = gate.get_node("LeftPanel") as MeshInstance3D
 	var left_material: StandardMaterial3D = left_panel.material_override as StandardMaterial3D
 	var gate_color_before: Color = left_material.albedo_color
+	var number_color_before: Color = left_health_label.modulate
 	_check(left_health_label.text.to_int() == ceili(gate.left_base_health), "3D普通门在门板上方独立显示公开基础胃口")
 	_check(not left_health_back.visible and not left_health_fill.visible, "3D普通门不显示胃口进度条")
 	_check(left_health_label.font_size >= 64, "3D普通门使用显眼数字显示公开胃口")
+	_check(
+		left_health_label.modulate.is_equal_approx(left_upgrade.rarity_color)
+		and right_health_label.modulate.is_equal_approx(right_upgrade.rarity_color),
+		"3D普通门左右公开胃口数字分别使用当前奖励稀有度色"
+	)
 	gate.receive_damage(true, gate.left_base_health)
 	gate.receive_damage(true, 50.0)
 	_check(left_health_label.text == "0", "3D门额外升值血量保持隐藏，公开数字归零后不再显示")
 	_check(not left_material.albedo_color.is_equal_approx(gate_color_before), "3D普通门升值跨稀有度后实时换色")
+	_check(
+		left_health_label.modulate.is_equal_approx(left_upgrade.rarity_color)
+		and not left_health_label.modulate.is_equal_approx(number_color_before),
+		"3D普通门升值跨稀有度后公开胃口数字同步换色"
+	)
 	gate.free()
 
 	var reward_upgrade: UpgradeData = UpgradeData.new()
