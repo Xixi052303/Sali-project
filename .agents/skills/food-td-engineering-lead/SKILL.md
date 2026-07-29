@@ -90,7 +90,7 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 - `RunController3D`（`scripts/run_3d.gd`）：拥有单局阶段、3D运行对象集合、生成、选择、Boss 和结算的跨系统编排。
 - `RunState`（`scripts/data/run_state.gd`）：拥有局内耐久、强化、食材、特殊能力和统计状态。
 - `Playfield`（`scripts/playfield.gd`）：定义道路边界、六个逻辑区域和餐车活动范围。
-- `EncounterDirector`与`EncounterTimeline`：按时间触发竖切片事件，并允许表现层按事件类型提前预生成；`balance_tables/时间轴.xlsx`保存当前固定排程、两段胃口曲线与普通波次阶段节奏，`TimelineExcelLoader`生成运行时Resource，`data/timelines/vertical_slice.tres`负责失败回退，`RunController3D._advance_normal_waves()`只按该资源生成普通食客组合。
+- `EncounterDirector`与`EncounterTimeline`：按路程进度触发显式事件；`balance_tables/时间轴.xlsx`保存三段有效时间胃口曲线、独立总路程、路程事件与普通门/波次数量，`TimelineExcelLoader`生成运行时Resource，`data/timelines/vertical_slice.tres`负责失败回退，`RunController3D._advance_distance_spawns()`按路程生成普通门与普通食客组合。
 - `GameplayExcelLoader`：读取`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`和`特殊强化.xlsx`，生成本局独立的`CustomerData`、`FoodData`、`UpgradeData`与`SpecialUpgradeData`；读取失败时由场景资源或`RunController3D`默认池回退，食客表按当前四个必需ID整体回退。
 - `WeaponController3D`、`FoodRuntime` 与 `FoodProjectile3D`：负责武器冷却、目标获取后的发射、`X/Z`弹道和命中。
 - `Customer3D`、`PrototypeBoss3D` 与 `Cart3D`：分别负责食客、Boss 和餐车局部行为，并通过 `RunController3D` 协调伤害与流程。

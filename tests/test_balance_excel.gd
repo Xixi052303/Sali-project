@@ -27,15 +27,16 @@ func _test_timeline_workbook() -> void:
 		"res://balance_tables/时间轴.xlsx",
 		fallback
 	)
-	_check(result.loaded_from_excel, "正式距离时间轴 Schema 3 可读取")
+	_check(result.loaded_from_excel, "三段胃口时间轴 Schema 4 可读取")
 	if result.timeline == null:
 		return
 	var timeline: EncounterTimeline = result.timeline
 	_check(
-		is_equal_approx(timeline.baseline_appetite_at_progress(0.0), 15.0)
-		and is_equal_approx(timeline.baseline_appetite_at_progress(0.5), 350.0)
-		and is_equal_approx(timeline.baseline_appetite_at_progress(1.0), 12000.0),
-		"胃口按正式路程读取15、350、12000三段锚点"
+		is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(0.0), 15.0)
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(135.0), 350.0)
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(300.0), 2825.0)
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(480.0), 12000.0),
+		"胃口按有效时间读取三段终点15、350、2825、12000"
 	)
 	_check(
 		timeline.event_ids.count("elite") == 6
@@ -45,11 +46,11 @@ func _test_timeline_workbook() -> void:
 		"时间轴读取六精英、两Boss、50门与235波"
 	)
 	_check(
-		is_equal_approx(timeline.forward_duration(), 430.0)
+		is_equal_approx(timeline.course_distance, 1310.763)
 		and timeline.forward_speed_multipliers == PackedFloat32Array([1.0, 1.1, 1.3, 1.7, 2.3, 3.0])
 		and is_equal_approx(timeline.max_crosswind_speed, 60.0)
 		and is_equal_approx(timeline.minimum_cart_base_speed_factor, 0.8),
-		"正式前进时长、六档压力、侧漂和疲劳参数由表读取"
+		"独立总路程、六档压力、侧漂和疲劳参数由表读取"
 	)
 	var old_schema: TimelineExcelLoader.LoadResult = TimelineExcelLoader.load_from_excel(
 		"res://tests/fixtures/timeline_schema_v1.xlsx",

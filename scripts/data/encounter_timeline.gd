@@ -9,13 +9,18 @@ extends Resource
 	"elite", "elite", "elite", "boss",
 ])
 @export var baseline_appetite_start: float = 15.0
-@export var baseline_appetite_mid: float = 350.0
-@export var baseline_appetite_end: float = 12000.0
-@export_range(0.0, 1.0, 0.001) var appetite_mid_progress: float = 0.5
-@export var baseline_appetite_exponent: float = 2.1
-@export var baseline_appetite_late_exponent: float = 2.1
-@export var target_active_duration: float = 480.0
-@export var target_boss_duration: float = 25.0
+# 三段时间、终点胃口和指数一一对应；选择暂停不计入有效游戏时间。
+@export var appetite_segment_end_times: PackedFloat32Array = PackedFloat32Array([
+	135.0, 300.0, 480.0,
+])
+@export var appetite_segment_maximums: PackedFloat32Array = PackedFloat32Array([
+	350.0, 2825.0, 12000.0,
+])
+@export var appetite_segment_exponents: PackedFloat32Array = PackedFloat32Array([
+	2.1, 2.1, 2.1,
+])
+# 总路程独立于策划目标时长，避免调整Boss参考耗时改变事件触发位置。
+@export var course_distance: float = 1310.763
 @export var normal_gate_count: int = 50
 @export var normal_wave_count: int = 235
 @export var pressure_progresses: PackedFloat32Array = PackedFloat32Array([
@@ -40,13 +45,10 @@ func is_valid() -> bool:
 		or pressure_progresses.size() != forward_speed_multipliers.size()
 		or pressure_progresses.is_empty()
 		or baseline_appetite_start <= 0.0
-		or baseline_appetite_mid < baseline_appetite_start
-		or baseline_appetite_end < baseline_appetite_mid
-		or appetite_mid_progress <= 0.0
-		or appetite_mid_progress >= 1.0
-		or baseline_appetite_exponent <= 0.0
-		or baseline_appetite_late_exponent <= 0.0
-		or target_active_duration <= target_boss_duration * 2.0
+		or appetite_segment_end_times.size() != 3
+		or appetite_segment_maximums.size() != 3
+		or appetite_segment_exponents.size() != 3
+		or course_distance <= 0.0
 		or normal_gate_count < 1
 		or normal_wave_count < 1
 		or headwind_factor < 0.0
@@ -55,6 +57,16 @@ func is_valid() -> bool:
 		or minimum_cart_base_speed_factor > 1.0
 	):
 		return false
+	var previous_time: float = 0.0
+	var previous_appetite: float = baseline_appetite_start
+	for index: int in range(appetite_segment_end_times.size()):
+		var end_time: float = appetite_segment_end_times[index]
+		var maximum: float = appetite_segment_maximums[index]
+		var exponent: float = appetite_segment_exponents[index]
+		if end_time <= previous_time or maximum < previous_appetite or exponent <= 0.0:
+			return false
+		previous_time = end_time
+		previous_appetite = maximum
 	var previous_progress: float = -INF
 	for progress: float in event_progresses:
 		if progress < previous_progress or progress < 0.0 or progress > 1.0:
@@ -72,25 +84,29 @@ func is_valid() -> bool:
 	return is_zero_approx(pressure_progresses[0])
 
 
-# 胃口随已完成路程推进，Boss和暂停选择不会偷偷提高尚未生成对象的压力。
-func baseline_appetite_at_progress(progress: float) -> float:
-	var clamped_progress: float = clampf(progress, 0.0, 1.0)
-	if clamped_progress <= appetite_mid_progress:
-		var early_progress: float = clamped_progress / maxf(0.001, appetite_mid_progress)
-		return roundf(lerpf(
-			baseline_appetite_start,
-			baseline_appetite_mid,
-			pow(early_progress, maxf(0.001, baseline_appetite_exponent))
-		))
-	var late_progress: float = (
-		(clamped_progress - appetite_mid_progress)
-		/ maxf(0.001, 1.0 - appetite_mid_progress)
-	)
-	return roundf(lerpf(
-		baseline_appetite_mid,
-		baseline_appetite_end,
-		pow(late_progress, maxf(0.001, baseline_appetite_late_exponent))
-	))
+# 三段曲线按有效游戏时间独立归一化，超过末段后固定在最终最大胃口。
+func baseline_appetite_at_elapsed_seconds(elapsed_seconds: float) -> float:
+	var clamped_time: float = maxf(0.0, elapsed_seconds)
+	var segment_start_time: float = 0.0
+	var segment_start_appetite: float = baseline_appetite_start
+	for index: int in range(appetite_segment_end_times.size()):
+		var segment_end_time: float = appetite_segment_end_times[index]
+		var segment_maximum: float = appetite_segment_maximums[index]
+		if clamped_time <= segment_end_time:
+			var segment_ratio: float = clampf(
+				(clamped_time - segment_start_time)
+				/ maxf(0.001, segment_end_time - segment_start_time),
+				0.0,
+				1.0
+			)
+			return roundf(lerpf(
+				segment_start_appetite,
+				segment_maximum,
+				pow(segment_ratio, appetite_segment_exponents[index])
+			))
+		segment_start_time = segment_end_time
+		segment_start_appetite = segment_maximum
+	return roundf(appetite_segment_maximums[-1])
 
 
 func speed_tier_at_progress(progress: float) -> int:
@@ -111,31 +127,6 @@ func pressure_ratio_at_progress(progress: float) -> float:
 	var multiplier: float = speed_multiplier_at_progress(progress)
 	var maximum_multiplier: float = maxf(1.0, forward_speed_multipliers[-1])
 	return clampf((multiplier - 1.0) / maxf(0.001, maximum_multiplier - 1.0), 0.0, 1.0)
-
-
-func forward_duration() -> float:
-	return maxf(0.0, target_active_duration - target_boss_duration * 2.0)
-
-
-# 路程由目标前进时长与分段速度反推，避免在表内维护无法审计的魔法距离。
-func course_distance(base_scroll_speed: float) -> float:
-	var weighted_inverse_speed: float = 0.0
-	for index: int in range(pressure_progresses.size()):
-		var start: float = pressure_progresses[index]
-		var finish: float = (
-			pressure_progresses[index + 1]
-			if index + 1 < pressure_progresses.size()
-			else 1.0
-		)
-		weighted_inverse_speed += (
-			maxf(0.0, finish - start)
-			/ maxf(0.001, forward_speed_multipliers[index])
-		)
-	return (
-		forward_duration()
-		* maxf(0.001, base_scroll_speed)
-		/ maxf(0.001, weighted_inverse_speed)
-	)
 
 
 func expected_normal_customer_count() -> int:

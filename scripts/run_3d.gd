@@ -489,7 +489,7 @@ func forward_progress() -> float:
 	if director == null or director.timeline == null or state == null:
 		return 0.0
 	return clampf(
-		state.forward_distance / maxf(0.001, director.timeline.course_distance(BASE_WORLD_SCROLL_SPEED)),
+		state.forward_distance / maxf(0.001, director.timeline.course_distance),
 		0.0,
 		1.0
 	)
@@ -542,7 +542,7 @@ func _advance_distance_spawns() -> void:
 		)
 		if progress + 0.000001 < gate_progress:
 			break
-		_queue_gate(_next_gate_index, false, _baseline_appetite_at(gate_progress))
+		_queue_gate(_next_gate_index, false, _current_baseline_appetite())
 		_next_gate_index += 1
 	while _normal_wave_index < director.timeline.normal_wave_count:
 		var wave_progress: float = float(_normal_wave_index + 1) / float(
@@ -550,19 +550,19 @@ func _advance_distance_spawns() -> void:
 		)
 		if progress + 0.000001 < wave_progress:
 			break
-		_queue_normal_wave(_normal_wave_index, wave_progress)
+		_queue_normal_wave(_normal_wave_index)
 		_normal_wave_index += 1
 
 
-# 保留当前五波类型轮换和每四波一次双客，只把生成轴从秒数改为路程。
-func _queue_normal_wave(wave_index: int, progress: float) -> void:
+# 保留当前五波类型轮换和每四波一次双客，生成位置按路程、胃口按请求时刻锁定。
+func _queue_normal_wave(wave_index: int) -> void:
 	var pattern: int = wave_index % 5
 	var primary: CustomerData = basic_guest_data
 	if pattern == 2:
 		primary = fast_guest_data
 	elif pattern == 4:
 		primary = ranged_guest_data
-	var baseline: float = _baseline_appetite_at(progress)
+	var baseline: float = _current_baseline_appetite()
 	_queue_customer(primary, baseline)
 	if wave_index % 4 == 3:
 		_queue_customer(basic_guest_data if pattern == 4 else fast_guest_data, baseline)
@@ -2490,13 +2490,13 @@ func _special_choice_texts(choice_ids: Array[StringName]) -> Dictionary[StringNa
 
 
 func _current_baseline_appetite() -> float:
-	return _baseline_appetite_at(forward_progress())
+	return _baseline_appetite_at(state.elapsed_seconds if state != null else 0.0)
 
 
-func _baseline_appetite_at(progress: float) -> float:
+func _baseline_appetite_at(elapsed_seconds: float) -> float:
 	if director.timeline == null:
 		return 20.0
-	return director.timeline.baseline_appetite_at_progress(progress)
+	return director.timeline.baseline_appetite_at_elapsed_seconds(elapsed_seconds)
 
 
 func _scheduled_baseline_appetite(event_id: StringName) -> float:

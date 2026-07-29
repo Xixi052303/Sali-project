@@ -957,15 +957,20 @@ func _test_timeline() -> void:
 	if timeline == null:
 		return
 	_check(
-		is_equal_approx(timeline.baseline_appetite_at_progress(0.0), 15.0)
-		and is_equal_approx(timeline.baseline_appetite_at_progress(0.5), 350.0)
-		and is_equal_approx(timeline.baseline_appetite_at_progress(1.0), 12000.0),
-		"胃口曲线按路程经过15、350和12000三个锚点"
+		is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(0.0), 15.0)
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(135.0), 350.0)
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(300.0), 2825.0)
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(480.0), 12000.0)
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(600.0), 12000.0),
+		"胃口曲线按有效时间经过三段锚点并在480秒后封顶"
 	)
-	var expected_quarter_appetite: float = roundf(lerpf(15.0, 350.0, pow(0.5, 2.1)))
+	var expected_first_midpoint: float = roundf(lerpf(15.0, 350.0, pow(0.5, 2.1)))
 	_check(
-		is_equal_approx(timeline.baseline_appetite_at_progress(0.25), expected_quarter_appetite),
-		"两段胃口曲线首轮指数均为2.1"
+		is_equal_approx(
+			timeline.baseline_appetite_at_elapsed_seconds(67.5),
+			expected_first_midpoint
+		),
+		"第一段胃口指数2.1只控制段内增长形状"
 	)
 	_check(
 		is_equal_approx(timeline.speed_multiplier_at_progress(0.1874), 1.0)
@@ -974,11 +979,11 @@ func _test_timeline() -> void:
 		"六档前进倍率在指定路程边界切换"
 	)
 	_check(
-		is_equal_approx(timeline.forward_duration(), 430.0)
+		is_equal_approx(timeline.course_distance, 1310.763)
 		and timeline.normal_gate_count == 50
 		and timeline.normal_wave_count == 235
 		and timeline.expected_normal_customer_count() == 293,
-		"正式流程以430秒前进目标排布50门、235波和约294只普通食客"
+		"正式流程以独立总路程排布50门、235波和293只普通食客"
 	)
 	_check(timeline.event_ids.count("start_gate") == 1, "正式流程包含一道开局食材门")
 	_check(timeline.event_ids.count("elite") == 6, "正式流程包含六次精英检查")
@@ -992,8 +997,8 @@ func _test_timeline() -> void:
 		"两场Boss分别位于50%与100%路程点"
 	)
 	_check(
-		timeline.course_distance(RunController3D.BASE_WORLD_SCROLL_SPEED) > 0.0,
-		"正式路程可由430秒目标与六档速度反推"
+		timeline.course_distance > 0.0,
+		"正式总路程是独立运行参数"
 	)
 	var missing_result: TimelineExcelLoader.LoadResult = TimelineExcelLoader.load_from_excel(
 		"res://balance_tables/__missing__.xlsx",
@@ -1012,7 +1017,7 @@ func _test_pressure_rules() -> void:
 	run.add_child(director)
 	run.director = director
 	run.state = state
-	state.forward_distance = timeline.course_distance(RunController3D.BASE_WORLD_SCROLL_SPEED) * 0.9
+	state.forward_distance = timeline.course_distance * 0.9
 	var expected_headwind: float = (
 		1.25 * RunController3D.BASE_WORLD_SCROLL_SPEED * (3.0 - 1.0)
 	)

@@ -4,7 +4,7 @@ extends RefCounted
 const CONFIG_SHEET: String = "配置"
 const EVENTS_SHEET: String = "事件"
 const EXPECTED_SCHEMA_ID: String = "xiaochuxi.encounter_timeline"
-const EXPECTED_SCHEMA_VERSION: int = 3
+const EXPECTED_SCHEMA_VERSION: int = 4
 
 
 class LoadResult:
@@ -17,7 +17,7 @@ class LoadResult:
 	var source_path: String = ""
 
 
-# 版本3把普通流程改为路程驱动；事件页只维护精英、Boss和压力切换节点。
+# 版本4把胃口拆成三段有效时间曲线，并让总路程脱离策划目标时长。
 static func load_from_excel(path: String, fallback: EncounterTimeline = null) -> LoadResult:
 	var result: LoadResult = LoadResult.new()
 	result.source_path = path
@@ -43,17 +43,22 @@ static func load_from_excel(path: String, fallback: EncounterTimeline = null) ->
 	var errors: PackedStringArray = []
 	var timeline: EncounterTimeline = EncounterTimeline.new()
 	timeline.baseline_appetite_start = _required_number(config, "baseline_appetite_start", errors)
-	timeline.baseline_appetite_mid = _required_number(config, "baseline_appetite_mid", errors)
-	timeline.baseline_appetite_end = _required_number(config, "baseline_appetite_end", errors)
-	timeline.appetite_mid_progress = _required_number(config, "appetite_mid_progress", errors)
-	timeline.baseline_appetite_exponent = _required_number(
-		config, "baseline_appetite_exponent", errors
-	)
-	timeline.baseline_appetite_late_exponent = _required_number(
-		config, "baseline_appetite_late_exponent", errors
-	)
-	timeline.target_active_duration = _required_number(config, "target_active_duration", errors)
-	timeline.target_boss_duration = _required_number(config, "target_boss_duration", errors)
+	timeline.appetite_segment_end_times = PackedFloat32Array([
+		_required_number(config, "appetite_segment_1_end_time", errors),
+		_required_number(config, "appetite_segment_2_end_time", errors),
+		_required_number(config, "appetite_segment_3_end_time", errors),
+	])
+	timeline.appetite_segment_maximums = PackedFloat32Array([
+		_required_number(config, "appetite_segment_1_maximum", errors),
+		_required_number(config, "appetite_segment_2_maximum", errors),
+		_required_number(config, "appetite_segment_3_maximum", errors),
+	])
+	timeline.appetite_segment_exponents = PackedFloat32Array([
+		_required_number(config, "appetite_segment_1_exponent", errors),
+		_required_number(config, "appetite_segment_2_exponent", errors),
+		_required_number(config, "appetite_segment_3_exponent", errors),
+	])
+	timeline.course_distance = _required_number(config, "course_distance", errors)
 	timeline.normal_gate_count = int(_required_number(config, "normal_gate_count", errors))
 	timeline.normal_wave_count = int(_required_number(config, "normal_wave_count", errors))
 	timeline.headwind_factor = _required_number(config, "headwind_factor", errors)
