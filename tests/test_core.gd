@@ -12,6 +12,7 @@ func _init() -> void:
 	_test_projectile_miss_disappear()
 	_test_projectile_evolutions()
 	_test_run_state()
+	_test_damage_camera_shake_rules()
 	_test_weapon_fires_without_target()
 	_test_upgrade_gate()
 	_test_start_food_selection()
@@ -735,6 +736,55 @@ func _test_run_state() -> void:
 		),
 		"蘑菇以0.15倍率转译持续强化后进入C=1对数曲线"
 	)
+
+
+# 受伤震屏覆盖两类判据及严格百分比边界，避免临界值落入错误档位。
+func _test_damage_camera_shake_rules() -> void:
+	_check(
+		RunController3D.damage_shake_level(50.0, 100.0, 50.0)
+		== RunController3D.DamageShakeLevel.MEDIUM,
+		"单次伤害正好50%时使用中等震屏"
+	)
+	_check(
+		RunController3D.damage_shake_level(50.01, 100.0, 50.0)
+		== RunController3D.DamageShakeLevel.STRONG,
+		"单次伤害高于50%时使用强力震屏"
+	)
+	_check(
+		RunController3D.damage_shake_level(10.0, 100.0, 19.99)
+		== RunController3D.DamageShakeLevel.STRONG,
+		"受伤后耐久低于20%时使用强力震屏"
+	)
+	_check(
+		RunController3D.damage_shake_level(30.0, 100.0, 70.0)
+		== RunController3D.DamageShakeLevel.MEDIUM,
+		"单次伤害正好30%时使用中等震屏"
+	)
+	_check(
+		RunController3D.damage_shake_level(10.0, 100.0, 49.99)
+		== RunController3D.DamageShakeLevel.MEDIUM,
+		"受伤后耐久低于50%时使用中等震屏"
+	)
+	_check(
+		RunController3D.damage_shake_level(10.0, 100.0, 50.0)
+		== RunController3D.DamageShakeLevel.SMALL,
+		"其他有效伤害使用小幅震屏"
+	)
+	var run: RunController3D = RunController3D.new()
+	var background: WorldBackground3D = WorldBackground3D.new()
+	run.state = RunState.new()
+	run.background = background
+	run.state.current_durability = 49.0
+	run._on_cart_damaged(30.0)
+	_check(
+		is_equal_approx(
+			background._camera_shake_strength,
+			RunController3D.DAMAGE_SHAKE_MEDIUM_STRENGTH
+		),
+		"餐车受伤信号实际调用中等震屏参数"
+	)
+	run.free()
+	background.free()
 
 
 func _test_weapon_fires_without_target() -> void:

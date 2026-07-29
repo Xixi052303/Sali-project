@@ -10,6 +10,12 @@ enum Phase {
 	FAILED,
 }
 
+enum DamageShakeLevel {
+	SMALL,
+	MEDIUM,
+	STRONG,
+}
+
 
 class ForwardSpawnRequest:
 	enum Kind {
@@ -73,6 +79,12 @@ const LEGACY_GATE_SPAWN_Z: float = 0.0
 const FORWARD_GATE_SPEED: float = 2.5
 const BASE_WORLD_SCROLL_SPEED: float = 2.05
 const TARGET_CONE_EPSILON: float = 0.0001
+const DAMAGE_SHAKE_SMALL_STRENGTH: float = 0.055
+const DAMAGE_SHAKE_SMALL_DURATION: float = 0.14
+const DAMAGE_SHAKE_MEDIUM_STRENGTH: float = 0.09
+const DAMAGE_SHAKE_MEDIUM_DURATION: float = 0.18
+const DAMAGE_SHAKE_STRONG_STRENGTH: float = 0.14
+const DAMAGE_SHAKE_STRONG_DURATION: float = 0.26
 # 远端生成队列还需吸收与食客/掉落门错峰产生的短暂等待。
 const FORWARD_GATE_QUEUE_LEAD_SECONDS: float = 2.0
 const REWARD_GATE_SEARCH_STEP: float = 0.1
@@ -1669,8 +1681,50 @@ func _expected_gate_count() -> int:
 	return director.timeline.normal_gate_count if director.timeline != null else 0
 
 
-func _on_cart_damaged(_amount: float) -> void:
-	pass
+# 按实际承伤与受击后耐久的较高等级触发反馈，护盾吸收量也属于本次受击强度。
+static func damage_shake_level(
+	applied_damage: float,
+	maximum_durability: float,
+	current_durability_after_hit: float
+) -> DamageShakeLevel:
+	if maximum_durability <= 0.0:
+		return DamageShakeLevel.SMALL
+	var damage_ratio: float = maxf(0.0, applied_damage) / maximum_durability
+	var remaining_ratio: float = clampf(
+		current_durability_after_hit / maximum_durability,
+		0.0,
+		1.0
+	)
+	if damage_ratio > 0.5 or remaining_ratio < 0.2:
+		return DamageShakeLevel.STRONG
+	if damage_ratio >= 0.3 or remaining_ratio < 0.5:
+		return DamageShakeLevel.MEDIUM
+	return DamageShakeLevel.SMALL
+
+
+func _on_cart_damaged(applied_damage: float) -> void:
+	if state == null or background == null:
+		return
+	match damage_shake_level(
+		applied_damage,
+		state.maximum_durability,
+		state.current_durability
+	):
+		DamageShakeLevel.STRONG:
+			background.shake_camera(
+				DAMAGE_SHAKE_STRONG_STRENGTH,
+				DAMAGE_SHAKE_STRONG_DURATION
+			)
+		DamageShakeLevel.MEDIUM:
+			background.shake_camera(
+				DAMAGE_SHAKE_MEDIUM_STRENGTH,
+				DAMAGE_SHAKE_MEDIUM_DURATION
+			)
+		_:
+			background.shake_camera(
+				DAMAGE_SHAKE_SMALL_STRENGTH,
+				DAMAGE_SHAKE_SMALL_DURATION
+			)
 
 
 func _on_cart_destroyed() -> void:
