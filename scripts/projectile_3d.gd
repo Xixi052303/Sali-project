@@ -271,10 +271,13 @@ func _configure_visual() -> void:
 		var baguette_width: float = 0.2 * _range_scale
 		var baguette_height: float = 0.18 * _range_scale
 		if _giant_baguette:
+			var giant_length: float = _giant_half_width * 2.0
+			# 巨型法棍按普通法棍的显示比例整体放大，避免只拉长横轴后变成扁片。
+			var giant_visual_scale: float = giant_length / maxf(0.001, baguette_length)
 			_giant_baguette_visual.configure_dimensions(
-				_giant_half_width * 2.0,
-				baguette_width,
-				baguette_height
+				giant_length,
+				baguette_width * giant_visual_scale,
+				baguette_height * giant_visual_scale
 			)
 			_giant_baguette_visual.position.y = VISUAL_CENTER_Y
 			return

@@ -61,6 +61,9 @@ static func load_from_excel(path: String, fallback: EncounterTimeline = null) ->
 	timeline.course_distance = _required_number(config, "course_distance", errors)
 	timeline.normal_gate_count = int(_required_number(config, "normal_gate_count", errors))
 	timeline.normal_wave_count = int(_required_number(config, "normal_wave_count", errors))
+	timeline.normal_wave_interval_jitter_ratio = _required_number(
+		config, "normal_wave_interval_jitter_ratio", errors
+	)
 	timeline.headwind_factor = _required_number(config, "headwind_factor", errors)
 	timeline.max_crosswind_speed = _required_number(config, "max_crosswind_speed", errors)
 	timeline.minimum_cart_base_speed_factor = _required_number(

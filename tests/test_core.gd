@@ -6,6 +6,7 @@ var _failures: int = 0
 func _init() -> void:
 	_test_playfield()
 	_test_customer_cart_collision()
+	_test_cart_invincibility_duration()
 	_test_3d_plane_rules()
 	_test_baguette_targeting()
 	_test_3d_background_and_hud()
@@ -20,6 +21,7 @@ func _init() -> void:
 	_test_reward_gate_spacing()
 	_test_customer_reward_randomness()
 	_test_timeline()
+	_test_seeded_spawn_randomness()
 	_test_pressure_rules()
 	_test_resources()
 	if _failures == 0:
@@ -89,6 +91,23 @@ func _test_customer_cart_collision() -> void:
 	cart.free()
 	field.free()
 	run.free()
+
+
+func _test_cart_invincibility_duration() -> void:
+	var field: Playfield = Playfield.new()
+	var state: RunState = RunState.new()
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var cart: Cart3D = cart_scene.instantiate() as Cart3D
+	get_root().add_child(cart)
+	cart.configure(state, field, 0.5)
+	_check(cart.take_damage(10.0), "餐车首次受击正常结算")
+	_check(not cart.take_damage(10.0), "餐车在无敌时间内忽略重复伤害")
+	cart._physics_process(0.49)
+	_check(not cart.take_damage(10.0), "0.49秒时餐车仍处于无敌状态")
+	cart._physics_process(0.02)
+	_check(cart.take_damage(10.0), "0.5秒后餐车可以再次受击")
+	cart.queue_free()
+	field.free()
 
 
 # 3D版本直接在米制X/Z道路平面运行，六区边界不依赖场景根缩放。
@@ -224,7 +243,7 @@ func _test_3d_plane_rules() -> void:
 	field.free()
 
 
-# 法棍先限制正前方90°扇区，再按餐车到目标的X/Z平面真实距离瞄准。
+# 法棍先按表中30度半角限制正前方60度扇区，再按X/Z平面真实距离瞄准。
 func _test_baguette_targeting() -> void:
 	var run: RunController3D = RunController3D.new()
 	var state: RunState = RunState.new()
@@ -267,7 +286,7 @@ func _test_baguette_targeting() -> void:
 	_check(run.get_priority_target() == outside_but_closer, "通用自动瞄准仍选择全平面最近单位")
 	_check(
 		run.get_priority_target_for_food(baguette) == nearest_in_cone,
-		"法棍忽略前方90°之外的更近单位，并选择扇区内最近单位"
+		"法棍忽略前方60°之外的更近单位，并选择扇区内最近单位"
 	)
 
 	weapon.add_food(baguette)
@@ -280,16 +299,17 @@ func _test_baguette_targeting() -> void:
 			"法棍发射方向指向扇区内距离餐车最近的单位"
 		)
 
+	var boundary_horizontal: float = tan(deg_to_rad(30.0)) * 2.0
 	var left_boundary: Customer3D = Customer3D.new()
-	left_boundary.position = Vector3(1.6, 0.0, 8.0)
+	left_boundary.position = Vector3(3.6 - boundary_horizontal, 0.0, 8.0)
 	left_boundary.active = true
 	left_boundary.spawn_index = 3
 	var right_boundary: Customer3D = Customer3D.new()
-	right_boundary.position = Vector3(5.6, 0.0, 8.0)
+	right_boundary.position = Vector3(3.6 + boundary_horizontal, 0.0, 8.0)
 	right_boundary.active = true
 	right_boundary.spawn_index = 4
 	var just_outside: Customer3D = Customer3D.new()
-	just_outside.position = Vector3(1.59, 0.0, 8.0)
+	just_outside.position = Vector3(3.6 - boundary_horizontal - 0.01, 0.0, 8.0)
 	just_outside.active = true
 	just_outside.spawn_index = 1
 	var behind_cart: Customer3D = Customer3D.new()
@@ -303,12 +323,12 @@ func _test_baguette_targeting() -> void:
 	run.customers = [just_outside, behind_cart, left_boundary, right_boundary]
 	_check(
 		run.get_priority_target_for_food(baguette) == left_boundary,
-		"法棍计入北偏西45°边界，并排除边界外与后方单位"
+		"法棍计入北偏西30°边界，并排除边界外与后方单位"
 	)
 	left_boundary.active = false
 	_check(
 		run.get_priority_target_for_food(baguette) == right_boundary,
-		"法棍计入北偏东45°边界"
+		"法棍计入北偏东30°边界"
 	)
 	run.free()
 
@@ -1057,6 +1077,48 @@ func _test_timeline() -> void:
 	_check(missing_result.used_fallback and missing_result.timeline == fallback, "Excel 缺失时使用 .tres 回退")
 
 
+# 波次路程与食客路线都由局种子稳定复现，同时严格保持配置的间隔边界。
+func _test_seeded_spawn_randomness() -> void:
+	var timeline: EncounterTimeline = EncounterTimeline.new()
+	timeline.normal_wave_count = 19
+	timeline.normal_wave_interval_jitter_ratio = 0.2
+	var run: RunController3D = RunController3D.new()
+	run._spawn_rng.seed = 20260730
+	var first_progresses: PackedFloat32Array = run._build_normal_wave_progresses(timeline)
+	run._spawn_rng.seed = 20260730
+	var repeated_progresses: PackedFloat32Array = run._build_normal_wave_progresses(timeline)
+	run._spawn_rng.seed = 20260731
+	var different_progresses: PackedFloat32Array = run._build_normal_wave_progresses(timeline)
+	_check(first_progresses == repeated_progresses, "同种子复现相同普通波次路程")
+	_check(first_progresses != different_progresses, "不同种子产生不同普通波次路程")
+	var base_gap: float = 1.0 / float(timeline.normal_wave_count + 1)
+	var minimum_gap: float = base_gap * 0.8 - 0.000001
+	var maximum_gap: float = base_gap * 1.2 + 0.000001
+	var previous_progress: float = 0.0
+	for progress: float in first_progresses:
+		var gap: float = progress - previous_progress
+		_check(gap >= minimum_gap and gap <= maximum_gap, "波次路程间隔保持在配置的正负20%内")
+		previous_progress = progress
+	var final_gap: float = 1.0 - previous_progress
+	_check(final_gap >= minimum_gap and final_gap <= maximum_gap, "末波到终点的路程间隔也保持在边界内")
+	var safe_regions: Array[int] = [0, 1, 2, 3, 4]
+	run._spawn_rng.seed = 7001
+	var first_routes: Array[int] = []
+	for _index: int in range(12):
+		first_routes.append(run._choose_spawn_first_region(safe_regions))
+	run._spawn_rng.seed = 7001
+	var repeated_routes: Array[int] = []
+	for _index: int in range(12):
+		repeated_routes.append(run._choose_spawn_first_region(safe_regions))
+	run._spawn_rng.seed = 7002
+	var different_routes: Array[int] = []
+	for _index: int in range(12):
+		different_routes.append(run._choose_spawn_first_region(safe_regions))
+	_check(first_routes == repeated_routes, "同种子复现相同食客路线序列")
+	_check(first_routes != different_routes, "不同种子产生不同食客路线序列")
+	run.free()
+
+
 # 验证压力档位同时驱动风场、食材免疫规则和末段操控目标。
 func _test_pressure_rules() -> void:
 	var timeline: EncounterTimeline = load("res://data/timelines/vertical_slice.tres") as EncounterTimeline
@@ -1149,13 +1211,6 @@ func _test_resources() -> void:
 	elite_scene_instance.configure(elite, null, 1, 100.0)
 	_check(is_equal_approx(elite_shadow.scale.x, 6.1), "食客配置不覆盖编辑器阴影宽度")
 	elite_scene_instance.free()
-	_check(
-		basic.spawn_pattern_offset() == 0
-		and fast.spawn_pattern_offset() == 1
-		and ranged.spawn_pattern_offset() == 2
-		and elite.spawn_pattern_offset() == 3,
-		"四类食客保持原有生成错位序列"
-	)
 	_check(boss != null and is_equal_approx(boss.appetite_at(100.0), 300.0), "Boss默认使用3倍基准胃口")
 	var boss_scene: PackedScene = load(
 		"res://scenes/characters/bosses/prototype_boss_3d.tscn"

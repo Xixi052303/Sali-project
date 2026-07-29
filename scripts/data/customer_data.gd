@@ -30,18 +30,6 @@ func _init() -> void:
 	pass
 
 
-# 兼容当前四类食客原有横向错位序列；该值不是策划数值，不进入食客表。
-func spawn_pattern_offset() -> int:
-	match id:
-		&"fast_guest":
-			return 1
-		&"ranged_guest":
-			return 2
-		&"elite_guest":
-			return 3
-	return 0
-
-
 # 普通食客的奖励百分位同时提高其胃口；精英传入零以保持原有倍率。
 func appetite_at(
 	baseline_appetite: float,

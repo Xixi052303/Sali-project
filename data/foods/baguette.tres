@@ -8,6 +8,7 @@ id = &"baguette"
 display_name = "法棍"
 attack_kind = 1
 initial_aim_mode = 1
+targeting_half_angle_degrees = 30.0
 base_satisfaction = 15.0
 base_interval = 1.2
 projectile_speed = 680.0

@@ -81,7 +81,7 @@ func _test_runtime(load_result: GameplayExcelLoader.WeaponLoadResult) -> void:
 	_check(is_equal_approx(giant.satisfaction, state.effective_satisfaction(baguette) * 3.0), "巨型法棍应用满足倍率")
 	_check(background._camera_shake_remaining > 0.0, "巨型法棍发射时调用可复用震屏入口")
 	var giant_dimensions: Vector3 = giant._giant_baguette_visual.model_scale() * GiantBaguette3D.MODEL_SIZE
-	_check(giant_dimensions.is_equal_approx(Vector3(0.2, 0.18, 4.0) * range_scale), "巨型法棍范围扩大时长宽高同比增长")
+	_check(giant_dimensions.is_equal_approx(Vector3(1.0, 0.9, 4.0) * range_scale), "巨型法棍保持普通法棍比例整体放大")
 	var giant_model: Node3D = giant._giant_baguette_visual.get_node("RollPivot/ModelScale/BaguetteModel") as Node3D
 	_check((giant_model.position + Vector3(0.0, 0.16503906, 0.0)).is_zero_approx(), "巨型法棍模型几何中心对齐滚动原点")
 	giant._process_forward_motion(0.1)

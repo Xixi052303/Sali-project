@@ -23,6 +23,8 @@ extends Resource
 @export var course_distance: float = 1310.763
 @export var normal_gate_count: int = 50
 @export var normal_wave_count: int = 235
+# 普通波次以平均路程间隔为基准做种子随机，数值表示单个间隔允许的正负比例。
+@export_range(0.0, 0.45, 0.01) var normal_wave_interval_jitter_ratio: float = 0.2
 @export var pressure_progresses: PackedFloat32Array = PackedFloat32Array([
 	0.0, 0.1875, 0.3125, 0.5, 0.6875, 0.8125,
 ])
@@ -51,6 +53,8 @@ func is_valid() -> bool:
 		or course_distance <= 0.0
 		or normal_gate_count < 1
 		or normal_wave_count < 1
+		or normal_wave_interval_jitter_ratio < 0.0
+		or normal_wave_interval_jitter_ratio > 0.45
 		or headwind_factor < 0.0
 		or max_crosswind_speed < 0.0
 		or minimum_cart_base_speed_factor <= 0.0

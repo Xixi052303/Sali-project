@@ -91,12 +91,12 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 - `RunState`（`scripts/data/run_state.gd`）：拥有局内耐久、强化、食材、特殊能力和统计状态。
 - `Playfield`（`scripts/playfield.gd`）：定义道路边界、六个逻辑区域和餐车活动范围。
 - `EncounterDirector`与`EncounterTimeline`：按路程进度触发显式事件；`balance_tables/时间轴.xlsx`保存三段有效时间胃口曲线、独立总路程、路程事件与普通门/波次数量，`TimelineExcelLoader`生成运行时Resource，`data/timelines/vertical_slice.tres`负责失败回退，`RunController3D._advance_distance_spawns()`按路程生成普通门与普通食客组合。
-- `GameplayExcelLoader`：读取`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`和`特殊强化.xlsx`，生成本局独立的`CustomerData`、`FoodData`、`UpgradeData`与`SpecialUpgradeData`；读取失败时由场景资源或`RunController3D`默认池回退，食客表按当前四个必需ID整体回退。
+- `GameplayExcelLoader`：读取`战斗规则.xlsx`、`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`和`特殊强化.xlsx`，生成本局战斗参数与独立的`CustomerData`、`FoodData`、`UpgradeData`、`SpecialUpgradeData`；读取失败时由脚本安全值、场景资源或`RunController3D`默认池回退，食客表按当前四个必需ID整体回退。
 - `WeaponController3D`、`FoodRuntime` 与 `FoodProjectile3D`：负责武器冷却、目标获取后的发射、`X/Z`弹道和命中。
 - `Customer3D`、`PrototypeBoss3D` 与 `Cart3D`：分别负责食客、Boss 和餐车局部行为，并通过 `RunController3D` 协调伤害与流程。
 - `road_segment_3d.tscn`持有马路、左右路沿与左右人行道的分层节点；`WorldBackground3D`只负责完整路段和街景面片的循环滚动。
 - `hud.tscn`保存可编辑的固定界面节点；`GameHud`负责内容刷新与选择、重开信号，不拥有玩法规则。
-- `scripts/data/*.gd`定义类型化Resource；`balance_tables/时间轴.xlsx`、`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`与`特殊强化.xlsx`是对应领域运行主源，`data/**/*.tres`与脚本默认值保存食材、食客、Boss和数值安全回退。
+- `scripts/data/*.gd`定义类型化Resource；`balance_tables/时间轴.xlsx`、`战斗规则.xlsx`、`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`与`特殊强化.xlsx`是对应领域运行主源，`data/**/*.tres`与脚本默认值保存食材、食客、Boss和数值安全回退。
 
 当前普通强化候选和部分特殊选择由 `RunController3D` 在运行时构建，并非全部来自 `.tres`。修改数据前必须先确认事实源位于具体 Resource、脚本构建逻辑还是 GDD。
 
@@ -110,11 +110,11 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 - 普通阶段玩家只控制横向移动；Boss阶段可在开战站位与Boss之间有限二维移动。自动前进、自动瞄准和自动攻击的输入边界不得被局部功能静默改变。
 - 普通食材的投射方向在发射瞬间确定，默认不追踪；瞄准发射与飞行追踪是两项独立能力。
 - 同类持久百分比普通强化线性加算，快速备餐按`基础间隔 ÷ (1 + 累计攻速)`计算；攻击间隔下限为 `1/60s`。修改强化计算时同步检查 `FoodData`、`RunState`、`UpgradeData` 和核心测试。
-- 餐车耐久是唯一失败资源，受击后有 1 秒无敌；不得额外引入未获确认的生命或投诉计量。
+- 餐车耐久是唯一失败资源，受击后有 0.5 秒无敌；不得额外引入未获确认的生命或投诉计量。
 - 食客被满足后满意离场，不使用死亡、尸体或真实暴力反馈。
 - `RunState` 是局内可变数据的主要所有者；不得在 HUD、餐车、武器或敌人中建立第二份同义可写状态。
 - 当前 UI、角色和背景使用可编辑的临时3D节点与少量贴图。没有用户要求时不把它们误认作正式美术，也不顺手替换整套视觉。
-- 当前时间轴通过`TimelineExcelLoader`读取，食客、武器与两类强化通过`GameplayExcelLoader`读取，二者共同复用`ExcelReader47`；没有JSON导出器、资源生成器或对象池。不得照搬旧项目的数据管线，也不得为形式提前引入全局单例、生成链或池化架构。
+- 当前时间轴通过`TimelineExcelLoader`读取，战斗规则、食客、武器与两类强化通过`GameplayExcelLoader`读取，二者共同复用`ExcelReader47`；没有JSON导出器、资源生成器或对象池。不得照搬旧项目的数据管线，也不得为形式提前引入全局单例、生成链或池化架构。
 - 修改场景时保留现有 UID、节点唯一名称和外部资源引用；`.uid`、`.import` 和 `.godot/` 由 Godot 管理，不手工伪造或编辑。
 - Shader、粒子和后处理必须兼容 Mobile 渲染方式，并检查竖屏可读性和目标设备性能。
 

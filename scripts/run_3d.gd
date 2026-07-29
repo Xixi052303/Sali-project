@@ -61,6 +61,7 @@ class ScheduledCustomerSpawn:
 	var baseline_appetite: float = 1.0
 
 const TIMELINE_WORKBOOK_PATH: String = "res://balance_tables/时间轴.xlsx"
+const COMBAT_RULES_WORKBOOK_PATH: String = "res://balance_tables/战斗规则.xlsx"
 const CUSTOMER_WORKBOOK_PATH: String = "res://balance_tables/食客.xlsx"
 const WEAPON_WORKBOOK_PATH: String = "res://balance_tables/武器.xlsx"
 const NORMAL_UPGRADE_WORKBOOK_PATH: String = "res://balance_tables/普通强化.xlsx"
@@ -78,7 +79,8 @@ const LEGACY_CUSTOMER_SPAWN_Z: float = -6.4
 const LEGACY_GATE_SPAWN_Z: float = 0.0
 const FORWARD_GATE_SPEED: float = 2.5
 const BASE_WORLD_SCROLL_SPEED: float = 2.05
-const TARGET_CONE_EPSILON: float = 0.0001
+const TARGET_FORWARD_EPSILON: float = 0.0001
+const TARGET_ANGLE_EPSILON_DEGREES: float = 0.0001
 const DAMAGE_SHAKE_SMALL_STRENGTH: float = 0.055
 const DAMAGE_SHAKE_SMALL_DURATION: float = 0.14
 const DAMAGE_SHAKE_MEDIUM_STRENGTH: float = 0.09
@@ -96,6 +98,7 @@ const SMOKE_TEST_TIMEOUT: float = 600.0
 const SMOKE_TEST_BOSS_CLEAR_DURATION: float = 30.0
 const SMOKE_MINIMUM_GEOMETRY_GAP: float = 1.1
 const PLAYTEST_RECORD_PATH: String = "user://playtest_runs.jsonl"
+const SPAWN_SEED_SALT: int = 0x5EED5EED
 
 @export_group("Prototype data")
 @export var potato_data: FoodData
@@ -153,7 +156,10 @@ var _post_boss_satisfaction_start: Dictionary[StringName, float] = {}
 var _post_boss_durability_lost_start: float = 0.0
 var _post_boss_gate_choices_start: int = 0
 var _upgrade_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+# 波次间隔与食客路线共用独立随机流，避免改变强化奖励序列。
+var _spawn_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _run_seed: int = 0
+var _normal_wave_progresses: PackedFloat32Array = PackedFloat32Array()
 var _active_special_choices: Array[StringName] = []
 var _special_choice_source: StringName = &""
 var _smoke_minimum_gate_customer_gap: float = INF
@@ -179,6 +185,9 @@ var _range_curve_c: float = RunState.RANGE_CURVE_C
 var _duration_curve_c: float = RunState.DURATION_CURVE_C
 var _cart_speed_curve_c: float = RunState.CART_SPEED_CURVE_C
 var _range_multiplier_cap: float = RunState.RANGE_MULTIPLIER_CAP
+var _cart_invincibility_duration_seconds: float = (
+	Cart3D.DEFAULT_INVINCIBILITY_DURATION_SECONDS
+)
 var _debug_invincible: bool = false
 # 食材卡取得后转为等级卡；进化按持有状态进入池，全局效果可以重复取得。
 var _special_choice_pool: Array[StringName] = [
@@ -195,6 +204,7 @@ var _special_choice_pool: Array[StringName] = [
 
 func _ready() -> void:
 	_load_timeline_balance()
+	_load_combat_rules_balance()
 	_load_customer_balance()
 	_load_weapon_balance()
 	_load_normal_upgrade_balance()
@@ -211,6 +221,8 @@ func _ready() -> void:
 		else:
 			_upgrade_rng.randomize()
 			_run_seed = _upgrade_rng.seed
+	_spawn_rng.seed = _run_seed ^ SPAWN_SEED_SALT
+	_normal_wave_progresses = _build_normal_wave_progresses(director.timeline)
 	_crosswind_sign = -1.0 if (_run_seed & 1) == 0 else 1.0
 	state = RunState.new()
 	state.run_seed = _run_seed
@@ -236,7 +248,7 @@ func _ready() -> void:
 		Engine.time_scale = 20.0
 	playfield = Playfield.new()
 	add_child(playfield)
-	cart.configure(state, playfield)
+	cart.configure(state, playfield, _cart_invincibility_duration_seconds)
 	background.set_cart(cart)
 	weapon_controller.configure(self, cart, state)
 	_build_prototype_upgrades()
@@ -282,7 +294,29 @@ func _load_timeline_balance() -> void:
 				TIMELINE_WORKBOOK_PATH,
 				load_result.error_message,
 			]
+		)
+
+
+# 战斗规则只在开局读取一次，缺表或非法值时沿用代码中的当前安全值。
+func _load_combat_rules_balance() -> void:
+	var load_result: GameplayExcelLoader.CombatRulesLoadResult = (
+		GameplayExcelLoader.load_combat_rules(COMBAT_RULES_WORKBOOK_PATH)
 	)
+	_cart_invincibility_duration_seconds = load_result.cart_invincibility_duration_seconds
+	if load_result.loaded_from_excel:
+		print(
+			"BALANCE_COMBAT_RULES_LOADED path=%s cart_invincibility=%.3f" % [
+				COMBAT_RULES_WORKBOOK_PATH,
+				_cart_invincibility_duration_seconds,
+			]
+		)
+	else:
+		push_warning(
+			"BALANCE_COMBAT_RULES_FALLBACK path=%s reason=%s" % [
+				COMBAT_RULES_WORKBOOK_PATH,
+				load_result.error_message,
+			]
+		)
 
 
 # 食客表成功时整体替换四类本局数据；失败时不混用部分行，保留场景装配回退。
@@ -556,10 +590,8 @@ func _advance_distance_spawns() -> void:
 			break
 		_queue_gate(_next_gate_index, false, _current_baseline_appetite())
 		_next_gate_index += 1
-	while _normal_wave_index < director.timeline.normal_wave_count:
-		var wave_progress: float = float(_normal_wave_index + 1) / float(
-			director.timeline.normal_wave_count + 1
-		)
+	while _normal_wave_index < _normal_wave_progresses.size():
+		var wave_progress: float = _normal_wave_progresses[_normal_wave_index]
 		if progress + 0.000001 < wave_progress:
 			break
 		_queue_normal_wave(_normal_wave_index)
@@ -578,6 +610,33 @@ func _queue_normal_wave(wave_index: int) -> void:
 	_queue_customer(primary, baseline)
 	if wave_index % 4 == 3:
 		_queue_customer(basic_guest_data if pattern == 4 else fast_guest_data, baseline)
+
+
+# 成对生成一长一短的路程间隔后打乱，保证总路程与波次数不被随机改变。
+func _build_normal_wave_progresses(timeline: EncounterTimeline) -> PackedFloat32Array:
+	var progresses: PackedFloat32Array = PackedFloat32Array()
+	if timeline == null or timeline.normal_wave_count < 1:
+		return progresses
+	var gap_count: int = timeline.normal_wave_count + 1
+	var base_gap: float = 1.0 / float(gap_count)
+	var jitter_ratio: float = clampf(timeline.normal_wave_interval_jitter_ratio, 0.0, 0.45)
+	var gaps: Array[float] = []
+	while gaps.size() + 1 < gap_count:
+		var jitter: float = base_gap * _spawn_rng.randf_range(0.0, jitter_ratio)
+		gaps.append(base_gap - jitter)
+		gaps.append(base_gap + jitter)
+	if gaps.size() < gap_count:
+		gaps.append(base_gap)
+	for index: int in range(gaps.size() - 1, 0, -1):
+		var swap_index: int = _spawn_rng.randi_range(0, index)
+		var swap_value: float = gaps[index]
+		gaps[index] = gaps[swap_index]
+		gaps[swap_index] = swap_value
+	var cumulative_progress: float = 0.0
+	for wave_index: int in range(timeline.normal_wave_count):
+		cumulative_progress += gaps[wave_index]
+		progresses.append(cumulative_progress)
+	return progresses
 
 
 func current_headwind_speed() -> float:
@@ -660,14 +719,14 @@ func customer_swept_collides_with_cart(customer: Customer3D, previous_z: float) 
 
 
 func get_priority_target() -> Node3D:
-	return _get_priority_target(&"")
+	return _get_priority_target(null)
 
 
 func get_priority_target_for_food(food: FoodData) -> Node3D:
-	return _get_priority_target(food.id if food != null else &"")
+	return _get_priority_target(food)
 
 
-func _get_priority_target(food_id: StringName) -> Node3D:
+func _get_priority_target(food: FoodData) -> Node3D:
 	var best_target: Node3D = null
 	var best_forward: float = INF
 	var best_horizontal: float = INF
@@ -675,7 +734,7 @@ func _get_priority_target(food_id: StringName) -> Node3D:
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active or customer.position.z >= cart.position.z:
 			continue
-		if not _target_is_allowed_for_food(food_id, logic_position(customer)):
+		if not _target_is_allowed_for_food(food, logic_position(customer)):
 			continue
 		var forward: float = cart.position.z - customer.position.z
 		var horizontal: float = absf(customer.position.x - cart.position.x)
@@ -693,7 +752,7 @@ func _get_priority_target(food_id: StringName) -> Node3D:
 		var gate_target: Node3D = gate.target_for_cart_x(cart.position.x)
 		if gate_target == null:
 			continue
-		if not _target_is_allowed_for_food(food_id, logic_position(gate_target)):
+		if not _target_is_allowed_for_food(food, logic_position(gate_target)):
 			continue
 		var gate_forward: float = cart.position.z - gate.position.z
 		var gate_horizontal: float = absf(logic_position(gate_target).x - logic_position(cart).x)
@@ -711,7 +770,7 @@ func _get_priority_target(food_id: StringName) -> Node3D:
 		var reward_target: Node3D = reward_gate.target_for_cart_x(cart.position.x)
 		if reward_target == null:
 			continue
-		if not _target_is_allowed_for_food(food_id, logic_position(reward_target)):
+		if not _target_is_allowed_for_food(food, logic_position(reward_target)):
 			continue
 		var reward_forward: float = cart.position.z - reward_gate.position.z
 		var reward_horizontal: float = absf(logic_position(reward_target).x - logic_position(cart).x)
@@ -721,7 +780,7 @@ func _get_priority_target(food_id: StringName) -> Node3D:
 			best_horizontal = reward_horizontal
 			best_spawn_index = reward_gate.spawn_index
 	if boss != null and is_instance_valid(boss) and boss.active:
-		if not _target_is_allowed_for_food(food_id, logic_position(boss)):
+		if not _target_is_allowed_for_food(food, logic_position(boss)):
 			return best_target
 		var boss_forward: float = cart.position.z - boss.position.z
 		var boss_horizontal: float = absf(boss.position.x - cart.position.x)
@@ -730,14 +789,15 @@ func _get_priority_target(food_id: StringName) -> Node3D:
 	return best_target
 
 
-# 法棍只在道路正前方90°扇区寻敌；-Z为北，左右45°边界均计入。
-func _target_is_allowed_for_food(food_id: StringName, target_position: Vector3) -> bool:
-	if food_id != &"baguette":
+# 食材可用武器表半角收窄前方寻敌扇区；边界目标计入候选。
+func _target_is_allowed_for_food(food: FoodData, target_position: Vector3) -> bool:
+	if food == null or food.targeting_half_angle_degrees >= 90.0:
 		return true
 	var offset: Vector3 = target_position - logic_position(cart)
 	return (
-		offset.z < -TARGET_CONE_EPSILON
-		and absf(offset.x) <= -offset.z + TARGET_CONE_EPSILON
+		offset.z < -TARGET_FORWARD_EPSILON
+		and absf(rad_to_deg(atan2(offset.x, -offset.z)))
+		<= food.targeting_half_angle_degrees + TARGET_ANGLE_EPSILON_DEGREES
 	)
 
 
@@ -1023,17 +1083,6 @@ func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 		if request.customer_data == null:
 			return false
 		candidate_z = Playfield.FORWARD_SPAWN_Z
-		var first_region: int = _find_safe_customer_first_region(
-			request.customer_data,
-			candidate_z,
-			(
-				BASE_WORLD_SCROLL_SPEED
-				+ Playfield.design_to_world(request.customer_data.move_speed)
-			) * speed_multiplier
-		)
-		if first_region < 0:
-			return false
-		request.spawn_first_region = first_region
 		candidate_is_customer = true
 		candidate_speed = (
 			BASE_WORLD_SCROLL_SPEED + Playfield.design_to_world(request.customer_data.move_speed)
@@ -1083,26 +1132,32 @@ func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 			cart_destination_z()
 		):
 			return false
+	if candidate_is_customer:
+		var safe_regions: Array[int] = _find_safe_customer_first_regions(
+			request.customer_data,
+			candidate_z,
+			candidate_speed
+		)
+		request.spawn_first_region = _choose_spawn_first_region(safe_regions)
+		if request.spawn_first_region < 0:
+			return false
 	return true
 
 
-# 普通食客可在合法占位中横向错开；只选择整条接近路径都不会追尾的位置。
-func _find_safe_customer_first_region(
+# 收集整条接近路径都不会追尾的合法路线，再交给种子随机选择。
+func _find_safe_customer_first_regions(
 	customer_data: CustomerData,
 	candidate_z: float,
 	candidate_speed: float
-) -> int:
+) -> Array[int]:
+	var safe_regions: Array[int] = []
 	var occupied_regions: int = customer_data.occupied_regions
 	var max_start: int = Playfield.REGION_COUNT - occupied_regions
-	var default_first: int = (
-		(_spawn_counter + 1) * 2 + customer_data.spawn_pattern_offset()
-	) % (max_start + 1)
 	var candidate_width: float = maxf(
 		0.82,
 		float(occupied_regions) * Playfield.REGION_WIDTH - 0.18
 	)
-	for offset: int in range(max_start + 1):
-		var first_region: int = (default_first + offset) % (max_start + 1)
+	for first_region: int in range(max_start + 1):
 		var candidate_x: float = playfield.spawn_x(first_region, occupied_regions)
 		var candidate_rect_x: Rect2 = Rect2(
 			candidate_x - candidate_width * 0.5,
@@ -1134,8 +1189,15 @@ func _find_safe_customer_first_region(
 				safe = false
 				break
 		if safe:
-			return first_region
-	return -1
+			safe_regions.append(first_region)
+	return safe_regions
+
+
+# 只在请求确定能立即生成时消耗随机数，使同种子不受帧率与等待帧数影响。
+func _choose_spawn_first_region(safe_regions: Array[int]) -> int:
+	if safe_regions.is_empty():
+		return -1
+	return safe_regions[_spawn_rng.randi_range(0, safe_regions.size() - 1)]
 
 
 func _spawn_customer_now(
@@ -1149,9 +1211,7 @@ func _spawn_customer_now(
 	var max_start: int = Playfield.REGION_COUNT - customer_data.occupied_regions
 	var first_region: int = spawn_first_region
 	if first_region < 0:
-		first_region = (
-			_spawn_counter * 2 + customer_data.spawn_pattern_offset()
-		) % (max_start + 1)
+		first_region = _spawn_rng.randi_range(0, max_start)
 	customer.position = Vector3(
 		playfield.spawn_x(first_region, customer_data.occupied_regions),
 		0.0,

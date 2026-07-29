@@ -3,6 +3,7 @@ extends RefCounted
 
 const CONFIG_SHEET: String = "配置"
 const EXPECTED_SCHEMA_VERSION: int = 1
+const WEAPON_SCHEMA_VERSION: int = 2
 const NORMAL_UPGRADE_SCHEMA_VERSION: int = 2
 const REQUIRED_CUSTOMER_IDS: Array[StringName] = [
 	&"basic_guest",
@@ -70,11 +71,56 @@ class SpecialUpgradeLoadResult:
 	var source_path: String = ""
 
 
+class CombatRulesLoadResult:
+	extends RefCounted
+
+	var cart_invincibility_duration_seconds: float = (
+		Cart3D.DEFAULT_INVINCIBILITY_DURATION_SECONDS
+	)
+	var loaded_from_excel: bool = false
+	var error_message: String = ""
+	var source_path: String = ""
+
+
 class WorkbookReadResult:
 	extends RefCounted
 
 	var workbook: ExcelReader47.ExcelWorkbook
 	var error_message: String = ""
+
+
+# 读取局内通用战斗规则；非法值整表回退到代码中的当前安全值。
+static func load_combat_rules(path: String) -> CombatRulesLoadResult:
+	var result: CombatRulesLoadResult = CombatRulesLoadResult.new()
+	result.source_path = path
+	var read_result: WorkbookReadResult = _read_valid_workbook(
+		path,
+		"xiaochuxi.combat_rules"
+	)
+	if read_result.workbook == null:
+		result.error_message = read_result.error_message
+		return result
+	var sheet: ExcelReader47.ExcelSheet = read_result.workbook.get_sheet_by_name("战斗规则")
+	if sheet == null:
+		result.error_message = "战斗规则 Excel 必须包含“战斗规则”工作表"
+		return result
+	return _parse_combat_rule_values(_records_to_values(sheet), result)
+
+
+# 单独解析键值，保证缺失、非数字或非正时不会把部分配置带入本局。
+static func _parse_combat_rule_values(
+	values: Dictionary,
+	result: CombatRulesLoadResult = null
+) -> CombatRulesLoadResult:
+	if result == null:
+		result = CombatRulesLoadResult.new()
+	var value: Variant = values.get("cart_invincibility_duration_seconds")
+	if not _is_number(value) or float(value) <= 0.0:
+		result.error_message = "战斗规则参数 cart_invincibility_duration_seconds 必须是正数"
+		return result
+	result.cart_invincibility_duration_seconds = float(value)
+	result.loaded_from_excel = true
+	return result
 
 
 # 读取食客主表并生成本局独立的 CustomerData；任一必需行非法时整表失败。
@@ -197,7 +243,12 @@ static func _parse_customer_records(
 static func load_weapons(path: String) -> WeaponLoadResult:
 	var result: WeaponLoadResult = WeaponLoadResult.new()
 	result.source_path = path
-	var read_result: WorkbookReadResult = _read_valid_workbook(path, "xiaochuxi.weapons")
+	var read_result: WorkbookReadResult = _read_valid_workbook(
+		path,
+		"xiaochuxi.weapons",
+		CONFIG_SHEET,
+		WEAPON_SCHEMA_VERSION
+	)
 	if read_result.workbook == null:
 		result.error_message = read_result.error_message
 		return result
@@ -225,6 +276,12 @@ static func load_weapons(path: String) -> WeaponLoadResult:
 		food.attack_kind = _attack_kind(record.get("攻击类型"), row_number, errors)
 		food.initial_aim_mode = _aim_mode(record.get("初始瞄准"), row_number, errors)
 		food.initial_tracking_mode = _tracking_mode(record.get("初始追踪"), row_number, errors)
+		food.targeting_half_angle_degrees = _required_number(
+			record,
+			"寻敌半角(°)",
+			row_number,
+			errors
+		)
 		food.base_satisfaction = _required_number(record, "基础满足", row_number, errors)
 		food.base_interval = _required_number(record, "基础间隔(s)", row_number, errors)
 		food.projectile_speed = _required_number(record, "弹速(px/s)", row_number, errors)
@@ -251,6 +308,11 @@ static func load_weapons(path: String) -> WeaponLoadResult:
 			errors.append("武器表第 %d 行碰撞半径和持续时间必须大于0" % row_number)
 		if food.pierce_count < 1:
 			errors.append("武器表第 %d 行命中目标数至少为1" % row_number)
+		if (
+			food.targeting_half_angle_degrees < 0.0
+			or food.targeting_half_angle_degrees > 90.0
+		):
+			errors.append("武器表第 %d 行寻敌半角必须在0至90度之间" % row_number)
 		if food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
 			if food.orbit_radius <= 0.0 or food.orbit_angular_speed <= 0.0:
 				errors.append("武器表第 %d 行环绕武器的半径和角速度必须大于0" % row_number)

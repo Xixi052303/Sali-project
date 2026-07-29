@@ -22,6 +22,8 @@ enum AimMode {
 @export var attack_kind: AttackKind = AttackKind.PROJECTILE
 @export var initial_aim_mode: AimMode = AimMode.FIXED_FORWARD
 @export var initial_tracking_mode: TrackingMode = TrackingMode.NONE
+# 寻敌半角以道路正前方为中心；90度表示不额外收窄前方候选。
+@export_range(0.0, 90.0, 0.1) var targeting_half_angle_degrees: float = 90.0
 @export var homing_turn_speed: float = 4.5
 @export var base_satisfaction: float = 10.0
 @export var base_interval: float = 0.8
