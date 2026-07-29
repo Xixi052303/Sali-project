@@ -10,6 +10,7 @@
 ## 项目基线
 
 - 引擎为 Godot 4.7，主要语言为静态类型 GDScript，渲染方式为 Mobile。
+- Godot 4.7 编辑器：`D:\SteamLibrary\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe`
 - 项目是竖屏移动端直接 3D 纸艺玩法原型，内部设计分辨率为 `720 × 1280`，移动端锁定竖屏。
 - 唯一启动场景为 `res://scenes/run_3d.tscn`，当前没有 Autoload；旧 2D 场景已移除。
 - 当前导出目标为 Android ARM64 原型，配置见 `export_presets.cfg`。
