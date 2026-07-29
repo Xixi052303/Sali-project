@@ -849,20 +849,32 @@ func _test_reward_gate_spacing() -> void:
 	gate.position.z = 4.0
 	gates.add_child(gate)
 	var existing_drop: UpgradeDrop3D = reward_scene.instantiate() as UpgradeDrop3D
-	existing_drop.position.z = 6.5
+	existing_drop.position = Vector3(1.6, 0.0, 6.5)
 	drops.add_child(existing_drop)
-	var safe_z: float = run._find_reward_gate_spawn_z(5.0)
+	var customer: Customer3D = Customer3D.new()
+	customer.data = load("res://data/customers/basic_guest.tres") as CustomerData
+	customer.run = run
+	customer.active = true
+	customer.position = Vector3(1.6, 0.0, 6.5)
+	run.customers.append(customer)
+	run.add_child(customer)
+	var safe_z: float = run._find_reward_gate_spawn_z(5.0, 1.6, 2)
 	_check(
-		field.forward_paths_are_separated(safe_z, 2.5, gate.position.z, gate.travel_speed(), Playfield.FORWARD_MIN_CENTER_DISTANCE),
-		"新奖励门不会与原普通门重叠或追尾"
+		is_equal_approx(safe_z, 5.0),
+		"奖励门优先保留食客位置，并允许与食客、普通门和奖励门有限重合"
 	)
+	existing_drop.position = Vector3(5.6, 0.0, 5.0)
 	_check(
-		field.forward_paths_are_separated(safe_z, 2.5, existing_drop.position.z, existing_drop.travel_speed(), Playfield.FORWARD_MIN_CENTER_DISTANCE),
-		"食客奖励门之间不会重叠或追尾"
+		is_equal_approx(run._find_reward_gate_spawn_z(5.0, 1.6, 2), 5.0),
+		"横向不相交的奖励门可以共享食客原纵向位置"
 	)
+	gate.position.z = -10.0
+	existing_drop.position = Vector3(1.6, 0.0, 5.0)
+	var overlapped_z: float = run._find_reward_gate_spawn_z(5.0, 1.6, 2)
 	_check(
-		absf(safe_z - 5.0) <= RunController3D.REWARD_GATE_SEARCH_LIMIT + 0.001,
-		"正式密度下奖励门只在配置的道路搜索范围内避让"
+		absf(overlapped_z - 5.0) >= RunController3D.REWARD_GATE_MIN_CENTER_DISTANCE
+		and absf(overlapped_z - 5.0) < UpgradeDrop3D.PANEL_HEIGHT,
+		"同横向奖励门只做最小避让并保留约半个门深的重合"
 	)
 	run.free()
 

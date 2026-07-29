@@ -76,7 +76,9 @@ const TARGET_CONE_EPSILON: float = 0.0001
 # 远端生成队列还需吸收与食客/掉落门错峰产生的短暂等待。
 const FORWARD_GATE_QUEUE_LEAD_SECONDS: float = 2.0
 const REWARD_GATE_SEARCH_STEP: float = 0.1
-const REWARD_GATE_SEARCH_LIMIT: float = 40.0
+const REWARD_GATE_SEARCH_LIMIT: float = 4.0
+# 首轮允许奖励门与横向相交对象重合约半个门深，优先保留食客掉落位置。
+const REWARD_GATE_MIN_CENTER_DISTANCE: float = 0.72
 const POST_BOSS_MINIMUM_DURATION: float = 40.0
 const SMOKE_TEST_TIMEOUT: float = 600.0
 const SMOKE_TEST_BOSS_CLEAR_DURATION: float = 30.0
@@ -143,6 +145,7 @@ var _run_seed: int = 0
 var _active_special_choices: Array[StringName] = []
 var _special_choice_source: StringName = &""
 var _smoke_minimum_gate_customer_gap: float = INF
+var _smoke_minimum_required_gap: float = SMOKE_MINIMUM_GEOMETRY_GAP
 var _smoke_minimum_gap_kind: String = ""
 var _smoke_minimum_gap_detail: String = ""
 # Excel 加载结果只在本局内存中生效，避免改写场景引用的共享 Resource。
@@ -443,7 +446,7 @@ func _process(delta: float) -> void:
 			director.advance(forward_progress())
 			_advance_distance_spawns()
 		_process_spawn_requests()
-		_process_reward_spawn_requests()
+		_process_reward_spawn_requests(delta)
 		if _boss_pending and not _has_pending_boss_blocker():
 			_begin_boss()
 		if _smoke_test:
@@ -1320,7 +1323,11 @@ func _spawn_customer_reward_gate(
 ) -> void:
 	if upgrade == null:
 		return
-	var safe_z: float = _find_reward_gate_spawn_z(start_position.z)
+	var safe_z: float = _find_reward_gate_spawn_z(
+		start_position.z,
+		start_position.x,
+		occupied_regions
+	)
 	if is_inf(safe_z):
 		_reward_spawn_requests.append(RewardSpawnRequest.new(
 			start_position,
@@ -1353,12 +1360,18 @@ func _spawn_customer_reward_gate_now(
 	drop.configure(self, upgrade, start_position, baseline_appetite, occupied_regions, _spawn_counter)
 
 
-func _process_reward_spawn_requests() -> void:
+func _process_reward_spawn_requests(delta: float) -> void:
 	var spawned_this_frame: int = 0
 	var index: int = 0
 	while index < _reward_spawn_requests.size() and spawned_this_frame < 4:
 		var request: RewardSpawnRequest = _reward_spawn_requests[index]
-		var safe_z: float = _find_reward_gate_spawn_z(request.start_position.z)
+		# 等待避让期间锚点随道路前进，避免最终生成点落后于食客消失位置。
+		request.start_position.z += FORWARD_GATE_SPEED * forward_speed_multiplier() * delta
+		var safe_z: float = _find_reward_gate_spawn_z(
+			request.start_position.z,
+			request.start_position.x,
+			request.occupied_regions
+		)
 		if is_inf(safe_z):
 			index += 1
 			continue
@@ -1373,33 +1386,63 @@ func _process_reward_spawn_requests() -> void:
 		spawned_this_frame += 1
 
 
-# 奖励门以食客原位置为中心小步双向搜索，避免单向避让把门推到远处。
-func _find_reward_gate_spawn_z(preferred_z: float) -> float:
-	if _reward_gate_spawn_is_safe(preferred_z):
+# 奖励门只在横向实际相交时做近场双向搜索，并始终选择离食客最近的可用位置。
+func _find_reward_gate_spawn_z(
+	preferred_z: float,
+	preferred_x: float,
+	occupied_regions: int
+) -> float:
+	if _reward_gate_spawn_is_safe(preferred_z, preferred_x, occupied_regions):
 		return preferred_z
 	var distance: float = REWARD_GATE_SEARCH_STEP
 	while distance <= REWARD_GATE_SEARCH_LIMIT + 0.001:
 		var toward_cart_z: float = preferred_z + distance
-		if toward_cart_z < cart_destination_z() - 0.5 and _reward_gate_spawn_is_safe(toward_cart_z):
+		if (
+			toward_cart_z < cart_destination_z() - 0.5
+			and _reward_gate_spawn_is_safe(toward_cart_z, preferred_x, occupied_regions)
+		):
 			return toward_cart_z
 		var toward_far_z: float = preferred_z - distance
-		if _reward_gate_spawn_is_safe(toward_far_z):
+		if _reward_gate_spawn_is_safe(toward_far_z, preferred_x, occupied_regions):
 			return toward_far_z
 		distance += REWARD_GATE_SEARCH_STEP
 	return INF
 
 
-func _reward_gate_spawn_is_safe(candidate_z: float) -> bool:
+func _reward_gate_spawn_is_safe(
+	candidate_z: float,
+	candidate_x: float,
+	occupied_regions: int
+) -> bool:
 	var candidate_speed: float = FORWARD_GATE_SPEED * forward_speed_multiplier()
+	var candidate_width: float = maxf(
+		0.82,
+		float(clampi(occupied_regions, 1, Playfield.REGION_COUNT)) * Playfield.REGION_WIDTH - 0.18
+	)
+	var candidate_rect_x: Rect2 = Rect2(
+		candidate_x - candidate_width * 0.5,
+		0.0,
+		candidate_width,
+		1.0
+	)
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active:
+			continue
+		var customer_rect: Rect2 = customer.collision_rect_xz()
+		var customer_rect_x: Rect2 = Rect2(
+			customer_rect.position.x,
+			0.0,
+			customer_rect.size.x,
+			1.0
+		)
+		if not candidate_rect_x.intersects(customer_rect_x):
 			continue
 		if not playfield.forward_paths_are_separated(
 			candidate_z,
 			candidate_speed,
 			customer.position.z,
 			customer.travel_speed(),
-			Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE + 2.2,
+			REWARD_GATE_MIN_CENTER_DISTANCE,
 			cart_destination_z()
 		):
 			return false
@@ -1412,7 +1455,7 @@ func _reward_gate_spawn_is_safe(candidate_z: float) -> bool:
 			candidate_speed,
 			gate.position.z,
 			gate.travel_speed(),
-			Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE + 2.2,
+			REWARD_GATE_MIN_CENTER_DISTANCE,
 			cart_destination_z()
 		):
 			return false
@@ -1420,12 +1463,21 @@ func _reward_gate_spawn_is_safe(candidate_z: float) -> bool:
 		if not child is UpgradeDrop3D or child.is_queued_for_deletion():
 			continue
 		var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
+		var reward_width: float = reward_gate._panel_width()
+		var reward_rect_x: Rect2 = Rect2(
+			reward_gate.position.x - reward_width * 0.5,
+			0.0,
+			reward_width,
+			1.0
+		)
+		if not candidate_rect_x.intersects(reward_rect_x):
+			continue
 		if not playfield.forward_paths_are_separated(
 			candidate_z,
 			candidate_speed,
 			reward_gate.position.z,
 			reward_gate.travel_speed(),
-			Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE + 2.2,
+			REWARD_GATE_MIN_CENTER_DISTANCE,
 			cart_destination_z()
 		):
 			return false
@@ -1560,11 +1612,12 @@ func _finish_run() -> void:
 			Engine.time_scale = 1.0
 			get_tree().quit(1)
 			return
-		if _smoke_minimum_gate_customer_gap < SMOKE_MINIMUM_GEOMETRY_GAP:
+		if _smoke_minimum_gate_customer_gap + 0.001 < _smoke_minimum_required_gap:
 			push_error(
-				"SMOKE_TEST_FAILED forward_gap=%.2f kind=%s detail=%s"
+				"SMOKE_TEST_FAILED forward_gap=%.2f required=%.2f kind=%s detail=%s"
 				% [
 					_smoke_minimum_gate_customer_gap,
+					_smoke_minimum_required_gap,
 					_smoke_minimum_gap_kind,
 					_smoke_minimum_gap_detail,
 				]
@@ -1975,7 +2028,8 @@ func _track_smoke_gate_customer_gap() -> void:
 					customer.travel_speed(),
 					reward_gate.travel_speed(),
 					forward_progress(),
-				]
+				],
+				REWARD_GATE_MIN_CENTER_DISTANCE
 			)
 	var reward_gates: Array[UpgradeDrop3D] = []
 	for child: Node in drops.get_children():
@@ -1992,7 +2046,12 @@ func _track_smoke_gate_customer_gap() -> void:
 				var reward_gate_gap: float = absf(
 					reward_gate.position.z - (gate_child as UpgradeGate3D).position.z
 				)
-				_track_smoke_gap(reward_gate_gap, "reward_gate")
+				_track_smoke_gap(
+					reward_gate_gap,
+					"reward_gate",
+					"",
+					REWARD_GATE_MIN_CENTER_DISTANCE
+				)
 	for first_index: int in range(reward_gates.size()):
 		for second_index: int in range(first_index + 1, reward_gates.size()):
 			var first_gate: UpgradeDrop3D = reward_gates[first_index]
@@ -2005,13 +2064,27 @@ func _track_smoke_gate_customer_gap() -> void:
 			):
 				continue
 			var reward_pair_gap: float = absf(first_gate.position.z - second_gate.position.z)
-			_track_smoke_gap(reward_pair_gap, "reward_pair")
+			_track_smoke_gap(
+				reward_pair_gap,
+				"reward_pair",
+				"",
+				REWARD_GATE_MIN_CENTER_DISTANCE
+			)
 
 
-func _track_smoke_gap(gap: float, kind: String, detail: String = "") -> void:
-	if gap >= _smoke_minimum_gate_customer_gap:
+# 不同对象组合使用各自允许间距；记录最接近违规的组合，避免放宽奖励门后削弱普通门检查。
+func _track_smoke_gap(
+	gap: float,
+	kind: String,
+	detail: String = "",
+	required_gap: float = SMOKE_MINIMUM_GEOMETRY_GAP
+) -> void:
+	var current_margin: float = gap - required_gap
+	var recorded_margin: float = _smoke_minimum_gate_customer_gap - _smoke_minimum_required_gap
+	if current_margin >= recorded_margin:
 		return
 	_smoke_minimum_gate_customer_gap = gap
+	_smoke_minimum_required_gap = required_gap
 	_smoke_minimum_gap_kind = kind
 	_smoke_minimum_gap_detail = detail
 

@@ -20,6 +20,7 @@ transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, -0.0
 
 [node name="ChefModel" parent="PaperCartVisual" unique_id=565962607 instance=ExtResource("2_chef")]
 transform = Transform3D(-1.6292068e-07, 0, 1, 0, 1, 0, -1, 0, -1.6292068e-07, -0.06307061, 0, 0.7359624)
+visible = false
 
 [node name="ContactShadow" type="MeshInstance3D" parent="PaperCartVisual" unique_id=1518168467]
 transform = Transform3D(1.5, 0, 0, 0, 0.05, 0, 0, 0, 1.8, 0, 0.03, 0)
