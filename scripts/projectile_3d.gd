@@ -20,6 +20,8 @@ var tracking_target: Node3D
 var homing_enabled: bool = false
 var homing_turn_speed: float = 0.0
 var _movement_speed: float = 0.0
+# 阶段风势只影响直线位移；瞄准与追踪仍由食材自身方向规则负责。
+var _environment_velocity: Vector3 = Vector3.ZERO
 var _lifetime_remaining: float = 1.6
 var _initial_lifetime: float = 1.6
 var _previous_position: Vector3 = Vector3.ZERO
@@ -50,6 +52,7 @@ func configure(
 	food: FoodData,
 	amount: float,
 	speed: float,
+	environment_velocity: Vector3,
 	hit_radius_value: float,
 	lifetime: float,
 	hit_count: int,
@@ -64,7 +67,8 @@ func configure(
 	run = run_controller
 	position = start_position
 	_previous_position = start_position
-	velocity = direction.normalized() * speed
+	_environment_velocity = environment_velocity
+	velocity = direction.normalized() * speed + _environment_velocity
 	_movement_speed = speed
 	satisfaction = amount
 	radius = hit_radius_value
@@ -124,7 +128,10 @@ func _process_forward_motion(delta: float) -> void:
 		var current_angle: float = atan2(velocity.x, -velocity.z)
 		var desired_angle: float = atan2(desired.x, -desired.z)
 		var next_angle: float = rotate_toward(current_angle, desired_angle, homing_turn_speed * delta)
-		velocity = Vector3(sin(next_angle), 0.0, -cos(next_angle)) * _movement_speed
+		velocity = (
+			Vector3(sin(next_angle), 0.0, -cos(next_angle)) * _movement_speed
+			+ _environment_velocity
+		)
 	_previous_position = position
 	position += velocity * delta
 	if _giant_baguette:

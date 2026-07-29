@@ -14,6 +14,11 @@ const BAGUETTE_GIANT_WIDTH_REGIONS: float = 4.0
 const BAGUETTE_GIANT_PIERCE_COUNT: int = 999
 const BAGUETTE_GIANT_DURATION_MULTIPLIER: float = 1.5
 const BAGUETTE_GIANT_SATISFACTION_MULTIPLIER: float = 3.0
+const WINE_CURVE_C: float = 1.0
+const RANGE_CURVE_C: float = 4.0
+const DURATION_CURVE_C: float = 1.0
+const CART_SPEED_CURVE_C: float = 0.5
+const RANGE_MULTIPLIER_CAP: float = 600.0 / 34.0
 
 
 class SpecialChoiceRecord:
@@ -64,6 +69,14 @@ var projectile_speed_multiplier: float = 1.0
 var range_multiplier: float = 1.0
 var duration_multiplier: float = 1.0
 var cart_speed_bonus: float = 0.0
+# 当前阶段的疲劳与颠簸只降低基础横移，普通强化形成的加值不受二次削弱。
+var cart_base_speed_factor: float = 1.0
+# 对数软化参数来自普通强化表；加载失败时使用与正式首轮一致的安全回退。
+var wine_curve_c: float = WINE_CURVE_C
+var range_curve_c: float = RANGE_CURVE_C
+var duration_curve_c: float = DURATION_CURVE_C
+var cart_speed_curve_c: float = CART_SPEED_CURVE_C
+var range_multiplier_cap: float = RANGE_MULTIPLIER_CAP
 # 临时护盾来自溢出维修，仅在本局内保留并优先于餐车耐久承伤。
 var temporary_shield: float = 0.0
 var servings: int = 1
@@ -77,11 +90,19 @@ var target_aim_foods: Array[StringName] = []
 var homing_foods: Array[StringName] = []
 var satisfaction_by_food: Dictionary[StringName, float] = {}
 var special_choice_records: Array[SpecialChoiceRecord] = []
+# 普通强化统计用于固定种子复盘；数值累计记录实际结算值而非品质百分位。
+var normal_upgrade_offer_counts: Dictionary[StringName, int] = {}
+var normal_upgrade_choice_counts: Dictionary[StringName, int] = {}
+var normal_upgrade_value_totals: Dictionary[StringName, float] = {}
+var normal_upgrade_contribution_totals: Dictionary[StringName, float] = {}
 var dropped_upgrades: int = 0
 var elapsed_seconds: float = 0.0
+# 只在前进阶段累计，Boss与选择暂停；时间轴、胃口和压力统一读取该路程。
+var forward_distance: float = 0.0
 var gate_choices: int = 0
 var customers_satisfied: int = 0
 var normal_defeats: int = 0
+var normal_customers_spawned: int = 0
 var collided_defeats: int = 0
 var upgrade_drops_spawned: int = 0
 var hits_taken: int = 0
@@ -89,6 +110,7 @@ var durability_lost: float = 0.0
 var elite_duration: float = 0.0
 var elite_durations: Array[float] = []
 var boss_duration: float = 0.0
+var boss_durations: Array[float] = []
 var run_seed: int = 0
 
 
@@ -169,10 +191,13 @@ func is_food_homing(food_id: StringName) -> bool:
 
 
 func apply_upgrade(upgrade: UpgradeData, count_as_gate: bool = true) -> void:
+	if upgrade == null:
+		return
 	if count_as_gate:
 		gate_choices += 1
 	else:
 		dropped_upgrades += 1
+	var contribution: float = upgrade.value
 	match upgrade.kind:
 		UpgradeData.Kind.SUGAR:
 			satisfaction_multiplier += upgrade.value
@@ -188,11 +213,14 @@ func apply_upgrade(upgrade: UpgradeData, count_as_gate: bool = true) -> void:
 			cart_speed_bonus += upgrade.value
 		UpgradeData.Kind.STURDY_CART:
 			var durability_gain: float = maximum_durability * maxf(0.0, upgrade.value)
+			contribution = durability_gain
 			maximum_durability += durability_gain
 			current_durability += durability_gain
 			durability_changed.emit(current_durability, maximum_durability, temporary_shield)
 		UpgradeData.Kind.REPAIR:
-			repair(maximum_durability * upgrade.value)
+			contribution = maximum_durability * upgrade.value
+			repair(contribution)
+	_record_normal_upgrade_choice(upgrade, contribution)
 	inventory_changed.emit()
 
 
@@ -239,30 +267,35 @@ func effective_interval(food: FoodData) -> float:
 
 
 func effective_projectile_speed(food: FoodData) -> float:
-	return food.projectile_speed * _scaled_upgrade_multiplier(
-		projectile_speed_multiplier,
-		food.wine_upgrade_scale
+	return food.projectile_speed * _log_upgrade_multiplier(
+		projectile_speed_multiplier - 1.0,
+		food.wine_upgrade_scale,
+		wine_curve_c
 	)
 
 
 func effective_orbit_angular_speed(food: FoodData) -> float:
-	return food.orbit_angular_speed * _scaled_upgrade_multiplier(
-		projectile_speed_multiplier,
-		food.wine_upgrade_scale
+	return food.orbit_angular_speed * _log_upgrade_multiplier(
+		projectile_speed_multiplier - 1.0,
+		food.wine_upgrade_scale,
+		wine_curve_c
 	)
 
 
 func effective_projectile_radius(food: FoodData) -> float:
-	return food.projectile_radius * _scaled_upgrade_multiplier(
-		range_multiplier,
-		food.range_upgrade_scale
+	var multiplier: float = _log_upgrade_multiplier(
+		range_multiplier - 1.0,
+		food.range_upgrade_scale,
+		range_curve_c
 	)
+	return food.projectile_radius * minf(multiplier, maxf(1.0, range_multiplier_cap))
 
 
 func effective_duration(food: FoodData) -> float:
-	return food.base_lifetime * _scaled_upgrade_multiplier(
-		duration_multiplier,
-		food.duration_upgrade_scale
+	return food.base_lifetime * _log_upgrade_multiplier(
+		duration_multiplier - 1.0,
+		food.duration_upgrade_scale,
+		duration_curve_c
 	)
 
 
@@ -282,15 +315,47 @@ func effective_projectile_distance(food: FoodData) -> float:
 	return effective_projectile_speed(food) * effective_duration(food)
 
 
-# 全局累计倍率只把超过1的强化部分交给食材转译，倍率0表示不继承该强化。
-func _scaled_upgrade_multiplier(global_multiplier: float, scale: float) -> float:
-	return 1.0 + maxf(0.0, global_multiplier - 1.0) * maxf(0.0, scale)
+# 原始加成保持线性累计，食材转译后再以对数软化高层物理膨胀。
+func _log_upgrade_multiplier(raw_bonus: float, scale: float, curve_c: float) -> float:
+	var safe_c: float = maxf(0.001, curve_c)
+	var translated_bonus: float = maxf(0.0, raw_bonus) * maxf(0.0, scale)
+	return 1.0 + safe_c * log(1.0 + translated_bonus / safe_c)
+
+
+# 轻便餐车以设计像素累计，再按基础速度比例软化；疲劳只作用于基础速度。
+func effective_cart_speed_bonus(base_speed_design: float) -> float:
+	var safe_base: float = maxf(0.001, base_speed_design)
+	var raw_ratio: float = maxf(0.0, cart_speed_bonus) / safe_base
+	return safe_base * cart_speed_curve_c * log(
+		1.0 + raw_ratio / maxf(0.001, cart_speed_curve_c)
+	)
 
 
 func record_food_satisfaction(food_id: StringName, amount: float) -> void:
 	if amount <= 0.0:
 		return
 	satisfaction_by_food[food_id] = satisfaction_by_food.get(food_id, 0.0) + amount
+
+
+func record_normal_upgrade_offer(upgrades: Array[UpgradeData]) -> void:
+	for upgrade: UpgradeData in upgrades:
+		if upgrade == null:
+			continue
+		normal_upgrade_offer_counts[upgrade.id] = (
+			normal_upgrade_offer_counts.get(upgrade.id, 0) + 1
+		)
+
+
+func _record_normal_upgrade_choice(upgrade: UpgradeData, contribution: float) -> void:
+	normal_upgrade_choice_counts[upgrade.id] = (
+		normal_upgrade_choice_counts.get(upgrade.id, 0) + 1
+	)
+	normal_upgrade_value_totals[upgrade.id] = (
+		normal_upgrade_value_totals.get(upgrade.id, 0.0) + upgrade.value
+	)
+	normal_upgrade_contribution_totals[upgrade.id] = (
+		normal_upgrade_contribution_totals.get(upgrade.id, 0.0) + contribution
+	)
 
 
 func record_special_offer(

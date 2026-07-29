@@ -22,11 +22,30 @@ class ForwardSpawnRequest:
 	var customer_data: CustomerData
 	var gate_index: int = 0
 	var start_food_gate: bool = false
+	var spawn_first_region: int = -1
 	# 提前生成只改变可见距离，胃口仍使用原定事件时刻的基准值。
 	var baseline_appetite: float = 0.0
 
 	func _init(request_kind: Kind) -> void:
 		kind = request_kind
+
+
+class RewardSpawnRequest:
+	var start_position: Vector3
+	var upgrade: UpgradeData
+	var baseline_appetite: float
+	var occupied_regions: int
+
+	func _init(
+		request_position: Vector3,
+		request_upgrade: UpgradeData,
+		request_baseline: float,
+		request_regions: int
+	) -> void:
+		start_position = request_position
+		upgrade = request_upgrade
+		baseline_appetite = request_baseline
+		occupied_regions = request_regions
 
 
 # 普通波次成员按各自速度保存独立预生成时刻，基准值仍来自同一原定波次。
@@ -52,14 +71,16 @@ const REWARD_GATE_SCENE: PackedScene = preload("res://scenes/upgrade_drop_3d.tsc
 const LEGACY_CUSTOMER_SPAWN_Z: float = -6.4
 const LEGACY_GATE_SPAWN_Z: float = 0.0
 const FORWARD_GATE_SPEED: float = 2.5
+const BASE_WORLD_SCROLL_SPEED: float = 2.05
 const TARGET_CONE_EPSILON: float = 0.0001
 # 远端生成队列还需吸收与食客/掉落门错峰产生的短暂等待。
 const FORWARD_GATE_QUEUE_LEAD_SECONDS: float = 2.0
 const REWARD_GATE_SEARCH_STEP: float = 0.1
-const REWARD_GATE_SEARCH_LIMIT: float = 4.0
+const REWARD_GATE_SEARCH_LIMIT: float = 40.0
 const POST_BOSS_MINIMUM_DURATION: float = 40.0
-const SMOKE_TEST_TIMEOUT: float = 450.0
+const SMOKE_TEST_TIMEOUT: float = 600.0
 const SMOKE_TEST_BOSS_CLEAR_DURATION: float = 30.0
+const SMOKE_MINIMUM_GEOMETRY_GAP: float = 1.1
 const PLAYTEST_RECORD_PATH: String = "user://playtest_runs.jsonl"
 
 @export_group("Prototype data")
@@ -85,7 +106,7 @@ const PLAYTEST_RECORD_PATH: String = "user://playtest_runs.jsonl"
 @onready var hud: GameHud = %Hud
 @onready var debug_menu: DebugMenu = %DebugMenu
 
-var world_scroll_speed: float = 2.05
+var world_scroll_speed: float = BASE_WORLD_SCROLL_SPEED
 var state: RunState
 var playfield: Playfield
 var phase: Phase = Phase.INTRO
@@ -99,15 +120,19 @@ var _debug_accumulator: float = 0.0
 # 普通门双选与食客奖励单抽共同使用这份本局候选模板。
 var _normal_upgrade_pool: Array[UpgradeData] = []
 var _normal_wave_index: int = 0
-var _next_normal_spawn_time: float = 0.0
-var _scheduled_normal_customers: Array[ScheduledCustomerSpawn] = []
+var _next_gate_index: int = 0
 var _smoke_test: bool = false
 # 请求队列保留时间轴顺序，并在预测到纵向追尾时延迟生成。
 var _forward_spawn_requests: Array[ForwardSpawnRequest] = []
+var _reward_spawn_requests: Array[RewardSpawnRequest] = []
 var _normal_waves_suspended: bool = false
 # Boss事件到达时若仍有强化门，先保留前进阶段让该门完成结算。
 var _boss_pending: bool = false
 var _boss_reward_pending: bool = false
+var _bosses_started: int = 0
+var _bosses_completed: int = 0
+var _current_speed_tier: int = -1
+var _crosswind_sign: float = 1.0
 var _post_boss_active: bool = false
 var _playtest_record_saved: bool = false
 var _post_boss_satisfaction_start: Dictionary[StringName, float] = {}
@@ -118,6 +143,8 @@ var _run_seed: int = 0
 var _active_special_choices: Array[StringName] = []
 var _special_choice_source: StringName = &""
 var _smoke_minimum_gate_customer_gap: float = INF
+var _smoke_minimum_gap_kind: String = ""
+var _smoke_minimum_gap_detail: String = ""
 # Excel 加载结果只在本局内存中生效，避免改写场景引用的共享 Resource。
 var _food_data_by_id: Dictionary[StringName, FoodData] = {}
 var _customer_data_by_id: Dictionary[StringName, CustomerData] = {}
@@ -131,6 +158,12 @@ var _baguette_giant_width_regions: float = RunState.BAGUETTE_GIANT_WIDTH_REGIONS
 var _baguette_giant_pierce_count: int = RunState.BAGUETTE_GIANT_PIERCE_COUNT
 var _baguette_giant_duration_multiplier: float = RunState.BAGUETTE_GIANT_DURATION_MULTIPLIER
 var _baguette_giant_satisfaction_multiplier: float = RunState.BAGUETTE_GIANT_SATISFACTION_MULTIPLIER
+var _reward_effect_scale: float = 0.4
+var _wine_curve_c: float = RunState.WINE_CURVE_C
+var _range_curve_c: float = RunState.RANGE_CURVE_C
+var _duration_curve_c: float = RunState.DURATION_CURVE_C
+var _cart_speed_curve_c: float = RunState.CART_SPEED_CURVE_C
+var _range_multiplier_cap: float = RunState.RANGE_MULTIPLIER_CAP
 var _debug_invincible: bool = false
 # 食材卡取得后转为等级卡；进化按持有状态进入池，全局效果可以重复取得。
 var _special_choice_pool: Array[StringName] = [
@@ -163,6 +196,7 @@ func _ready() -> void:
 		else:
 			_upgrade_rng.randomize()
 			_run_seed = _upgrade_rng.seed
+	_crosswind_sign = -1.0 if (_run_seed & 1) == 0 else 1.0
 	state = RunState.new()
 	state.run_seed = _run_seed
 	state.food_max_level = _special_food_max_level
@@ -174,6 +208,11 @@ func _ready() -> void:
 	state.baguette_giant_pierce_count = _baguette_giant_pierce_count
 	state.baguette_giant_duration_multiplier = _baguette_giant_duration_multiplier
 	state.baguette_giant_satisfaction_multiplier = _baguette_giant_satisfaction_multiplier
+	state.wine_curve_c = _wine_curve_c
+	state.range_curve_c = _range_curve_c
+	state.duration_curve_c = _duration_curve_c
+	state.cart_speed_curve_c = _cart_speed_curve_c
+	state.range_multiplier_cap = _range_multiplier_cap
 	print("PLAYTEST_RUN_SEED value=%d" % _run_seed)
 	if _smoke_test:
 		# 烟雾测试只验证流程闭环，不让扩展后的普通波次提前终止自动跑局。
@@ -213,13 +252,13 @@ func _load_timeline_balance() -> void:
 	)
 	if load_result.timeline != null:
 		director.timeline = load_result.timeline
-	if director.timeline != null:
-		_next_normal_spawn_time = director.timeline.normal_wave_start_time
 	if load_result.loaded_from_excel:
 		print(
-			"BALANCE_TIMELINE_LOADED path=%s events=%d" % [
+				"BALANCE_TIMELINE_LOADED path=%s events=%d gates=%d waves=%d" % [
 				TIMELINE_WORKBOOK_PATH,
-				director.timeline.event_times.size(),
+				director.timeline.event_progresses.size(),
+				director.timeline.normal_gate_count,
+				director.timeline.normal_wave_count,
 			]
 		)
 	else:
@@ -313,6 +352,12 @@ func _load_normal_upgrade_balance() -> void:
 	)
 	if load_result.loaded_from_excel:
 		_normal_upgrade_pool = load_result.upgrades
+		_reward_effect_scale = load_result.reward_effect_scale
+		_wine_curve_c = load_result.wine_curve_c
+		_range_curve_c = load_result.range_curve_c
+		_duration_curve_c = load_result.duration_curve_c
+		_cart_speed_curve_c = load_result.cart_speed_curve_c
+		_range_multiplier_cap = load_result.range_multiplier_cap
 		print(
 			"BALANCE_NORMAL_UPGRADES_LOADED path=%s shared_pool=%d" % [
 				NORMAL_UPGRADE_WORKBOOK_PATH,
@@ -390,30 +435,33 @@ func _special_upgrade_target_error(upgrades: Array[SpecialUpgradeData]) -> Strin
 
 
 func _process(delta: float) -> void:
-	if phase == Phase.FORWARD or phase == Phase.BOSS:
+	if phase == Phase.FORWARD:
 		state.elapsed_seconds += delta
-		director.advance(state.elapsed_seconds, _timeline_event_lead_seconds)
-		if phase == Phase.FORWARD:
-			_advance_normal_waves()
-			_process_spawn_requests()
-			if _boss_pending and not _has_pending_gate():
-				_begin_boss()
-			if _post_boss_active:
-				_try_finish_post_boss()
-			if _smoke_test:
-				_track_smoke_gate_customer_gap()
-		hud.set_time(state.elapsed_seconds)
+		# Boss请求到达后只让已排队对象完成接近，不再越过后续路程事件。
+		if not _boss_pending:
+			_advance_forward_progress(delta)
+			director.advance(forward_progress())
+			_advance_distance_spawns()
+		_process_spawn_requests()
+		_process_reward_spawn_requests()
+		if _boss_pending and not _has_pending_boss_blocker():
+			_begin_boss()
 		if _smoke_test:
-			if phase == Phase.BOSS and boss != null and is_instance_valid(boss):
-				# 自动跑局在Boss阶段跟随目标横坐标，避免把“固定发射角”误判为流程卡死。
-				cart.target_x = boss.position.x
-				# 流程烟雾以30秒固定测试火力穿过Boss，不把数值调优当作流程故障。
-				boss.receive_satisfaction(
-					boss.maximum_appetite * delta / SMOKE_TEST_BOSS_CLEAR_DURATION
-				)
-			else:
-				cart.target_x = 3.6 + sin(state.elapsed_seconds * 1.7) * 2.45
-			_check_smoke_timeout()
+			_track_smoke_gate_customer_gap()
+		hud.set_time(state.elapsed_seconds)
+	elif phase == Phase.BOSS:
+		state.elapsed_seconds += delta
+		hud.set_time(state.elapsed_seconds)
+	if _smoke_test:
+		if phase == Phase.BOSS and boss != null and is_instance_valid(boss):
+			# 自动跑局在Boss阶段跟随目标横坐标，避免把固定发射角误判为流程卡死。
+			cart.target_x = boss.position.x
+			boss.receive_satisfaction(
+				boss.maximum_appetite * delta / SMOKE_TEST_BOSS_CLEAR_DURATION
+			)
+		elif phase == Phase.FORWARD:
+			cart.target_x = 3.6 + sin(state.elapsed_seconds * 1.7) * 2.45
+		_check_smoke_timeout()
 	_debug_accumulator += delta
 	if _debug_accumulator >= 0.25:
 		_debug_accumulator = 0.0
@@ -432,6 +480,109 @@ func _process(delta: float) -> void:
 
 func is_world_scrolling() -> bool:
 	return phase == Phase.FORWARD
+
+
+func forward_progress() -> float:
+	if director == null or director.timeline == null or state == null:
+		return 0.0
+	return clampf(
+		state.forward_distance / maxf(0.001, director.timeline.course_distance(BASE_WORLD_SCROLL_SPEED)),
+		0.0,
+		1.0
+	)
+
+
+func forward_speed_multiplier() -> float:
+	if director == null or director.timeline == null:
+		return 1.0
+	return director.timeline.speed_multiplier_at_progress(forward_progress())
+
+
+# 前进距离、背景速度和疲劳共用同一压力档；切档只触发一次可读反馈。
+func _advance_forward_progress(delta: float) -> void:
+	if director == null or director.timeline == null:
+		return
+	var progress_before: float = forward_progress()
+	var tier: int = director.timeline.speed_tier_at_progress(progress_before)
+	var multiplier: float = director.timeline.forward_speed_multipliers[tier]
+	world_scroll_speed = BASE_WORLD_SCROLL_SPEED * multiplier
+	background.scroll_speed = world_scroll_speed
+	var pressure_ratio: float = director.timeline.pressure_ratio_at_progress(progress_before)
+	state.cart_base_speed_factor = lerpf(
+		1.0,
+		director.timeline.minimum_cart_base_speed_factor,
+		pressure_ratio
+	)
+	state.forward_distance += world_scroll_speed * delta
+	var next_tier: int = director.timeline.speed_tier_at_progress(forward_progress())
+	if next_tier != _current_speed_tier:
+		_current_speed_tier = next_tier
+		if next_tier > 0:
+			_crosswind_sign *= -1.0
+			hud.show_toast(
+				"路况升级 · 前进 %.1f× · %s侧风" % [
+					director.timeline.forward_speed_multipliers[next_tier],
+					"向右" if _crosswind_sign > 0.0 else "向左",
+				],
+				Color("#f0c45f")
+			)
+
+
+# 距离阈值只生成普通门和普通波次；精英与Boss仍由时间轴事件负责。
+func _advance_distance_spawns() -> void:
+	if director == null or director.timeline == null or _normal_waves_suspended:
+		return
+	var progress: float = forward_progress()
+	while _next_gate_index < director.timeline.normal_gate_count:
+		var gate_progress: float = float(_next_gate_index + 1) / float(
+			director.timeline.normal_gate_count + 1
+		)
+		if progress + 0.000001 < gate_progress:
+			break
+		_queue_gate(_next_gate_index, false, _baseline_appetite_at(gate_progress))
+		_next_gate_index += 1
+	while _normal_wave_index < director.timeline.normal_wave_count:
+		var wave_progress: float = float(_normal_wave_index + 1) / float(
+			director.timeline.normal_wave_count + 1
+		)
+		if progress + 0.000001 < wave_progress:
+			break
+		_queue_normal_wave(_normal_wave_index, wave_progress)
+		_normal_wave_index += 1
+
+
+# 保留当前五波类型轮换和每四波一次双客，只把生成轴从秒数改为路程。
+func _queue_normal_wave(wave_index: int, progress: float) -> void:
+	var pattern: int = wave_index % 5
+	var primary: CustomerData = basic_guest_data
+	if pattern == 2:
+		primary = fast_guest_data
+	elif pattern == 4:
+		primary = ranged_guest_data
+	var baseline: float = _baseline_appetite_at(progress)
+	_queue_customer(primary, baseline)
+	if wave_index % 4 == 3:
+		_queue_customer(basic_guest_data if pattern == 4 else fast_guest_data, baseline)
+
+
+func current_headwind_speed() -> float:
+	if director == null or director.timeline == null:
+		return 0.0
+	return (
+		director.timeline.headwind_factor
+		* BASE_WORLD_SCROLL_SPEED
+		* maxf(0.0, forward_speed_multiplier() - 1.0)
+	)
+
+
+func current_crosswind_speed() -> float:
+	if director == null or director.timeline == null:
+		return 0.0
+	return (
+		Playfield.design_to_world(director.timeline.max_crosswind_speed)
+		* director.timeline.pressure_ratio_at_progress(forward_progress())
+		* _crosswind_sign
+	)
 
 
 func can_weapons_fire() -> bool:
@@ -481,6 +632,16 @@ func customer_collides_with_cart(customer: Customer3D) -> bool:
 	if customer == null or cart == null:
 		return false
 	return customer.collision_rect_xz().intersects(cart.collision_rect_xz())
+
+
+# 高压档或低帧率下一帧可能跨过餐车，使用前后包围矩形补足连续接触判定。
+func customer_swept_collides_with_cart(customer: Customer3D, previous_z: float) -> bool:
+	if customer == null or cart == null:
+		return false
+	var current_rect: Rect2 = customer.collision_rect_xz()
+	var previous_rect: Rect2 = current_rect
+	previous_rect.position.y += previous_z - customer.position.z
+	return previous_rect.merge(current_rect).intersects(cart.collision_rect_xz())
 
 
 func get_priority_target() -> Node3D:
@@ -599,6 +760,9 @@ func spawn_projectile(
 		food.id == &"mushroom"
 		and state.has_food_evolution(&"mushroom_breath")
 	)
+	var giant_range_scale: float = (
+		state.effective_projectile_radius(food) / maxf(0.001, food.projectile_radius)
+	)
 	projectile.configure(
 		self,
 		start_position,
@@ -606,6 +770,7 @@ func spawn_projectile(
 		food,
 		amount,
 		speed,
+		_projectile_environment_velocity(food, giant_baguette),
 		radius,
 		lifetime,
 		hit_count,
@@ -613,11 +778,23 @@ func spawn_projectile(
 		should_home,
 		orbit_phase,
 		giant_baguette,
-		Playfield.REGION_WIDTH * state.baguette_giant_width_regions * state.range_multiplier if giant_baguette else 0.0,
+		Playfield.REGION_WIDTH * state.baguette_giant_width_regions * giant_range_scale if giant_baguette else 0.0,
 		breathing_enabled
 	)
 	if giant_baguette and is_instance_valid(background):
 		background.shake_camera()
+
+
+# 蘑菇随餐车环绕不受位移风；巨型法棍只承受普通投射物四分之一风偏。
+func _projectile_environment_velocity(food: FoodData, giant_baguette: bool) -> Vector3:
+	if food == null or food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
+		return Vector3.ZERO
+	var susceptibility: float = 0.25 if giant_baguette else 1.0
+	return Vector3(
+		current_crosswind_speed(),
+		0.0,
+		current_headwind_speed()
+	) * susceptibility
 
 
 func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
@@ -674,7 +851,7 @@ func on_gate_selected(
 		"%s：%s\n%s" % [
 			upgrade.display_name,
 			upgrade.effect_text(state.maximum_durability),
-			state.cumulative_effect_text(upgrade.kind),
+			_cumulative_upgrade_text(upgrade.kind),
 		],
 		upgrade.rarity_color
 	)
@@ -689,10 +866,44 @@ func on_customer_reward_gate_collected(upgrade: UpgradeData) -> void:
 		"奖励门 %s：%s\n%s" % [
 			upgrade.display_name,
 			upgrade.effect_text(state.maximum_durability),
-			state.cumulative_effect_text(upgrade.kind),
+			_cumulative_upgrade_text(upgrade.kind),
 		],
 		upgrade.rarity_color
 	)
+
+
+# 物理强化按已拥有食材显示实际倍率，避免把门牌原始百分比误读为线性终值。
+func _cumulative_upgrade_text(kind: UpgradeData.Kind) -> String:
+	if kind not in [
+		UpgradeData.Kind.WINE,
+		UpgradeData.Kind.SCALLION,
+		UpgradeData.Kind.STARCH,
+	]:
+		if kind == UpgradeData.Kind.LIGHT_CART:
+			var bonus: float = state.effective_cart_speed_bonus(Cart3D.BASE_MOVE_SPEED_DESIGN)
+			return "实际横移加值 +%.0f · 基础保留 %.0f%%" % [
+				bonus,
+				state.cart_base_speed_factor * 100.0,
+			]
+		return state.cumulative_effect_text(kind)
+	var texts: PackedStringArray = []
+	for food_id: StringName in state.foods:
+		var food: FoodData = _food_data_for_id(food_id)
+		if food == null:
+			continue
+		var multiplier: float = 1.0
+		match kind:
+			UpgradeData.Kind.WINE:
+				if food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
+					multiplier = state.effective_orbit_angular_speed(food) / food.orbit_angular_speed
+				else:
+					multiplier = state.effective_projectile_speed(food) / food.projectile_speed
+			UpgradeData.Kind.SCALLION:
+				multiplier = state.effective_projectile_radius(food) / food.projectile_radius
+			UpgradeData.Kind.STARCH:
+				multiplier = state.effective_duration(food) / food.base_lifetime
+		texts.append("%s×%.2f" % [food.display_name, multiplier])
+	return "实际：%s" % (" · ".join(texts) if not texts.is_empty() else "待装车后生效")
 
 
 func damage_cart(amount: float, source: String) -> void:
@@ -725,7 +936,6 @@ func _on_timeline_event(event_id: StringName) -> void:
 	elif event_id == &"ranged":
 		_queue_customer(ranged_guest_data, _scheduled_baseline_appetite(event_id))
 	elif event_id == &"elite":
-		_normal_waves_suspended = true
 		_queue_elite()
 	elif event_id == &"boss":
 		_start_boss()
@@ -754,17 +964,22 @@ func _queue_gate(index: int, is_start_gate: bool, baseline_appetite: float = 0.0
 	_forward_spawn_requests.append(request)
 
 
-# 按请求顺序生成；队首不安全时保留到后续帧，避免后来的事件越过它。
+# 普通食客与门可从当前安全项中先行生成；精英保持事件屏障，后续请求不得越过。
 func _process_spawn_requests() -> void:
 	var spawned_this_frame: int = 0
 	while not _forward_spawn_requests.is_empty() and spawned_this_frame < 4:
-		var request: ForwardSpawnRequest = _forward_spawn_requests[0]
-		if not _spawn_request_is_safe(request):
+		var request_index: int = _next_safe_spawn_request_index()
+		if request_index < 0:
 			return
-		_forward_spawn_requests.pop_front()
+		var request: ForwardSpawnRequest = _forward_spawn_requests[request_index]
+		_forward_spawn_requests.remove_at(request_index)
 		match request.kind:
 			ForwardSpawnRequest.Kind.CUSTOMER:
-				_spawn_customer_now(request.customer_data, request.baseline_appetite)
+				_spawn_customer_now(
+					request.customer_data,
+					request.baseline_appetite,
+					request.spawn_first_region
+				)
 			ForwardSpawnRequest.Kind.ELITE:
 				_spawn_elite_now()
 			ForwardSpawnRequest.Kind.GATE:
@@ -772,20 +987,51 @@ func _process_spawn_requests() -> void:
 		spawned_this_frame += 1
 
 
+# 精英是不可绕过的节奏节点；其前方普通请求只要安全便可消化队列积压。
+func _next_safe_spawn_request_index() -> int:
+	for index: int in range(_forward_spawn_requests.size()):
+		var request: ForwardSpawnRequest = _forward_spawn_requests[index]
+		if _spawn_request_is_safe(request):
+			return index
+		if request.kind == ForwardSpawnRequest.Kind.ELITE:
+			break
+	return -1
+
+
 # 对候选对象与全部活动前进对象做匀速路径预测，追尾风险解除后才生成。
 func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 	var candidate_z: float = 0.0 if request.start_food_gate else Playfield.FORWARD_SPAWN_Z
-	var candidate_speed: float = FORWARD_GATE_SPEED if request.kind == ForwardSpawnRequest.Kind.GATE else 2.5
+	var speed_multiplier: float = forward_speed_multiplier()
+	var candidate_speed: float = FORWARD_GATE_SPEED * speed_multiplier
+	var candidate_is_customer: bool = false
 	if request.kind == ForwardSpawnRequest.Kind.CUSTOMER:
 		if request.customer_data == null:
 			return false
 		candidate_z = Playfield.FORWARD_SPAWN_Z
-		candidate_speed = world_scroll_speed + Playfield.design_to_world(request.customer_data.move_speed)
+		var first_region: int = _find_safe_customer_first_region(
+			request.customer_data,
+			candidate_z,
+			(
+				BASE_WORLD_SCROLL_SPEED
+				+ Playfield.design_to_world(request.customer_data.move_speed)
+			) * speed_multiplier
+		)
+		if first_region < 0:
+			return false
+		request.spawn_first_region = first_region
+		candidate_is_customer = true
+		candidate_speed = (
+			BASE_WORLD_SCROLL_SPEED + Playfield.design_to_world(request.customer_data.move_speed)
+		) * speed_multiplier
 	elif request.kind == ForwardSpawnRequest.Kind.ELITE:
 		candidate_z = Playfield.FORWARD_SPAWN_Z
-		candidate_speed = world_scroll_speed + Playfield.design_to_world(elite_guest_data.move_speed)
+		candidate_speed = (
+			BASE_WORLD_SCROLL_SPEED + Playfield.design_to_world(elite_guest_data.move_speed)
+		) * speed_multiplier
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active:
+			continue
+		if candidate_is_customer:
 			continue
 		if not playfield.forward_paths_are_separated(
 			candidate_z,
@@ -825,13 +1071,72 @@ func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
 	return true
 
 
-func _spawn_customer_now(customer_data: CustomerData, scheduled_baseline_appetite: float = 0.0) -> void:
+# 普通食客可在合法占位中横向错开；只选择整条接近路径都不会追尾的位置。
+func _find_safe_customer_first_region(
+	customer_data: CustomerData,
+	candidate_z: float,
+	candidate_speed: float
+) -> int:
+	var occupied_regions: int = customer_data.occupied_regions
+	var max_start: int = Playfield.REGION_COUNT - occupied_regions
+	var default_first: int = (
+		(_spawn_counter + 1) * 2 + customer_data.spawn_pattern_offset()
+	) % (max_start + 1)
+	var candidate_width: float = maxf(
+		0.82,
+		float(occupied_regions) * Playfield.REGION_WIDTH - 0.18
+	)
+	for offset: int in range(max_start + 1):
+		var first_region: int = (default_first + offset) % (max_start + 1)
+		var candidate_x: float = playfield.spawn_x(first_region, occupied_regions)
+		var candidate_rect_x: Rect2 = Rect2(
+			candidate_x - candidate_width * 0.5,
+			0.0,
+			candidate_width,
+			1.0
+		)
+		var safe: bool = true
+		for customer: Customer3D in customers:
+			if not is_instance_valid(customer) or not customer.active:
+				continue
+			var existing_rect: Rect2 = customer.collision_rect_xz()
+			var existing_rect_x: Rect2 = Rect2(
+				existing_rect.position.x,
+				0.0,
+				existing_rect.size.x,
+				1.0
+			)
+			if not candidate_rect_x.intersects(existing_rect_x):
+				continue
+			if not playfield.forward_paths_are_separated(
+				candidate_z,
+				candidate_speed,
+				customer.position.z,
+				customer.travel_speed(),
+				Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE,
+				cart_destination_z()
+			):
+				safe = false
+				break
+		if safe:
+			return first_region
+	return -1
+
+
+func _spawn_customer_now(
+	customer_data: CustomerData,
+	scheduled_baseline_appetite: float = 0.0,
+	spawn_first_region: int = -1
+) -> void:
+	state.normal_customers_spawned += 1
 	_spawn_counter += 1
 	var customer: Customer3D = _instantiate_customer(customer_data)
 	var max_start: int = Playfield.REGION_COUNT - customer_data.occupied_regions
-	var first_region: int = (
-		_spawn_counter * 2 + customer_data.spawn_pattern_offset()
-	) % (max_start + 1)
+	var first_region: int = spawn_first_region
+	if first_region < 0:
+		first_region = (
+			_spawn_counter * 2 + customer_data.spawn_pattern_offset()
+		) % (max_start + 1)
 	customer.position = Vector3(
 		playfield.spawn_x(first_region, customer_data.occupied_regions),
 		0.0,
@@ -842,65 +1147,17 @@ func _spawn_customer_now(customer_data: CustomerData, scheduled_baseline_appetit
 	if baseline_appetite <= 0.0:
 		baseline_appetite = _current_baseline_appetite()
 	var reward_upgrade: UpgradeData = _roll_customer_reward()
-	var appetite: float = customer_data.appetite_at(baseline_appetite, reward_upgrade.value_ratio)
+	var appetite: float = customer_data.appetite_at(
+		baseline_appetite,
+		reward_upgrade.value_ratio,
+		reward_upgrade.source_scale
+	)
 	customer.configure(customer_data, self, _spawn_counter, appetite, reward_upgrade, baseline_appetite)
 	customer.satisfied.connect(_on_customer_satisfied)
 	customer.collided_with_cart.connect(_on_customer_collided_with_cart)
 	customer.escaped.connect(_on_customer_escaped)
 	customer.ranged_attack.connect(_on_customer_ranged_attack)
 	customers.append(customer)
-
-
-func _advance_normal_waves() -> void:
-	var elapsed: float = state.elapsed_seconds
-	if director.timeline == null or _normal_waves_suspended:
-		return
-	var normal_wave_end_time: float = director.timeline.normal_wave_end_time
-	if elapsed >= normal_wave_end_time:
-		return
-	_flush_scheduled_normal_customers(elapsed)
-	while _next_normal_spawn_time < normal_wave_end_time:
-		var pattern: int = _normal_wave_index % 5
-		var wave_customers: Array[CustomerData] = []
-		var customer_data: CustomerData = basic_guest_data
-		if pattern == 2:
-			customer_data = fast_guest_data
-		elif pattern == 4:
-			customer_data = ranged_guest_data
-		wave_customers.append(customer_data)
-		if _normal_wave_index % 4 == 3:
-			wave_customers.append(basic_guest_data if pattern == 4 else fast_guest_data)
-		var earliest_trigger_time: float = INF
-		for wave_customer: CustomerData in wave_customers:
-			earliest_trigger_time = minf(
-				earliest_trigger_time,
-				_next_normal_spawn_time - _customer_spawn_lead_seconds(wave_customer)
-			)
-		if elapsed < earliest_trigger_time:
-			break
-		var baseline_appetite: float = _baseline_appetite_at(_next_normal_spawn_time)
-		for wave_customer: CustomerData in wave_customers:
-			var scheduled: ScheduledCustomerSpawn = ScheduledCustomerSpawn.new()
-			scheduled.customer_data = wave_customer
-			scheduled.trigger_time = _next_normal_spawn_time - _customer_spawn_lead_seconds(wave_customer)
-			scheduled.baseline_appetite = baseline_appetite
-			_scheduled_normal_customers.append(scheduled)
-		_normal_wave_index += 1
-		_next_normal_spawn_time += director.timeline.normal_wave_interval_at(
-			_next_normal_spawn_time
-		)
-		_flush_scheduled_normal_customers(elapsed)
-
-
-# 同一波不同速度的食客按各自新增路程提前量入队，避免快客被过早放出。
-func _flush_scheduled_normal_customers(elapsed: float) -> void:
-	var remaining: Array[ScheduledCustomerSpawn] = []
-	for scheduled: ScheduledCustomerSpawn in _scheduled_normal_customers:
-		if elapsed >= scheduled.trigger_time:
-			_queue_customer(scheduled.customer_data, scheduled.baseline_appetite)
-		else:
-			remaining.append(scheduled)
-	_scheduled_normal_customers = remaining
 
 
 func _spawn_elite_now() -> void:
@@ -959,6 +1216,7 @@ func _spawn_gate_now(_index: int, is_start_gate: bool, scheduled_baseline_appeti
 		push_error("NORMAL_UPGRADE_POOL_TOO_SMALL")
 		gate.queue_free()
 		return
+	state.record_normal_upgrade_offer(options)
 	gate.configure(self, options[0], options[1], false, baseline_appetite, _spawn_counter)
 
 
@@ -966,19 +1224,32 @@ func _start_boss() -> void:
 	if phase == Phase.BOSS or phase == Phase.RESULTS or phase == Phase.FAILED:
 		return
 	_normal_waves_suspended = true
-	_scheduled_normal_customers.clear()
-	if _has_pending_gate():
+	if _has_pending_boss_blocker():
 		_boss_pending = true
 		return
 	_begin_boss()
 
 
-func _has_pending_gate() -> bool:
+# Boss等待既定普通门和精英完成；普通食客可在正式开战清场时统一离场。
+func _has_pending_boss_blocker() -> bool:
+	if not _reward_spawn_requests.is_empty():
+		return true
 	for child: Node in gates.get_children():
 		if child is UpgradeGate3D and not child.is_queued_for_deletion():
 			return true
+	for customer: Customer3D in customers:
+		if (
+			is_instance_valid(customer)
+			and customer.active
+			and customer.data != null
+			and customer.data.category == CustomerData.Category.ELITE
+		):
+			return true
 	for request: ForwardSpawnRequest in _forward_spawn_requests:
-		if request.kind == ForwardSpawnRequest.Kind.GATE:
+		if request.kind in [ForwardSpawnRequest.Kind.GATE, ForwardSpawnRequest.Kind.ELITE]:
+			return true
+	for child: Node in drops.get_children():
+		if child is UpgradeDrop3D and not child.is_queued_for_deletion():
 			return true
 	return false
 
@@ -986,6 +1257,7 @@ func _has_pending_gate() -> bool:
 # 最后一门完成后才停止道路并清场，避免编辑器位置变化吞掉既定强化门。
 func _begin_boss() -> void:
 	_boss_pending = false
+	_bosses_started += 1
 	phase = Phase.BOSS
 	background.scrolling = false
 	_clear_forward_objects()
@@ -1048,12 +1320,57 @@ func _spawn_customer_reward_gate(
 ) -> void:
 	if upgrade == null:
 		return
+	var safe_z: float = _find_reward_gate_spawn_z(start_position.z)
+	if is_inf(safe_z):
+		_reward_spawn_requests.append(RewardSpawnRequest.new(
+			start_position,
+			upgrade,
+			baseline_appetite,
+			occupied_regions
+		))
+		return
+	_spawn_customer_reward_gate_now(
+		start_position,
+		upgrade,
+		baseline_appetite,
+		occupied_regions,
+		safe_z
+	)
+
+
+func _spawn_customer_reward_gate_now(
+	start_position: Vector3,
+	upgrade: UpgradeData,
+	baseline_appetite: float,
+	occupied_regions: int,
+	safe_z: float
+) -> void:
 	state.upgrade_drops_spawned += 1
 	_spawn_counter += 1
 	var drop: UpgradeDrop3D = REWARD_GATE_SCENE.instantiate() as UpgradeDrop3D
-	start_position.z = _find_reward_gate_spawn_z(start_position.z)
+	start_position.z = safe_z
 	drops.add_child(drop)
 	drop.configure(self, upgrade, start_position, baseline_appetite, occupied_regions, _spawn_counter)
+
+
+func _process_reward_spawn_requests() -> void:
+	var spawned_this_frame: int = 0
+	var index: int = 0
+	while index < _reward_spawn_requests.size() and spawned_this_frame < 4:
+		var request: RewardSpawnRequest = _reward_spawn_requests[index]
+		var safe_z: float = _find_reward_gate_spawn_z(request.start_position.z)
+		if is_inf(safe_z):
+			index += 1
+			continue
+		_reward_spawn_requests.remove_at(index)
+		_spawn_customer_reward_gate_now(
+			request.start_position,
+			request.upgrade,
+			request.baseline_appetite,
+			request.occupied_regions,
+			safe_z
+		)
+		spawned_this_frame += 1
 
 
 # 奖励门以食客原位置为中心小步双向搜索，避免单向避让把门推到远处。
@@ -1069,20 +1386,20 @@ func _find_reward_gate_spawn_z(preferred_z: float) -> float:
 		if _reward_gate_spawn_is_safe(toward_far_z):
 			return toward_far_z
 		distance += REWARD_GATE_SEARCH_STEP
-	# 极密集时宁可保留掉落因果位置，也不把奖励门瞬移到远景。
-	return preferred_z
+	return INF
 
 
 func _reward_gate_spawn_is_safe(candidate_z: float) -> bool:
+	var candidate_speed: float = FORWARD_GATE_SPEED * forward_speed_multiplier()
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active:
 			continue
 		if not playfield.forward_paths_are_separated(
 			candidate_z,
-			2.5,
+			candidate_speed,
 			customer.position.z,
 			customer.travel_speed(),
-			Playfield.FORWARD_MIN_CENTER_DISTANCE,
+			Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE + 2.2,
 			cart_destination_z()
 		):
 			return false
@@ -1092,10 +1409,10 @@ func _reward_gate_spawn_is_safe(candidate_z: float) -> bool:
 		var gate: UpgradeGate3D = child as UpgradeGate3D
 		if not playfield.forward_paths_are_separated(
 			candidate_z,
-			2.5,
+			candidate_speed,
 			gate.position.z,
 			gate.travel_speed(),
-			Playfield.FORWARD_MIN_CENTER_DISTANCE,
+			Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE + 2.2,
 			cart_destination_z()
 		):
 			return false
@@ -1105,10 +1422,10 @@ func _reward_gate_spawn_is_safe(candidate_z: float) -> bool:
 		var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
 		if not playfield.forward_paths_are_separated(
 			candidate_z,
-			2.5,
+			candidate_speed,
 			reward_gate.position.z,
 			reward_gate.travel_speed(),
-			Playfield.FORWARD_MIN_CENTER_DISTANCE,
+			Playfield.FORWARD_SPAWN_RESERVATION_DISTANCE + 2.2,
 			cart_destination_z()
 		):
 			return false
@@ -1152,33 +1469,29 @@ func _on_special_choice_selected(choice_id: StringName) -> void:
 			hud.show_toast("%s：所有食材穿透次数 +%d" % [upgrade.display_name, pierce_amount])
 	_active_special_choices.clear()
 	hud.hide_special_choices()
-	phase = Phase.FORWARD
-	_normal_waves_suspended = false
-	_scheduled_normal_customers.clear()
-	_next_normal_spawn_time = state.elapsed_seconds + 1.0
 	if _boss_reward_pending:
 		_boss_reward_pending = false
-		_post_boss_active = true
-		_post_boss_started_at = state.elapsed_seconds
-		_post_boss_satisfaction_start = state.satisfaction_by_food.duplicate()
-		_post_boss_durability_lost_start = state.durability_lost
-		_post_boss_gate_choices_start = state.gate_choices
-		background.scrolling = true
 		if boss != null and is_instance_valid(boss):
 			boss.queue_free()
-		hud.set_phase("胜后复跑 · 立即体验第四次强化")
-	else:
-		hud.set_phase("继续前进 · 构筑已变化")
+		if _bosses_completed >= 2:
+			_finish_run()
+			return
+	phase = Phase.FORWARD
+	_normal_waves_suspended = false
+	background.scrolling = true
+	hud.set_phase("继续前进 · 构筑已变化")
 
 
 func _on_boss_satisfied() -> void:
 	state.boss_duration = state.elapsed_seconds - _boss_started_at
+	state.boss_durations.append(state.boss_duration)
+	_bosses_completed += 1
 	state.customers_satisfied += 1
 	phase = Phase.CHOICE
 	_boss_reward_pending = true
-	hud.set_phase("Boss赏赐 · 第四次三选一")
-	hud.show_toast("Boss满意离场！选择强化后继续验证40秒", Color("#f0c45f"))
-	_show_special_choices(&"boss", "Boss满意了！选择胜后强化")
+	hud.set_phase("Boss赏赐 · 特别三选一")
+	hud.show_toast("Boss满意离场！选择本局特别强化", Color("#f0c45f"))
+	_show_special_choices(&"boss", "Boss满意了！选择特别强化")
 
 
 func _show_special_choices(source: StringName, title: String) -> void:
@@ -1219,26 +1532,13 @@ func _apply_food_card(food: FoodData) -> void:
 	hud.show_toast("获得%s：加入自动投喂构筑" % food.display_name)
 
 
-func _try_finish_post_boss() -> void:
-	var minimum_finish_time: float = maxf(
-		_post_boss_started_at + POST_BOSS_MINIMUM_DURATION,
-		_last_timeline_gate_time()
-	)
-	if state.elapsed_seconds < minimum_finish_time:
-		return
-	if _has_pending_gate() or state.gate_choices < _expected_gate_count():
-		return
-	_finish_run()
-
-
 func _finish_run() -> void:
 	if phase == Phase.RESULTS:
 		return
-	_post_boss_active = false
 	phase = Phase.RESULTS
 	_save_playtest_record(&"completed")
 	hud.set_phase("构筑验证完成")
-	hud.show_results("Boss满意离场，胜后强化已验证！", _build_results_text())
+	hud.show_results("最终Boss满意离场，八分钟服务完成！", _build_results_text())
 	if _smoke_test:
 		if state.gate_choices != _expected_gate_count():
 			push_error(
@@ -1250,8 +1550,25 @@ func _finish_run() -> void:
 			Engine.time_scale = 1.0
 			get_tree().quit(1)
 			return
-		if _smoke_minimum_gate_customer_gap < Playfield.FORWARD_MIN_CENTER_DISTANCE - 0.1:
-			push_error("SMOKE_TEST_FAILED forward_gap=%.2f" % _smoke_minimum_gate_customer_gap)
+		if state.normal_customers_spawned != director.timeline.expected_normal_customer_count():
+			push_error(
+				"SMOKE_TEST_FAILED customers=%d expected=%d" % [
+					state.normal_customers_spawned,
+					director.timeline.expected_normal_customer_count(),
+				]
+			)
+			Engine.time_scale = 1.0
+			get_tree().quit(1)
+			return
+		if _smoke_minimum_gate_customer_gap < SMOKE_MINIMUM_GEOMETRY_GAP:
+			push_error(
+				"SMOKE_TEST_FAILED forward_gap=%.2f kind=%s detail=%s"
+				% [
+					_smoke_minimum_gate_customer_gap,
+					_smoke_minimum_gap_kind,
+					_smoke_minimum_gap_detail,
+				]
+			)
 			Engine.time_scale = 1.0
 			get_tree().quit(1)
 			return
@@ -1265,20 +1582,21 @@ func _finish_run() -> void:
 			Engine.time_scale = 1.0
 			get_tree().quit(1)
 			return
-		if state.special_choice_records.size() != 4:
+		if state.special_choice_records.size() != 8:
 			push_error(
-				"SMOKE_TEST_FAILED special_choices=%d expected=4"
+				"SMOKE_TEST_FAILED special_choices=%d expected=8"
 				% state.special_choice_records.size()
 			)
 			Engine.time_scale = 1.0
 			get_tree().quit(1)
 			return
 		print(
-			"SMOKE_TEST_OK elapsed=%.2f gates=%d elites=%d specials=%d defeated=%d collisions=%d reward_gates=%d collected=%d min_gap=%.2f" % [
+			"SMOKE_TEST_OK elapsed=%.2f gates=%d elites=%d specials=%d spawned=%d defeated=%d collisions=%d reward_gates=%d collected=%d min_gap=%.2f" % [
 				state.elapsed_seconds,
 				state.gate_choices,
 				state.elite_durations.size(),
 				state.special_choice_records.size(),
+				state.normal_customers_spawned,
 				state.customers_satisfied,
 				state.collided_defeats,
 				state.upgrade_drops_spawned,
@@ -1293,23 +1611,7 @@ func _finish_run() -> void:
 
 
 func _expected_gate_count() -> int:
-	var count: int = 0
-	if director.timeline == null:
-		return count
-	for event_text: String in director.timeline.event_ids:
-		if event_text.begins_with("gate_"):
-			count += 1
-	return count
-
-
-func _last_timeline_gate_time() -> float:
-	var latest: float = 0.0
-	if director.timeline == null:
-		return latest
-	for event_index: int in range(director.timeline.event_ids.size()):
-		if director.timeline.event_ids[event_index].begins_with("gate_"):
-			latest = maxf(latest, director.timeline.event_times[event_index])
-	return latest
+	return director.timeline.normal_gate_count if director.timeline != null else 0
 
 
 func _on_cart_damaged(_amount: float) -> void:
@@ -1351,8 +1653,10 @@ func _on_debug_action_requested(action_id: StringName) -> void:
 		&"advance_30":
 			if phase == Phase.FORWARD or phase == Phase.BOSS:
 				state.elapsed_seconds += 30.0
+				if phase == Phase.FORWARD:
+					state.forward_distance += world_scroll_speed * 30.0
 				hud.set_time(state.elapsed_seconds)
-				feedback = "局内时间已前进 30 秒，关闭菜单后继续触发时间轴"
+				feedback = "局内进度已前进 30 秒等效距离"
 			else:
 				success = false
 				feedback = "当前阶段不能推进时间"
@@ -1402,7 +1706,6 @@ func _on_debug_action_requested(action_id: StringName) -> void:
 			feedback = "已排队生成远程食客" if success else "只有前进阶段可生成食客"
 		&"spawn_elite":
 			if phase == Phase.FORWARD:
-				_normal_waves_suspended = true
 				_queue_elite()
 				feedback = "已排队生成精英食客"
 			else:
@@ -1418,7 +1721,6 @@ func _on_debug_action_requested(action_id: StringName) -> void:
 		&"start_boss":
 			if phase == Phase.FORWARD:
 				_normal_waves_suspended = true
-				_scheduled_normal_customers.clear()
 				_begin_boss()
 				feedback = "Boss 已开始，关闭菜单后进入战斗"
 			else:
@@ -1431,9 +1733,7 @@ func _on_debug_action_requested(action_id: StringName) -> void:
 		&"clear_forward":
 			if phase == Phase.FORWARD:
 				_clear_forward_objects()
-				_scheduled_normal_customers.clear()
 				_normal_waves_suspended = false
-				_next_normal_spawn_time = state.elapsed_seconds + 1.0
 				feedback = "食客、门、奖励与投射物已清空"
 			else:
 				success = false
@@ -1590,6 +1890,7 @@ func _debug_satisfy_targets() -> int:
 
 func _clear_forward_objects() -> void:
 	_forward_spawn_requests.clear()
+	_reward_spawn_requests.clear()
 	for customer: Customer3D in customers:
 		if is_instance_valid(customer):
 			customer.queue_free()
@@ -1628,42 +1929,91 @@ func _target_is_better(
 # 烟雾测试记录真实运行中的最小门客距离，防止预测公式接入错误。
 func _track_smoke_gate_customer_gap() -> void:
 	for customer: Customer3D in customers:
-		if not is_instance_valid(customer) or not customer.active:
+		if (
+			not is_instance_valid(customer)
+			or not customer.active
+			or customer.position.z >= cart_destination_z()
+		):
 			continue
 		for child: Node in gates.get_children():
 			if not child is UpgradeGate3D or child.is_queued_for_deletion():
 				continue
 			var gate: UpgradeGate3D = child as UpgradeGate3D
-			_smoke_minimum_gate_customer_gap = minf(
-				_smoke_minimum_gate_customer_gap,
-				absf(customer.position.z - gate.position.z)
-			)
+			if gate.position.z >= cart_destination_z():
+				continue
+			var gate_gap: float = absf(customer.position.z - gate.position.z)
+			_track_smoke_gap(gate_gap, "customer_gate")
 		for child: Node in drops.get_children():
 			if not child is UpgradeDrop3D or child.is_queued_for_deletion():
 				continue
 			var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
-			_smoke_minimum_gate_customer_gap = minf(
-				_smoke_minimum_gate_customer_gap,
-				absf(customer.position.z - reward_gate.position.z)
+			if reward_gate.position.z >= cart_destination_z():
+				continue
+			var reward_width: float = reward_gate._panel_width()
+			var customer_rect: Rect2 = customer.collision_rect_xz()
+			var reward_rect_x: Rect2 = Rect2(
+				reward_gate.position.x - reward_width * 0.5,
+				0.0,
+				reward_width,
+				1.0
+			)
+			var customer_rect_x: Rect2 = Rect2(
+				customer_rect.position.x,
+				0.0,
+				customer_rect.size.x,
+				1.0
+			)
+			if not customer_rect_x.intersects(reward_rect_x):
+				continue
+			var reward_gap: float = absf(customer.position.z - reward_gate.position.z)
+			_track_smoke_gap(
+				reward_gap,
+				"customer_reward",
+				"cz=%.2f rz=%.2f cs=%.2f rs=%.2f p=%.3f" % [
+					customer.position.z,
+					reward_gate.position.z,
+					customer.travel_speed(),
+					reward_gate.travel_speed(),
+					forward_progress(),
+				]
 			)
 	var reward_gates: Array[UpgradeDrop3D] = []
 	for child: Node in drops.get_children():
 		if child is UpgradeDrop3D and not child.is_queued_for_deletion():
 			var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
+			if reward_gate.position.z >= cart_destination_z():
+				continue
 			reward_gates.append(reward_gate)
 			for gate_child: Node in gates.get_children():
 				if not gate_child is UpgradeGate3D or gate_child.is_queued_for_deletion():
 					continue
-				_smoke_minimum_gate_customer_gap = minf(
-					_smoke_minimum_gate_customer_gap,
-					absf(reward_gate.position.z - (gate_child as UpgradeGate3D).position.z)
+				if (gate_child as UpgradeGate3D).position.z >= cart_destination_z():
+					continue
+				var reward_gate_gap: float = absf(
+					reward_gate.position.z - (gate_child as UpgradeGate3D).position.z
 				)
+				_track_smoke_gap(reward_gate_gap, "reward_gate")
 	for first_index: int in range(reward_gates.size()):
 		for second_index: int in range(first_index + 1, reward_gates.size()):
-			_smoke_minimum_gate_customer_gap = minf(
-				_smoke_minimum_gate_customer_gap,
-				absf(reward_gates[first_index].position.z - reward_gates[second_index].position.z)
-			)
+			var first_gate: UpgradeDrop3D = reward_gates[first_index]
+			var second_gate: UpgradeDrop3D = reward_gates[second_index]
+			var first_width: float = first_gate._panel_width()
+			var second_width: float = second_gate._panel_width()
+			if (
+				first_gate.position.x + first_width * 0.5 <= second_gate.position.x - second_width * 0.5
+				or second_gate.position.x + second_width * 0.5 <= first_gate.position.x - first_width * 0.5
+			):
+				continue
+			var reward_pair_gap: float = absf(first_gate.position.z - second_gate.position.z)
+			_track_smoke_gap(reward_pair_gap, "reward_pair")
+
+
+func _track_smoke_gap(gap: float, kind: String, detail: String = "") -> void:
+	if gap >= _smoke_minimum_gate_customer_gap:
+		return
+	_smoke_minimum_gate_customer_gap = gap
+	_smoke_minimum_gap_kind = kind
+	_smoke_minimum_gap_detail = detail
 
 
 func _build_results_text() -> String:
@@ -1727,14 +2077,21 @@ func _save_playtest_record(outcome: StringName) -> void:
 		"food_levels": food_levels_record,
 		"food_evolutions": _string_name_array_to_strings(state.food_evolutions),
 		"special_choices": state.special_choice_records_as_array(),
+		"normal_upgrades": _build_normal_upgrade_playtest_record(),
+		"final_food_multipliers": _build_final_food_multiplier_record(),
 		"common_gate_choices": state.gate_choices,
 		"reward_gate_choices": state.dropped_upgrades,
 		"satisfaction_by_food": food_satisfaction_record,
 		"elite_durations": state.elite_durations,
 		"boss_duration": state.boss_duration,
+		"boss_durations": state.boss_durations,
 		"durability_lost": state.durability_lost,
+		"final_durability": state.current_durability,
+		"maximum_durability": state.maximum_durability,
+		"temporary_shield": state.temporary_shield,
 		"hits_taken": state.hits_taken,
 		"normal_defeats": state.normal_defeats,
+		"normal_customers_spawned": state.normal_customers_spawned,
 		"collided_defeats": state.collided_defeats,
 		"post_boss_performance": _build_post_boss_performance_record(),
 	}
@@ -1751,6 +2108,50 @@ func _save_playtest_record(outcome: StringName) -> void:
 	file.store_line(JSON.stringify(record))
 	file.close()
 	print("PLAYTEST_RECORD_SAVED path=%s seed=%d" % [PLAYTEST_RECORD_PATH, state.run_seed])
+
+
+# 每项同时保留提供、选择、实际结算值与点数贡献，供12局横向比较。
+func _build_normal_upgrade_playtest_record() -> Array[Dictionary]:
+	var ids: Array[String] = []
+	for upgrade_id: StringName in state.normal_upgrade_offer_counts:
+		ids.append(String(upgrade_id))
+	for upgrade_id: StringName in state.normal_upgrade_choice_counts:
+		if not ids.has(String(upgrade_id)):
+			ids.append(String(upgrade_id))
+	ids.sort()
+	var records: Array[Dictionary] = []
+	for id_text: String in ids:
+		var upgrade_id: StringName = StringName(id_text)
+		records.append({
+			"id": id_text,
+			"offered": state.normal_upgrade_offer_counts.get(upgrade_id, 0),
+			"selected": state.normal_upgrade_choice_counts.get(upgrade_id, 0),
+			"selected_value": state.normal_upgrade_value_totals.get(upgrade_id, 0.0),
+			"contribution": state.normal_upgrade_contribution_totals.get(upgrade_id, 0.0),
+		})
+	return records
+
+
+# 物理属性记录食材转译后的终局倍率，避免复盘时把原始累计值误当成实际收益。
+func _build_final_food_multiplier_record() -> Dictionary:
+	var records: Dictionary = {}
+	for food_id: StringName in state.foods:
+		var food: FoodData = _food_data_for_id(food_id)
+		if food == null:
+			continue
+		var wine_multiplier: float = (
+			state.effective_orbit_angular_speed(food) / maxf(0.001, food.orbit_angular_speed)
+			if food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM
+			else state.effective_projectile_speed(food) / maxf(0.001, food.projectile_speed)
+		)
+		records[String(food_id)] = {
+			"satisfaction": state.effective_satisfaction(food) / maxf(0.001, food.base_satisfaction),
+			"attack_speed": 1.0 + state.attack_speed_bonus * food.attack_speed_upgrade_scale,
+			"wine": wine_multiplier,
+			"range": state.effective_projectile_radius(food) / maxf(0.001, food.projectile_radius),
+			"duration": state.effective_duration(food) / maxf(0.001, food.base_lifetime),
+		}
+	return records
 
 
 func _build_post_boss_performance_record() -> Dictionary:
@@ -1783,11 +2184,11 @@ func _build_prototype_upgrades() -> void:
 	if not _normal_upgrade_pool.is_empty():
 		return
 	_normal_upgrade_pool = [
-		_make_upgrade_range(&"sugar", "糖", UpgradeData.Kind.SUGAR, 0.05, 0.45, "%"),
-		_make_upgrade_range(&"quick_prep", "快速备餐", UpgradeData.Kind.QUICK_PREP, 0.02, 0.20, "%"),
+		_make_upgrade_range(&"sugar", "糖", UpgradeData.Kind.SUGAR, 0.05, 0.30, "%"),
+		_make_upgrade_range(&"quick_prep", "快速备餐", UpgradeData.Kind.QUICK_PREP, 0.05, 0.30, "%"),
 		_make_upgrade_range(&"light_cart", "轻便餐车", UpgradeData.Kind.LIGHT_CART, 50.0, 300.0, "速度"),
-		_make_upgrade_range(&"sturdy_cart", "餐车改造", UpgradeData.Kind.STURDY_CART, 0.05, 0.32, "%"),
-		_make_upgrade_range(&"repair", "紧急维修", UpgradeData.Kind.REPAIR, 0.05, 0.40, "%"),
+		_make_upgrade_range(&"sturdy_cart", "餐车改造", UpgradeData.Kind.STURDY_CART, 0.02, 0.11, "%"),
+		_make_upgrade_range(&"repair", "紧急维修", UpgradeData.Kind.REPAIR, 0.12, 0.55, "%"),
 		_make_upgrade_range(&"wine", "酒", UpgradeData.Kind.WINE, 0.10, 0.50, "%"),
 		_make_upgrade_range(&"scallion", "葱", UpgradeData.Kind.SCALLION, 0.10, 0.60, "%"),
 		_make_upgrade_range(&"starch", "淀粉", UpgradeData.Kind.STARCH, 0.15, 0.75, "%"),
@@ -1880,7 +2281,13 @@ func _food_data_for_id(food_id: StringName) -> FoodData:
 # 普通食客从普通强化共用池锁定一项及其百分位，胃口和奖励门共享结果。
 func _roll_customer_reward() -> UpgradeData:
 	var options: Array[UpgradeData] = _roll_normal_upgrade_options(1)
-	return options[0] if not options.is_empty() else null
+	if options.is_empty():
+		return null
+	var reward: UpgradeData = options[0]
+	reward.set_source_scale(_reward_effect_scale, "小份奖励")
+	if state != null:
+		state.record_normal_upgrade_offer([reward])
+	return reward
 
 
 # 从当前有效池完全随机抽出三个不同选项；不做新食材或进化保底。
@@ -2008,52 +2415,17 @@ func _special_choice_texts(choice_ids: Array[StringName]) -> Dictionary[StringNa
 
 
 func _current_baseline_appetite() -> float:
-	return _baseline_appetite_at(state.elapsed_seconds)
+	return _baseline_appetite_at(forward_progress())
 
 
-func _baseline_appetite_at(elapsed_seconds: float) -> float:
+func _baseline_appetite_at(progress: float) -> float:
 	if director.timeline == null:
 		return 20.0
-	return director.timeline.baseline_appetite_at(elapsed_seconds)
-
-
-# 提前量同时补偿远端生成和编辑器餐车位置，不改变食客原有接近速度。
-func _customer_spawn_lead_seconds(customer_data: CustomerData) -> float:
-	if customer_data == null:
-		return 0.0
-	var extra_distance: float = (
-		LEGACY_CUSTOMER_SPAWN_Z
-		- Playfield.FORWARD_SPAWN_Z
-		+ cart_destination_z()
-		- Playfield.CART_Z
-	)
-	var travel_speed: float = world_scroll_speed + Playfield.design_to_world(customer_data.move_speed)
-	return maxf(0.0, extra_distance / maxf(0.001, travel_speed))
-
-
-func _timeline_event_lead_seconds(event_id: StringName) -> float:
-	if String(event_id).begins_with("gate_"):
-		return (
-			(
-				LEGACY_GATE_SPAWN_Z
-				- Playfield.FORWARD_SPAWN_Z
-				+ cart_destination_z()
-				- Playfield.CART_Z
-			) / FORWARD_GATE_SPEED
-			+ FORWARD_GATE_QUEUE_LEAD_SECONDS
-		)
-	match event_id:
-		&"basic":
-			return _customer_spawn_lead_seconds(basic_guest_data)
-		&"fast":
-			return _customer_spawn_lead_seconds(fast_guest_data)
-		&"ranged":
-			return _customer_spawn_lead_seconds(ranged_guest_data)
-	return 0.0
+	return director.timeline.baseline_appetite_at_progress(progress)
 
 
 func _scheduled_baseline_appetite(event_id: StringName) -> float:
-	return _baseline_appetite_at(state.elapsed_seconds + _timeline_event_lead_seconds(event_id))
+	return _current_baseline_appetite()
 
 
 func _requested_run_seed() -> int:

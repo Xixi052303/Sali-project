@@ -4,7 +4,7 @@ extends RefCounted
 const CONFIG_SHEET: String = "配置"
 const EVENTS_SHEET: String = "事件"
 const EXPECTED_SCHEMA_ID: String = "xiaochuxi.encounter_timeline"
-const EXPECTED_SCHEMA_VERSION: int = 2
+const EXPECTED_SCHEMA_VERSION: int = 3
 
 
 class LoadResult:
@@ -17,7 +17,7 @@ class LoadResult:
 	var source_path: String = ""
 
 
-# 严格校验工作簿并生成运行时 Resource；失败时保留调用方提供的安全回退。
+# 版本3把普通流程改为路程驱动；事件页只维护精英、Boss和压力切换节点。
 static func load_from_excel(path: String, fallback: EncounterTimeline = null) -> LoadResult:
 	var result: LoadResult = LoadResult.new()
 	result.source_path = path
@@ -29,152 +29,112 @@ static func load_from_excel(path: String, fallback: EncounterTimeline = null) ->
 	if config_sheet == null or events_sheet == null:
 		return _fallback(result, fallback, "时间轴 Excel 必须包含“配置”和“事件”工作表")
 
-	var config_values: Dictionary = {}
-	for record: Dictionary in config_sheet.to_records():
-		var parameter_id: String = str(record.get("参数ID", "")).strip_edges()
-		if not parameter_id.is_empty():
-			config_values[parameter_id] = record.get("数值")
-	var schema_id: String = str(config_values.get("schema_id", ""))
-	if schema_id != EXPECTED_SCHEMA_ID:
-		return _fallback(result, fallback, "时间轴 Excel schema_id 不匹配: %s" % schema_id)
-	var schema_version_value: Variant = config_values.get("schema_version")
-	if not _is_number(schema_version_value) or int(schema_version_value) != EXPECTED_SCHEMA_VERSION:
-		return _fallback(result, fallback, "时间轴 Excel schema_version 必须为 %d" % EXPECTED_SCHEMA_VERSION)
+	var config: Dictionary = _records_to_values(config_sheet)
+	if str(config.get("schema_id", "")) != EXPECTED_SCHEMA_ID:
+		return _fallback(result, fallback, "时间轴 Excel schema_id 不匹配")
+	var version: Variant = config.get("schema_version")
+	if not _is_number(version) or int(version) != EXPECTED_SCHEMA_VERSION:
+		return _fallback(
+			result,
+			fallback,
+			"时间轴 Excel schema_version 必须为 %d" % EXPECTED_SCHEMA_VERSION
+		)
 
 	var errors: PackedStringArray = []
-	var appetite_start: float = _required_number(config_values, "baseline_appetite_start", errors)
-	var appetite_end: float = _required_number(config_values, "baseline_appetite_end", errors)
-	var appetite_end_time: float = _required_number(config_values, "baseline_appetite_end_time", errors)
-	var appetite_exponent: float = _required_number(config_values, "baseline_appetite_exponent", errors)
-	var appetite_late_end: float = _required_number(
-		config_values,
-		"baseline_appetite_late_end",
-		errors
-	)
-	var appetite_late_end_time: float = _required_number(
-		config_values,
-		"baseline_appetite_late_end_time",
-		errors
-	)
-	var appetite_late_exponent: float = _required_number(
-		config_values,
-		"baseline_appetite_late_exponent",
-		errors
-	)
-	var normal_wave_start_time: float = _required_number(
-		config_values,
-		"normal_wave_start_time",
-		errors
-	)
-	var normal_wave_end_time: float = _required_number(
-		config_values,
-		"normal_wave_end_time",
-		errors
-	)
-	var normal_wave_early_end_time: float = _required_number(
-		config_values,
-		"normal_wave_early_end_time",
-		errors
-	)
-	var normal_wave_mid_end_time: float = _required_number(
-		config_values,
-		"normal_wave_mid_end_time",
-		errors
-	)
-	var normal_wave_interval_early: float = _required_number(
-		config_values,
-		"normal_wave_interval_early",
-		errors
-	)
-	var normal_wave_interval_mid: float = _required_number(
-		config_values,
-		"normal_wave_interval_mid",
-		errors
-	)
-	var normal_wave_interval_late: float = _required_number(
-		config_values,
-		"normal_wave_interval_late",
-		errors
-	)
-	if appetite_start <= 0.0:
-		errors.append("baseline_appetite_start 必须大于 0")
-	if appetite_end <= 0.0:
-		errors.append("baseline_appetite_end 必须大于 0")
-	if appetite_end < appetite_start:
-		errors.append("baseline_appetite_end 不能小于 baseline_appetite_start")
-	if appetite_end_time <= 0.0:
-		errors.append("baseline_appetite_end_time 必须大于 0")
-	if appetite_exponent <= 0.0:
-		errors.append("baseline_appetite_exponent 必须大于 0")
-	if appetite_late_end < appetite_end:
-		errors.append("baseline_appetite_late_end 不能小于 baseline_appetite_end")
-	if appetite_late_end_time <= appetite_end_time:
-		errors.append("baseline_appetite_late_end_time 必须晚于 baseline_appetite_end_time")
-	if appetite_late_exponent <= 0.0:
-		errors.append("baseline_appetite_late_exponent 必须大于 0")
-	if normal_wave_start_time < 0.0:
-		errors.append("normal_wave_start_time 不能为负数")
-	if normal_wave_end_time <= normal_wave_mid_end_time:
-		errors.append("normal_wave_end_time 必须晚于 normal_wave_mid_end_time")
-	if normal_wave_early_end_time < normal_wave_start_time:
-		errors.append("normal_wave_early_end_time 不能早于 normal_wave_start_time")
-	if normal_wave_mid_end_time < normal_wave_early_end_time:
-		errors.append("normal_wave_mid_end_time 不能早于 normal_wave_early_end_time")
-	if normal_wave_interval_early <= 0.0:
-		errors.append("normal_wave_interval_early 必须大于 0")
-	if normal_wave_interval_mid <= 0.0:
-		errors.append("normal_wave_interval_mid 必须大于 0")
-	if normal_wave_interval_late <= 0.0:
-		errors.append("normal_wave_interval_late 必须大于 0")
-
-	var event_times: PackedFloat32Array = []
-	var event_ids: PackedStringArray = []
-	var previous_time: float = -INF
-	var event_row: int = 1
-	for record: Dictionary in events_sheet.to_records():
-		event_row += 1
-		var time_value: Variant = record.get("请求时间(s)")
-		var event_id: String = str(record.get("事件ID", "")).strip_edges()
-		if not _is_number(time_value):
-			errors.append("事件表第 %d 行请求时间不是数字" % event_row)
-			continue
-		var event_time: float = float(time_value)
-		if event_time < 0.0:
-			errors.append("事件表第 %d 行请求时间不能为负数" % event_row)
-		if event_time < previous_time:
-			errors.append("事件表第 %d 行请求时间早于上一行" % event_row)
-		if event_id.is_empty():
-			errors.append("事件表第 %d 行事件ID不能为空" % event_row)
-		elif not _is_supported_event_id(event_id):
-			errors.append("事件表第 %d 行事件ID不受支持: %s" % [event_row, event_id])
-		previous_time = event_time
-		event_times.append(event_time)
-		event_ids.append(event_id)
-	if event_times.is_empty():
-		errors.append("事件表至少需要一条事件")
-	if not errors.is_empty():
-		return _fallback(result, fallback, "；".join(errors))
-
 	var timeline: EncounterTimeline = EncounterTimeline.new()
-	timeline.event_times = event_times
+	timeline.baseline_appetite_start = _required_number(config, "baseline_appetite_start", errors)
+	timeline.baseline_appetite_mid = _required_number(config, "baseline_appetite_mid", errors)
+	timeline.baseline_appetite_end = _required_number(config, "baseline_appetite_end", errors)
+	timeline.appetite_mid_progress = _required_number(config, "appetite_mid_progress", errors)
+	timeline.baseline_appetite_exponent = _required_number(
+		config, "baseline_appetite_exponent", errors
+	)
+	timeline.baseline_appetite_late_exponent = _required_number(
+		config, "baseline_appetite_late_exponent", errors
+	)
+	timeline.target_active_duration = _required_number(config, "target_active_duration", errors)
+	timeline.target_boss_duration = _required_number(config, "target_boss_duration", errors)
+	timeline.normal_gate_count = int(_required_number(config, "normal_gate_count", errors))
+	timeline.normal_wave_count = int(_required_number(config, "normal_wave_count", errors))
+	timeline.headwind_factor = _required_number(config, "headwind_factor", errors)
+	timeline.max_crosswind_speed = _required_number(config, "max_crosswind_speed", errors)
+	timeline.minimum_cart_base_speed_factor = _required_number(
+		config, "minimum_cart_base_speed_factor", errors
+	)
+
+	var event_progresses: PackedFloat32Array = []
+	var event_ids: PackedStringArray = []
+	var pressure_progresses: PackedFloat32Array = PackedFloat32Array([0.0])
+	var speed_multipliers: PackedFloat32Array = PackedFloat32Array([1.0])
+	var previous_row_progress: float = -INF
+	var row_number: int = 1
+	for record: Dictionary in events_sheet.to_records():
+		row_number += 1
+		var progress_value: Variant = record.get("路程进度")
+		if not _is_number(progress_value):
+			continue
+		var progress: float = float(progress_value)
+		if progress < previous_row_progress:
+			errors.append("事件表第 %d 行路程进度早于上一行" % row_number)
+		if progress < 0.0 or progress > 1.0:
+			errors.append("事件表第 %d 行路程进度必须位于0到1" % row_number)
+		previous_row_progress = progress
+		var event_id: String = str(record.get("事件ID", "")).strip_edges()
+		if not event_id.is_empty():
+			if not event_id in ["start_gate", "elite", "boss"]:
+				errors.append("事件表第 %d 行事件ID不受支持: %s" % [row_number, event_id])
+			else:
+				event_progresses.append(progress)
+				event_ids.append(event_id)
+		var row_type: String = str(record.get("类型", "")).strip_edges()
+		var multiplier_value: Variant = record.get("前进倍率")
+		if "压力" in row_type and _is_number(multiplier_value):
+			var multiplier: float = float(multiplier_value)
+			if progress <= 0.0 or multiplier <= 1.0:
+				errors.append("事件表第 %d 行后续前进倍率必须在正进度且大于1" % row_number)
+			else:
+				pressure_progresses.append(progress)
+				speed_multipliers.append(multiplier)
+	if event_ids.count("start_gate") != 1:
+		errors.append("事件表必须且只能包含一道start_gate")
+	if event_ids.count("elite") != 6:
+		errors.append("事件表必须包含6只精英")
+	if event_ids.count("boss") != 2:
+		errors.append("事件表必须包含2场Boss")
+	if pressure_progresses.size() != 6:
+		errors.append("事件表必须包含5次后续压力切换")
+	timeline.event_progresses = event_progresses
 	timeline.event_ids = event_ids
-	timeline.baseline_appetite_start = appetite_start
-	timeline.baseline_appetite_end = appetite_end
-	timeline.baseline_appetite_end_time = appetite_end_time
-	timeline.baseline_appetite_exponent = appetite_exponent
-	timeline.baseline_appetite_late_end = appetite_late_end
-	timeline.baseline_appetite_late_end_time = appetite_late_end_time
-	timeline.baseline_appetite_late_exponent = appetite_late_exponent
-	timeline.normal_wave_start_time = normal_wave_start_time
-	timeline.normal_wave_end_time = normal_wave_end_time
-	timeline.normal_wave_early_end_time = normal_wave_early_end_time
-	timeline.normal_wave_mid_end_time = normal_wave_mid_end_time
-	timeline.normal_wave_interval_early = normal_wave_interval_early
-	timeline.normal_wave_interval_mid = normal_wave_interval_mid
-	timeline.normal_wave_interval_late = normal_wave_interval_late
+	timeline.pressure_progresses = pressure_progresses
+	timeline.forward_speed_multipliers = speed_multipliers
+	if not errors.is_empty() or not timeline.is_valid():
+		if errors.is_empty():
+			errors.append("时间轴参数未通过正式距离流程校验")
+		return _fallback(result, fallback, "；".join(errors))
 	result.timeline = timeline
 	result.loaded_from_excel = true
 	return result
+
+
+static func _records_to_values(sheet: ExcelReader47.ExcelSheet) -> Dictionary:
+	var values: Dictionary = {}
+	for record: Dictionary in sheet.to_records():
+		var parameter_id: String = str(record.get("参数ID", "")).strip_edges()
+		if not parameter_id.is_empty():
+			values[parameter_id] = record.get("数值")
+	return values
+
+
+static func _required_number(values: Dictionary, key: String, errors: PackedStringArray) -> float:
+	var value: Variant = values.get(key)
+	if not _is_number(value):
+		errors.append("配置缺少数值参数 %s" % key)
+		return 0.0
+	return float(value)
+
+
+static func _is_number(value: Variant) -> bool:
+	return typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT
 
 
 static func _fallback(result: LoadResult, fallback: EncounterTimeline, message: String) -> LoadResult:
@@ -182,23 +142,3 @@ static func _fallback(result: LoadResult, fallback: EncounterTimeline, message: 
 	result.used_fallback = fallback != null
 	result.error_message = message
 	return result
-
-
-static func _required_number(values: Dictionary, key: String, errors: PackedStringArray) -> float:
-	if not values.has(key) or not _is_number(values[key]):
-		errors.append("配置缺少数值参数 %s" % key)
-		return 0.0
-	return float(values[key])
-
-
-static func _is_number(value: Variant) -> bool:
-	var value_type: int = typeof(value)
-	return value_type == TYPE_INT or value_type == TYPE_FLOAT
-
-
-static func _is_supported_event_id(event_id: String) -> bool:
-	if event_id in ["start_gate", "basic", "fast", "ranged", "elite", "boss"]:
-		return true
-	if not event_id.begins_with("gate_"):
-		return false
-	return event_id.trim_prefix("gate_").is_valid_int()

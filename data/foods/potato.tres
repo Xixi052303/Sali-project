@@ -7,3 +7,5 @@ script = ExtResource("1_food")
 projectile_radius = 17.0
 base_lifetime = 1.3473684
 visual_color = Color(0.89, 0.71, 0.29, 1)
+wine_upgrade_scale = 0.35
+duration_upgrade_scale = 0.2

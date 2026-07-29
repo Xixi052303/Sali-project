@@ -44,6 +44,7 @@ func configure(
 func _process(delta: float) -> void:
 	if not active or data == null or run == null:
 		return
+	var previous_z: float = position.z
 	if _hit_feedback_remaining > 0.0:
 		_hit_feedback_remaining = maxf(0.0, _hit_feedback_remaining - delta)
 		var pulse: float = _hit_feedback_remaining / 0.12
@@ -57,7 +58,10 @@ func _process(delta: float) -> void:
 		if _attack_remaining <= 0.0:
 			_attack_remaining = data.attack_interval
 			ranged_attack.emit(self, remaining_appetite * data.attack_ratio)
-	if run.customer_collides_with_cart(self):
+	if (
+		run.customer_collides_with_cart(self)
+		or run.customer_swept_collides_with_cart(self, previous_z)
+	):
 		active = false
 		collided_with_cart.emit(self)
 	elif position.z >= run.cart_destination_z() + (Playfield.CUSTOMER_DESPAWN_Z - Playfield.CART_Z):
@@ -90,7 +94,10 @@ func collision_rect_xz() -> Rect2:
 func travel_speed() -> float:
 	if data == null or run == null:
 		return 0.0
-	return run.world_scroll_speed + Playfield.design_to_world(data.move_speed)
+	return (
+		RunController3D.BASE_WORLD_SCROLL_SPEED
+		+ Playfield.design_to_world(data.move_speed)
+	) * run.forward_speed_multiplier()
 
 
 func _body_width() -> float:

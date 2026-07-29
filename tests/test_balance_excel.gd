@@ -27,79 +27,40 @@ func _test_timeline_workbook() -> void:
 		"res://balance_tables/时间轴.xlsx",
 		fallback
 	)
-	_check(result.loaded_from_excel, "时间轴 Schema 2 可读取")
+	_check(result.loaded_from_excel, "正式距离时间轴 Schema 3 可读取")
 	if result.timeline == null:
 		return
 	var timeline: EncounterTimeline = result.timeline
-	var checkpoints: Dictionary[float, float] = {
-		0.0: 15.0,
-		135.0: 350.0,
-		180.0: 554.0,
-		210.0: 746.0,
-		270.0: 1200.0,
-		300.0: 1200.0,
-	}
-	for checkpoint_time: float in checkpoints:
-		_check(
-			is_equal_approx(
-				timeline.baseline_appetite_at(checkpoint_time),
-				checkpoints[checkpoint_time]
-			),
-			"时间轴 %.0fs 基准胃口为 %.0f" % [
-				checkpoint_time,
-				checkpoints[checkpoint_time],
-			]
-		)
 	_check(
-		is_equal_approx(timeline.normal_wave_interval_at(77.999), 3.2)
-		and is_equal_approx(timeline.normal_wave_interval_at(78.0), 2.8),
-		"78秒边界进入普通波次中段"
+		is_equal_approx(timeline.baseline_appetite_at_progress(0.0), 15.0)
+		and is_equal_approx(timeline.baseline_appetite_at_progress(0.5), 350.0)
+		and is_equal_approx(timeline.baseline_appetite_at_progress(1.0), 12000.0),
+		"胃口按正式路程读取15、350、12000三段锚点"
 	)
 	_check(
-		is_equal_approx(timeline.normal_wave_interval_at(134.999), 2.8)
-		and is_equal_approx(timeline.normal_wave_interval_at(135.0), 3.2),
-		"135秒边界进入普通波次晚段"
+		timeline.event_ids.count("elite") == 6
+		and timeline.event_ids.count("boss") == 2
+		and timeline.normal_gate_count == 50
+		and timeline.normal_wave_count == 235,
+		"时间轴读取六精英、两Boss、50门与235波"
 	)
 	_check(
-		is_equal_approx(timeline.normal_wave_start_time, 8.0)
-		and is_equal_approx(timeline.normal_wave_end_time, 360.0),
-		"普通波次起止时间来自时间轴"
+		is_equal_approx(timeline.forward_duration(), 430.0)
+		and timeline.forward_speed_multipliers == PackedFloat32Array([1.0, 1.1, 1.3, 1.7, 2.3, 3.0])
+		and is_equal_approx(timeline.max_crosswind_speed, 60.0)
+		and is_equal_approx(timeline.minimum_cart_base_speed_factor, 0.8),
+		"正式前进时长、六档压力、侧漂和疲劳参数由表读取"
 	)
-	for fixture: Dictionary in [
-		{
-			"path": "res://tests/fixtures/timeline_schema_v1.xlsx",
-			"error": "schema_version",
-			"message": "Schema 1 整表回退",
-		},
-		{
-			"path": "res://tests/fixtures/timeline_missing_late.xlsx",
-			"error": "baseline_appetite_late_end",
-			"message": "缺少晚段字段整表回退",
-		},
-		{
-			"path": "res://tests/fixtures/timeline_invalid_order.xlsx",
-			"error": "必须晚于",
-			"message": "时间顺序倒置整表回退",
-		},
-		{
-			"path": "res://tests/fixtures/timeline_zero_interval.xlsx",
-			"error": "必须大于 0",
-			"message": "非正波次间隔整表回退",
-		},
-	]:
-		var fixture_path: String = str(fixture["path"])
-		var expected_error: String = str(fixture["error"])
-		var fixture_message: String = str(fixture["message"])
-		var invalid_result: TimelineExcelLoader.LoadResult = TimelineExcelLoader.load_from_excel(
-			fixture_path,
-			fallback
-		)
-		_check(
-			invalid_result.used_fallback
-			and invalid_result.timeline == fallback
-			and invalid_result.error_message.contains(expected_error),
-			fixture_message
-		)
+	var old_schema: TimelineExcelLoader.LoadResult = TimelineExcelLoader.load_from_excel(
+		"res://tests/fixtures/timeline_schema_v1.xlsx",
+		fallback
+	)
+	_check(
+		old_schema.used_fallback
+		and old_schema.timeline == fallback
+		and old_schema.error_message.contains("schema_version"),
+		"旧时间轴 Schema 整表回退"
+	)
 
 
 func _test_customer_workbook() -> void:
@@ -176,22 +137,39 @@ func _test_weapon_workbook() -> void:
 	_check(result.loaded_from_excel, "武器 Excel 可读取")
 	_check(result.foods.size() >= 3, "武器 Excel 至少包含当前三件食材")
 	var ids: Array[StringName] = []
-	var mushroom: FoodData = null
+	var foods: Dictionary[StringName, FoodData] = {}
 	for food: FoodData in result.foods:
 		ids.append(food.id)
+		foods[food.id] = food
 		_check(food.base_satisfaction > 0.0, "武器基础满足为正数")
 		_check(food.base_interval > 0.0, "武器基础间隔为正数")
 		_check(food.attack_speed_upgrade_scale >= 0.0, "食材攻速强化倍率有效")
 		_check(food.wine_upgrade_scale >= 0.0, "食材酒强化倍率有效")
 		_check(food.range_upgrade_scale >= 0.0, "食材范围强化倍率有效")
 		_check(food.duration_upgrade_scale >= 0.0, "食材持续强化倍率有效")
-		if food.id == &"mushroom":
-			mushroom = food
 	_check(ids.has(&"potato") and ids.has(&"baguette") and ids.has(&"mushroom"), "当前三件食材ID齐全")
-	_check(mushroom != null, "武器表包含蘑菇")
-	if mushroom != null:
-		_check(is_equal_approx(mushroom.range_upgrade_scale, 0.5), "蘑菇范围强化倍率为0.5")
-		_check(is_equal_approx(mushroom.duration_upgrade_scale, 0.5), "蘑菇持续强化倍率为0.5")
+	if foods.size() >= 3:
+		var potato: FoodData = foods[&"potato"]
+		var baguette: FoodData = foods[&"baguette"]
+		var mushroom: FoodData = foods[&"mushroom"]
+		_check(
+			is_equal_approx(potato.wine_upgrade_scale, 0.35)
+			and is_equal_approx(potato.range_upgrade_scale, 1.0)
+			and is_equal_approx(potato.duration_upgrade_scale, 0.2),
+			"土豆按1/0.35/1/0.2转译四项输出强化"
+		)
+		_check(
+			is_equal_approx(baguette.wine_upgrade_scale, 0.35)
+			and is_equal_approx(baguette.range_upgrade_scale, 1.0)
+			and is_equal_approx(baguette.duration_upgrade_scale, 0.25),
+			"法棍按1/0.35/1/0.25转译四项输出强化"
+		)
+		_check(
+			is_equal_approx(mushroom.wine_upgrade_scale, 1.0)
+			and is_equal_approx(mushroom.range_upgrade_scale, 0.5)
+			and is_equal_approx(mushroom.duration_upgrade_scale, 0.15),
+			"蘑菇按1/1/0.5/0.15转译四项输出强化"
+		)
 	_check(is_equal_approx(result.baguette_giant_interval_seconds, 3.0), "巨型法棍间隔由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_attack_speed_scale, 0.05), "巨型法棍攻速倍率由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_minimum_interval_seconds, 1.0), "巨型法棍最小间隔由武器表读取")
@@ -206,7 +184,25 @@ func _test_normal_upgrade_workbook() -> void:
 		GameplayExcelLoader.load_normal_upgrades("res://balance_tables/普通强化.xlsx")
 	)
 	_check(result.loaded_from_excel, "普通强化 Excel 可读取")
-	_check(result.upgrades.size() >= 2, "普通门与食客奖励共用池至少有两个候选")
+	_check(result.upgrades.size() == 8, "普通门与食客奖励共用八项候选池")
+	_check(
+		is_equal_approx(result.reward_effect_scale, 0.4)
+		and is_equal_approx(result.wine_curve_c, 1.0)
+		and is_equal_approx(result.range_curve_c, 4.0)
+		and is_equal_approx(result.duration_curve_c, 1.0)
+		and is_equal_approx(result.cart_speed_curve_c, 0.5),
+		"小份奖励与四项对数曲线参数由普通强化表读取"
+	)
+	var expected_ranges: Dictionary[int, Vector2] = {
+		UpgradeData.Kind.SUGAR: Vector2(0.05, 0.30),
+		UpgradeData.Kind.QUICK_PREP: Vector2(0.05, 0.30),
+		UpgradeData.Kind.WINE: Vector2(0.10, 0.50),
+		UpgradeData.Kind.SCALLION: Vector2(0.10, 0.60),
+		UpgradeData.Kind.STARCH: Vector2(0.15, 0.75),
+		UpgradeData.Kind.LIGHT_CART: Vector2(50.0, 300.0),
+		UpgradeData.Kind.STURDY_CART: Vector2(0.02, 0.11),
+		UpgradeData.Kind.REPAIR: Vector2(0.12, 0.55),
+	}
 	for upgrade: UpgradeData in result.upgrades:
 		_check(upgrade.uses_value_range, "共用候选使用可成长区间")
 		_check(upgrade.maximum_value >= upgrade.minimum_value, "共用候选数值区间有效")
@@ -214,10 +210,14 @@ func _test_normal_upgrade_workbook() -> void:
 		var rendered_text: String = upgrade.effect_text()
 		_check(not rendered_text.is_empty(), "共用候选文案模板可以生成实际门牌文本")
 		_check(not rendered_text.contains("{"), "共用候选文案占位符已替换")
+		var expected_range: Vector2 = expected_ranges[upgrade.kind]
+		_check(
+			is_equal_approx(upgrade.minimum_value, expected_range.x)
+			and is_equal_approx(upgrade.maximum_value, expected_range.y),
+			"%s读取正式首轮数值区间" % upgrade.display_name
+		)
 		if upgrade.kind == UpgradeData.Kind.STURDY_CART:
-			_check(is_equal_approx(upgrade.minimum_value, 0.05), "餐车改造最小值为最大耐久5%")
-			_check(is_equal_approx(upgrade.maximum_value, 0.32), "餐车改造最大值为最大耐久32%")
-			_check(rendered_text == "耐久上限 +5点", "餐车改造门牌显示实际耐久点数")
+			_check(rendered_text == "耐久上限 +2点", "餐车改造门牌按当前上限显示实际耐久点数")
 
 
 func _test_special_upgrade_workbook() -> void:

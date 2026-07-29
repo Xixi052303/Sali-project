@@ -3,6 +3,7 @@ extends RefCounted
 
 const CONFIG_SHEET: String = "配置"
 const EXPECTED_SCHEMA_VERSION: int = 1
+const NORMAL_UPGRADE_SCHEMA_VERSION: int = 2
 const REQUIRED_CUSTOMER_IDS: Array[StringName] = [
 	&"basic_guest",
 	&"fast_guest",
@@ -47,6 +48,12 @@ class NormalUpgradeLoadResult:
 	extends RefCounted
 
 	var upgrades: Array[UpgradeData] = []
+	var reward_effect_scale: float = 0.4
+	var wine_curve_c: float = RunState.WINE_CURVE_C
+	var range_curve_c: float = RunState.RANGE_CURVE_C
+	var duration_curve_c: float = RunState.DURATION_CURVE_C
+	var cart_speed_curve_c: float = RunState.CART_SPEED_CURVE_C
+	var range_multiplier_cap: float = RunState.RANGE_MULTIPLIER_CAP
 	var loaded_from_excel: bool = false
 	var error_message: String = ""
 	var source_path: String = ""
@@ -344,7 +351,12 @@ static func _parse_derived_attack_records(
 static func load_normal_upgrades(path: String) -> NormalUpgradeLoadResult:
 	var result: NormalUpgradeLoadResult = NormalUpgradeLoadResult.new()
 	result.source_path = path
-	var read_result: WorkbookReadResult = _read_valid_workbook(path, "xiaochuxi.normal_upgrades")
+	var read_result: WorkbookReadResult = _read_valid_workbook(
+		path,
+		"xiaochuxi.normal_upgrades",
+		CONFIG_SHEET,
+		NORMAL_UPGRADE_SCHEMA_VERSION
+	)
 	if read_result.workbook == null:
 		result.error_message = read_result.error_message
 		return result
@@ -353,6 +365,29 @@ static func load_normal_upgrades(path: String) -> NormalUpgradeLoadResult:
 	if gate_sheet == null:
 		return _normal_failure(result, "普通强化 Excel 必须包含“普通门”工作表")
 	var errors: PackedStringArray = []
+	var config: Dictionary = _records_to_values(workbook.get_sheet_by_name(CONFIG_SHEET))
+	result.reward_effect_scale = _required_dictionary_number(
+		config, "reward_effect_scale", errors
+	)
+	result.wine_curve_c = _required_dictionary_number(config, "wine_curve_c", errors)
+	result.range_curve_c = _required_dictionary_number(config, "range_curve_c", errors)
+	result.duration_curve_c = _required_dictionary_number(config, "duration_curve_c", errors)
+	result.cart_speed_curve_c = _required_dictionary_number(
+		config, "cart_speed_curve_c", errors
+	)
+	result.range_multiplier_cap = _required_dictionary_number(
+		config, "range_multiplier_cap", errors
+	)
+	if result.reward_effect_scale <= 0.0 or result.reward_effect_scale > 1.0:
+		errors.append("reward_effect_scale 必须大于0且不超过1")
+	if (
+		result.wine_curve_c <= 0.0
+		or result.range_curve_c <= 0.0
+		or result.duration_curve_c <= 0.0
+		or result.cart_speed_curve_c <= 0.0
+		or result.range_multiplier_cap < 1.0
+	):
+		errors.append("普通强化对数参数必须大于0且范围上限不得小于1")
 	result.upgrades = _parse_upgrade_sheet(gate_sheet, "普通门", errors)
 	if result.upgrades.size() < 2:
 		errors.append("普通门与食客奖励共用池至少需要启用两项强化")
@@ -444,7 +479,8 @@ static func load_special_upgrades(path: String) -> SpecialUpgradeLoadResult:
 static func _read_valid_workbook(
 	path: String,
 	schema_id: String,
-	config_sheet_name: String = CONFIG_SHEET
+	config_sheet_name: String = CONFIG_SHEET,
+	expected_schema_version: int = EXPECTED_SCHEMA_VERSION
 ) -> WorkbookReadResult:
 	var result: WorkbookReadResult = WorkbookReadResult.new()
 	var excel_result: ExcelReader47.ReadResult = ExcelReader47.read(path)
@@ -462,8 +498,8 @@ static func _read_valid_workbook(
 		result.error_message = "Excel schema_id 不匹配: %s" % str(config.get("schema_id", ""))
 		return result
 	var version: Variant = config.get("schema_version")
-	if not _is_number(version) or int(version) != EXPECTED_SCHEMA_VERSION:
-		result.error_message = "Excel schema_version 必须为 %d" % EXPECTED_SCHEMA_VERSION
+	if not _is_number(version) or int(version) != expected_schema_version:
+		result.error_message = "Excel schema_version 必须为 %d" % expected_schema_version
 		return result
 	result.workbook = excel_result.workbook
 	return result

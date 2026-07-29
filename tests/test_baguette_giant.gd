@@ -71,16 +71,17 @@ func _test_runtime(load_result: GameplayExcelLoader.WeaponLoadResult) -> void:
 		run.free()
 		return
 	var giant: FoodProjectile3D = projectiles.get_child(0) as FoodProjectile3D
+	var range_scale: float = state.effective_projectile_radius(baguette) / baguette.projectile_radius
 	_check(giant._giant_baguette, "额外投射物使用巨型法棍模式")
 	_check(not giant.homing_enabled and giant.tracking_target == null, "巨型法棍不追踪")
 	_check(giant.velocity.normalized().is_equal_approx(Vector3.FORWARD), "巨型法棍沿道路直线前进")
 	_check(giant.remaining_hits == 999, "巨型法棍应用独立穿透")
-	_check(is_equal_approx(giant._giant_half_width * 2.0, Playfield.REGION_WIDTH * 4.0 * 1.5), "巨型法棍以四格为基础同步应用范围倍率")
+	_check(is_equal_approx(giant._giant_half_width * 2.0, Playfield.REGION_WIDTH * 4.0 * range_scale), "巨型法棍以四格为基础同步应用对数范围倍率")
 	_check(is_equal_approx(giant._initial_lifetime, state.effective_duration(baguette) * 1.5), "巨型法棍应用持续倍率")
 	_check(is_equal_approx(giant.satisfaction, state.effective_satisfaction(baguette) * 3.0), "巨型法棍应用满足倍率")
 	_check(background._camera_shake_remaining > 0.0, "巨型法棍发射时调用可复用震屏入口")
 	var giant_dimensions: Vector3 = giant._giant_baguette_visual.model_scale() * GiantBaguette3D.MODEL_SIZE
-	_check(giant_dimensions.is_equal_approx(Vector3(0.3, 0.27, 6.0)), "巨型法棍范围扩大时长宽高同比增长")
+	_check(giant_dimensions.is_equal_approx(Vector3(0.2, 0.18, 4.0) * range_scale), "巨型法棍范围扩大时长宽高同比增长")
 	var giant_model: Node3D = giant._giant_baguette_visual.get_node("RollPivot/ModelScale/BaguetteModel") as Node3D
 	_check((giant_model.position + Vector3(0.0, 0.16503906, 0.0)).is_zero_approx(), "巨型法棍模型几何中心对齐滚动原点")
 	giant._process_forward_motion(0.1)
@@ -99,7 +100,8 @@ func _test_runtime(load_result: GameplayExcelLoader.WeaponLoadResult) -> void:
 		baguette,
 		8.0,
 		7.0,
-		Playfield.design_to_world(baguette.projectile_radius) * 1.5,
+		Vector3.ZERO,
+		Playfield.design_to_world(state.effective_projectile_radius(baguette)),
 		1.2,
 		3,
 		null,
@@ -113,7 +115,7 @@ func _test_runtime(load_result: GameplayExcelLoader.WeaponLoadResult) -> void:
 	_check(aimed.rotation.y < 0.0, "普通法棍朝右前目标时模型向右旋转")
 	var aimed_visual: Node3D = aimed.get_node("BaguetteVisual") as Node3D
 	var aimed_dimensions: Vector3 = aimed_visual.scale * FoodProjectile3D.BAGUETTE_MODEL_SIZE
-	_check(aimed_dimensions.is_equal_approx(Vector3(0.3, 0.27, 1.2)), "普通法棍范围扩大时长宽高同比增长")
+	_check(aimed_dimensions.is_equal_approx(Vector3(0.2, 0.18, 0.8) * range_scale), "普通法棍范围扩大时长宽高同比增长")
 	run.free()
 	background.free()
 

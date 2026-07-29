@@ -19,6 +19,7 @@ func _init() -> void:
 	_test_reward_gate_spacing()
 	_test_customer_reward_randomness()
 	_test_timeline()
+	_test_pressure_rules()
 	_test_resources()
 	if _failures == 0:
 		print("CORE_TESTS_OK")
@@ -74,11 +75,19 @@ func _test_customer_cart_collision() -> void:
 	_check(customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "食客与餐车主体范围相交时算碰撞")
 	customer.position = Vector3(1.6, 0.0, Playfield.CUSTOMER_DESPAWN_Z)
 	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "绕开的食客到达道路后方时不算碰撞")
+	var run: RunController3D = RunController3D.new()
+	run.cart = cart
+	customer.position = Vector3(3.6, 0.0, Playfield.CART_Z + 2.0)
+	_check(
+		run.customer_swept_collides_with_cart(customer, Playfield.CART_Z - 2.0),
+		"高压阶段跨帧越过餐车时仍连续结算接触"
+	)
 	cart.play_upgrade_feedback(Color.WHITE)
 	_check(cart.scale.is_equal_approx(Vector3.ONE * 0.5), "餐车升级反馈保持编辑器配置的半尺寸基准")
 	customer.free()
 	cart.free()
 	field.free()
+	run.free()
 
 
 # 3D版本直接在米制X/Z道路平面运行，六区边界不依赖场景根缩放。
@@ -290,18 +299,18 @@ func _test_3d_background_and_hud() -> void:
 	for index: int in range(6):
 		_check(background.get_node_or_null("RoadSegment%d" % index) != null, "道路包含第%d个分层循环路段" % index)
 	var street_props: Node3D = background.get_node("StreetProps") as Node3D
-	_check(street_props.get_child_count() == 6, "街景面片集中在可编辑节点组")
+	_check(street_props.get_child_count() == 7, "街景面片及道路贴花集中在可编辑节点组")
 	var road_segment: Node3D = background.get_node("RoadSegment3") as Node3D
 	var road_surface: MeshInstance3D = road_segment.get_node("RoadSurface") as MeshInstance3D
-	var left_curb: MeshInstance3D = road_segment.get_node("LeftCurb") as MeshInstance3D
+	var left_curb: MeshInstance3D = road_segment.get_node("LeftCurbFace") as MeshInstance3D
 	var left_sidewalk: MeshInstance3D = road_segment.get_node("LeftSidewalk") as MeshInstance3D
 	var road_mesh: PlaneMesh = road_surface.mesh as PlaneMesh
-	var curb_mesh: BoxMesh = left_curb.mesh as BoxMesh
-	var sidewalk_mesh: BoxMesh = left_sidewalk.mesh as BoxMesh
+	var curb_mesh: QuadMesh = left_curb.mesh as QuadMesh
+	var sidewalk_mesh: PlaneMesh = left_sidewalk.mesh as PlaneMesh
 	_check(road_mesh.size.is_equal_approx(Vector2(6.041834, 12.8)), "中央马路宽度按拆分贴图比例装配")
-	_check(left_curb.position.y + curb_mesh.size.y * 0.5 > road_surface.position.y, "路沿顶面高于马路")
-	_check(left_sidewalk.position.y + sidewalk_mesh.size.y * 0.5 > road_surface.position.y, "人行道顶面高于马路")
-	for child: Node in street_props.get_children():
+	_check(curb_mesh.size.is_equal_approx(Vector2(0.5, 12.8)), "路沿立面保持独立可编辑宽度")
+	_check(sidewalk_mesh.size.is_equal_approx(Vector2(1.69, 12.8)), "人行道保持独立可编辑宽度")
+	for child: Node in street_props.find_children("*", "Sprite3D", true, false):
 		var prop: Sprite3D = child as Sprite3D
 		_check(prop != null and prop.region_enabled and prop.region_rect.size.x > 0.0, "%s使用节点自身裁剪区域" % child.name)
 	background.free()
@@ -349,6 +358,7 @@ func _test_projectile_evolutions() -> void:
 		baguette,
 		8.0,
 		7.0,
+		Vector3.ZERO,
 		0.16,
 		1.2,
 		3,
@@ -377,6 +387,7 @@ func _test_projectile_evolutions() -> void:
 		baguette,
 		8.0,
 		7.0,
+		Vector3.ZERO,
 		0.16,
 		1.2,
 		3,
@@ -418,6 +429,7 @@ func _test_projectile_evolutions() -> void:
 		potato,
 		10.0,
 		30.0,
+		Vector3.ZERO,
 		0.17,
 		2.0,
 		1,
@@ -445,6 +457,7 @@ func _test_projectile_evolutions() -> void:
 		mushroom,
 		7.0,
 		mushroom.orbit_angular_speed,
+		Vector3.ZERO,
 		0.22,
 		mushroom.base_lifetime,
 		1,
@@ -457,17 +470,18 @@ func _test_projectile_evolutions() -> void:
 	)
 	orbit._process_orbit(0.0)
 	var turn_duration: float = TAU / mushroom.orbit_angular_speed
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), 1.2), "蘑菇从基础半径开始环绕")
+	var base_orbit_radius: float = Playfield.design_to_world(mushroom.orbit_radius)
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius), "蘑菇从配置的基础半径开始环绕")
 	orbit._process_orbit(turn_duration)
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), 1.2), "蘑菇先在基础半径完整旋转一圈")
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius), "蘑菇先在基础半径完整旋转一圈")
 	orbit._process_orbit(turn_duration * 0.5)
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), 1.5), "扩张圈中点平滑到基础半径的1.25倍")
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius * 1.25), "扩张圈中点平滑到基础半径的1.25倍")
 	orbit._process_orbit(turn_duration * 0.5)
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), 1.8), "扩张圈结束到达当前半径的1.5倍")
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius * 1.5), "扩张圈结束到达当前半径的1.5倍")
 	orbit._process_orbit(turn_duration)
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), 1.8), "蘑菇在1.5倍半径处再次完整旋转一圈")
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius * 1.5), "蘑菇在1.5倍半径处再次完整旋转一圈")
 	orbit._process_orbit(turn_duration)
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), 2.7), "下一扩张圈继续到当前半径的1.5倍")
+	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius * 2.25), "下一扩张圈继续到当前半径的1.5倍")
 
 	var faster_orbit: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
 	run.add_child(faster_orbit)
@@ -478,6 +492,7 @@ func _test_projectile_evolutions() -> void:
 		mushroom,
 		7.0,
 		mushroom.orbit_angular_speed * 1.5,
+		Vector3.ZERO,
 		0.22,
 		mushroom.base_lifetime,
 		1,
@@ -490,7 +505,7 @@ func _test_projectile_evolutions() -> void:
 	)
 	faster_orbit._process_orbit(TAU * 1.5 / (mushroom.orbit_angular_speed * 1.5))
 	_check(
-		is_equal_approx(faster_orbit.position.distance_to(cart.position), 1.5),
+		is_equal_approx(faster_orbit.position.distance_to(cart.position), base_orbit_radius * 1.25),
 		"酒只提高转速，相同累计转角仍使用相同分段半径"
 	)
 
@@ -503,6 +518,7 @@ func _test_projectile_evolutions() -> void:
 		mushroom,
 		7.0,
 		mushroom.orbit_angular_speed,
+		Vector3.ZERO,
 		0.22,
 		mushroom.base_lifetime * 1.5,
 		1,
@@ -516,7 +532,7 @@ func _test_projectile_evolutions() -> void:
 	_check(
 		is_equal_approx(longer_orbit._initial_lifetime, mushroom.base_lifetime * 1.5)
 		and is_equal_approx(longer_orbit._orbit_angular_speed, mushroom.orbit_angular_speed)
-		and is_equal_approx(longer_orbit._orbit_base_radius, 1.2),
+		and is_equal_approx(longer_orbit._orbit_base_radius, base_orbit_radius),
 		"淀粉只延长蘑菇存续时间，不直接改变转速或分段半径"
 	)
 
@@ -529,6 +545,7 @@ func _test_projectile_evolutions() -> void:
 		mushroom,
 		7.0,
 		mushroom.orbit_angular_speed,
+		Vector3.ZERO,
 		0.22,
 		mushroom.base_lifetime,
 		1,
@@ -544,7 +561,7 @@ func _test_projectile_evolutions() -> void:
 	)
 	breathing_orbit._process_orbit(0.0)
 	_check(
-		is_equal_approx(breathing_orbit.position.distance_to(cart.position), 2.4),
+		is_equal_approx(breathing_orbit.position.distance_to(cart.position), base_orbit_radius * 2.0),
 		"呼吸进化在当前分段半径上叠加周期倍率"
 	)
 	run.free()
@@ -560,6 +577,11 @@ func _test_run_state() -> void:
 	sugar.value = 0.2
 	state.apply_upgrade(sugar)
 	_check(is_equal_approx(state.effective_satisfaction(potato), 12.0), "满足值按基础值加算")
+	_check(
+		state.normal_upgrade_choice_counts.get(&"sugar", 0) == 1
+		and is_equal_approx(state.normal_upgrade_value_totals.get(&"sugar", 0.0), 0.2),
+		"普通强化选择记录实际结算次数与数值"
+	)
 	state.level_food(&"potato")
 	_check(
 		is_equal_approx(state.effective_satisfaction(potato), 27.0),
@@ -572,12 +594,19 @@ func _test_run_state() -> void:
 	_check(state.has_food_evolution(&"potato_aim"), "签名进化状态可独立记录")
 
 	var quick_prep: UpgradeData = UpgradeData.new()
+	quick_prep.id = &"quick_prep"
 	quick_prep.kind = UpgradeData.Kind.QUICK_PREP
 	quick_prep.value = 100.0
 	state.apply_upgrade(quick_prep)
 	_check(is_equal_approx(state.effective_interval(potato), RunState.MINIMUM_INTERVAL), "攻击间隔限制为每帧一次")
 	quick_prep.value = 0.08
 	_check(quick_prep.effect_text() == "攻速 +8%", "门使用正向攻击速度描述")
+	state.record_normal_upgrade_offer([sugar, quick_prep])
+	_check(
+		state.normal_upgrade_offer_counts.get(&"sugar", 0) == 1
+		and state.normal_upgrade_offer_counts.get(&"quick_prep", 0) == 1,
+		"普通强化候选按类型记录被提供次数"
+	)
 
 	var additive_state: RunState = RunState.new()
 	var half_more: UpgradeData = UpgradeData.new()
@@ -644,12 +673,20 @@ func _test_run_state() -> void:
 	starch.kind = UpgradeData.Kind.STARCH
 	starch.value = 0.5
 	distance_state.apply_upgrade(starch)
+	var expected_wine_multiplier: float = 1.0 + log(1.0 + 0.25 * potato.wine_upgrade_scale)
+	var expected_duration_multiplier: float = 1.0 + log(1.0 + 0.5 * potato.duration_upgrade_scale)
 	_check(
 		is_equal_approx(
 			distance_state.effective_projectile_distance(potato),
-			potato.projectile_speed * 1.25 * potato.base_lifetime * 1.5
+			potato.projectile_speed * expected_wine_multiplier
+			* potato.base_lifetime * expected_duration_multiplier
 		),
-		"弹速与持续时间共同决定投射距离"
+		"弹速与持续时间按各自食材转译和对数曲线共同决定投射距离"
+	)
+	_check(
+		distance_state._log_upgrade_multiplier(0.01, 1.0, 1.0) > 1.009
+		and distance_state._log_upgrade_multiplier(2.0, 1.0, 1.0) < 3.0,
+		"物理强化低层近似线性且高层持续递减"
 	)
 	var mushroom: FoodData = load("res://data/foods/mushroom.tres") as FoodData
 	var mushroom_state: RunState = RunState.new()
@@ -660,12 +697,18 @@ func _test_run_state() -> void:
 	starch.value = 0.6
 	mushroom_state.apply_upgrade(starch)
 	_check(
-		is_equal_approx(mushroom_state.effective_projectile_radius(mushroom), mushroom.projectile_radius * 1.3),
-		"蘑菇只转译一半范围强化"
+		is_equal_approx(
+			mushroom_state.effective_projectile_radius(mushroom),
+			mushroom.projectile_radius * (1.0 + 4.0 * log(1.0 + 0.6 * 0.5 / 4.0))
+		),
+		"蘑菇以0.5倍率转译范围强化后进入C=4对数曲线"
 	)
 	_check(
-		is_equal_approx(mushroom_state.effective_duration(mushroom), mushroom.base_lifetime * 1.3),
-		"蘑菇只转译一半持续强化"
+		is_equal_approx(
+			mushroom_state.effective_duration(mushroom),
+			mushroom.base_lifetime * (1.0 + log(1.0 + 0.6 * 0.15))
+		),
+		"蘑菇以0.15倍率转译持续强化后进入C=1对数曲线"
 	)
 
 
@@ -774,15 +817,18 @@ func _test_customer_reward_gate() -> void:
 	var basic: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
 	var elite: CustomerData = load("res://data/customers/elite_guest.tres") as CustomerData
 	_check(is_equal_approx(basic.appetite_at(100.0, 0.34), 134.0), "普通食客胃口按奖励百分位提高")
+	reward.set_source_scale(0.4, "小份奖励")
+	_check(is_equal_approx(reward.value, 0.0744), "小份奖励保留百分位并把实际强化值缩放为40%")
+	_check(is_equal_approx(basic.appetite_at(100.0, 0.34, 0.4), 114.0), "小份奖励的额外胃口只按40%计算")
 	_check(is_equal_approx(elite.appetite_at(32.0), 48.0), "精英只使用1.5倍基准且不参与随机稀有度")
 	var reward_scene: PackedScene = load("res://scenes/upgrade_drop_3d.tscn") as PackedScene
 	var reward_gate: UpgradeDrop3D = reward_scene.instantiate() as UpgradeDrop3D
 	reward_gate.configure(null, reward, Vector3(1.6, 0.0, 4.0), 100.0, 2, 3)
-	_check(is_equal_approx(reward_gate.upgrade_health, 66.0), "食客奖励门没有基础层并按百分位建立升值血量")
+	_check(is_equal_approx(reward_gate.upgrade_health, 26.4), "小份奖励门的隐藏升值血量按40%缩放")
 	_check(reward_gate.contains_cart_x(1.6), "餐车经过食客原占地区域可以领取奖励门")
 	_check(not reward_gate.contains_cart_x(3.6), "餐车绕开奖励门时不能领取")
-	reward_gate.receive_damage(33.0)
-	_check(is_equal_approx(reward.value_ratio, 0.67), "攻击奖励门继续提高同一份奖励")
+	reward_gate.receive_damage(13.2)
+	_check(is_equal_approx(reward.value_ratio, 0.67), "攻击小份奖励门继续提高原百分位与稀有度")
 	reward_gate.free()
 
 
@@ -814,7 +860,10 @@ func _test_reward_gate_spacing() -> void:
 		field.forward_paths_are_separated(safe_z, 2.5, existing_drop.position.z, existing_drop.travel_speed(), Playfield.FORWARD_MIN_CENTER_DISTANCE),
 		"食客奖励门之间不会重叠或追尾"
 	)
-	_check(absf(safe_z - 5.0) <= 4.001, "奖励门只在食客原位置附近小范围避让")
+	_check(
+		absf(safe_z - 5.0) <= RunController3D.REWARD_GATE_SEARCH_LIMIT + 0.001,
+		"正式密度下奖励门只在配置的道路搜索范围内避让"
+	)
 	run.free()
 
 
@@ -867,106 +916,86 @@ func _test_timeline() -> void:
 	)
 	_check(load_result.loaded_from_excel, "时间轴直接读取 Excel 数值主表")
 	var timeline: EncounterTimeline = load_result.timeline
-	_check(timeline != null and timeline.is_valid(), "时间轴事件数量一致")
+	_check(timeline != null and timeline.is_valid(), "正式距离时间轴通过类型化校验")
 	if timeline == null:
 		return
 	_check(
-		is_equal_approx(timeline.baseline_appetite_at(0.0), roundf(timeline.baseline_appetite_start)),
-		"基准胃口曲线使用 Excel 起点"
+		is_equal_approx(timeline.baseline_appetite_at_progress(0.0), 15.0)
+		and is_equal_approx(timeline.baseline_appetite_at_progress(0.5), 350.0)
+		and is_equal_approx(timeline.baseline_appetite_at_progress(1.0), 12000.0),
+		"胃口曲线按路程经过15、350和12000三个锚点"
+	)
+	var expected_quarter_appetite: float = roundf(lerpf(15.0, 350.0, pow(0.5, 2.1)))
+	_check(
+		is_equal_approx(timeline.baseline_appetite_at_progress(0.25), expected_quarter_appetite),
+		"两段胃口曲线首轮指数均为2.1"
 	)
 	_check(
-		is_equal_approx(
-			timeline.baseline_appetite_at(timeline.baseline_appetite_end_time),
-			roundf(timeline.baseline_appetite_end)
-		),
-		"前段基准胃口曲线使用 Excel 终点和结束时间"
-	)
-	var midpoint_time: float = timeline.baseline_appetite_end_time * 0.5
-	var expected_midpoint: float = roundf(lerpf(
-		timeline.baseline_appetite_start,
-		timeline.baseline_appetite_end,
-		pow(0.5, timeline.baseline_appetite_exponent)
-	))
-	_check(
-		is_equal_approx(timeline.baseline_appetite_at(midpoint_time), expected_midpoint),
-		"前段基准胃口曲线使用 Excel 增长指数"
+		is_equal_approx(timeline.speed_multiplier_at_progress(0.1874), 1.0)
+		and is_equal_approx(timeline.speed_multiplier_at_progress(0.1875), 1.1)
+		and is_equal_approx(timeline.speed_multiplier_at_progress(0.8125), 3.0),
+		"六档前进倍率在指定路程边界切换"
 	)
 	_check(
-		is_equal_approx(
-			timeline.baseline_appetite_at(timeline.baseline_appetite_end_time - 0.001),
-			timeline.baseline_appetite_at(timeline.baseline_appetite_end_time + 0.001)
-		),
-		"两段胃口曲线在135秒交界连续"
+		is_equal_approx(timeline.forward_duration(), 430.0)
+		and timeline.normal_gate_count == 50
+		and timeline.normal_wave_count == 235
+		and timeline.expected_normal_customer_count() == 293,
+		"正式流程以430秒前进目标排布50门、235波和约294只普通食客"
 	)
-	for checkpoint: Dictionary in [
-		{"time": 180.0, "appetite": 554.0},
-		{"time": 210.0, "appetite": 746.0},
-		{"time": 270.0, "appetite": 1200.0},
-		{"time": 300.0, "appetite": 1200.0},
-	]:
-		var checkpoint_time: float = float(checkpoint["time"])
-		var checkpoint_appetite: float = float(checkpoint["appetite"])
-		_check(
-			is_equal_approx(
-				timeline.baseline_appetite_at(checkpoint_time),
-				checkpoint_appetite
-			),
-			"%.0f秒基准胃口保持计划值%.0f" % [
-				checkpoint_time,
-				checkpoint_appetite,
-			]
-		)
+	_check(timeline.event_ids.count("start_gate") == 1, "正式流程包含一道开局食材门")
+	_check(timeline.event_ids.count("elite") == 6, "正式流程包含六次精英检查")
+	_check(timeline.event_ids.count("boss") == 2, "正式流程包含两场Boss")
+	var first_boss_index: int = timeline.event_ids.find("boss")
+	var second_boss_index: int = timeline.event_ids.rfind("boss")
 	_check(
-		is_equal_approx(timeline.normal_wave_interval_at(77.999), 3.2)
-		and is_equal_approx(timeline.normal_wave_interval_at(78.0), 2.8),
-		"78秒普通波次阶段边界"
+		first_boss_index >= 0
+		and is_equal_approx(timeline.event_progresses[first_boss_index], 0.5)
+		and is_equal_approx(timeline.event_progresses[second_boss_index], 1.0),
+		"两场Boss分别位于50%与100%路程点"
 	)
 	_check(
-		is_equal_approx(timeline.normal_wave_interval_at(134.999), 2.8)
-		and is_equal_approx(timeline.normal_wave_interval_at(135.0), 3.2),
-		"135秒普通波次阶段边界"
-	)
-	var gate_count: int = 0
-	var elite_count: int = 0
-	for event_text: String in timeline.event_ids:
-		if event_text.begins_with("gate_"):
-			gate_count += 1
-		elif event_text == "elite":
-			elite_count += 1
-	_check(gate_count == 24, "构筑验证切片包含24道普通强化门")
-	_check(elite_count == 3, "时间轴包含3次精英检查")
-	_check(timeline.event_ids.has("boss"), "时间轴包含Boss")
-	_check(timeline.event_ids.find("gate_20") > timeline.event_ids.find("boss"), "Boss后保留4道复跑门")
-	_check(timeline.event_times.size() == 29, "时间轴仍保留29条显式事件")
-	var boss_index: int = timeline.event_ids.find("boss")
-	_check(
-		boss_index >= 0 and is_equal_approx(timeline.event_times[boss_index], 270.0),
-		"Boss请求时间仍为270秒"
-	)
-	var run: RunController3D = RunController3D.new()
-	run.basic_guest_data = load("res://data/customers/basic_guest.tres") as CustomerData
-	run.fast_guest_data = load("res://data/customers/fast_guest.tres") as CustomerData
-	run.ranged_guest_data = load("res://data/customers/ranged_guest.tres") as CustomerData
-	_check(run._customer_spawn_lead_seconds(run.basic_guest_data) > 10.0, "普通食客按新增可见路程提前生成")
-	_check(is_equal_approx(run._timeline_event_lead_seconds(&"gate_0"), 14.8), "普通门按原速度补偿新增路程和排队等待")
-	var scene_cart: Cart3D = Cart3D.new()
-	scene_cart.position.z = Playfield.CART_Z + 2.5
-	run.add_child(scene_cart)
-	run.cart = scene_cart
-	_check(is_equal_approx(run._timeline_event_lead_seconds(&"gate_0"), 15.8), "编辑器餐车位置同步调整普通门提前量")
-	run.free()
-	var post_elite_gate_index: int = timeline.event_ids.find("gate_4")
-	var elite_index: int = timeline.event_ids.find("elite")
-	_check(
-		post_elite_gate_index > elite_index
-		and timeline.event_times[post_elite_gate_index] >= timeline.event_times[elite_index],
-		"精英后首门保持在精英事件之后"
+		timeline.course_distance(RunController3D.BASE_WORLD_SCROLL_SPEED) > 0.0,
+		"正式路程可由430秒目标与六档速度反推"
 	)
 	var missing_result: TimelineExcelLoader.LoadResult = TimelineExcelLoader.load_from_excel(
 		"res://balance_tables/__missing__.xlsx",
 		fallback
 	)
 	_check(missing_result.used_fallback and missing_result.timeline == fallback, "Excel 缺失时使用 .tres 回退")
+
+
+# 验证压力档位同时驱动风场、食材免疫规则和末段操控目标。
+func _test_pressure_rules() -> void:
+	var timeline: EncounterTimeline = load("res://data/timelines/vertical_slice.tres") as EncounterTimeline
+	var run: RunController3D = RunController3D.new()
+	var director: EncounterDirector = EncounterDirector.new()
+	var state: RunState = RunState.new()
+	director.timeline = timeline
+	run.add_child(director)
+	run.director = director
+	run.state = state
+	state.forward_distance = timeline.course_distance(RunController3D.BASE_WORLD_SCROLL_SPEED) * 0.9
+	var expected_headwind: float = (
+		1.25 * RunController3D.BASE_WORLD_SCROLL_SPEED * (3.0 - 1.0)
+	)
+	_check(is_equal_approx(run.forward_speed_multiplier(), 3.0), "末段使用3.0倍前进速度")
+	_check(is_equal_approx(run.current_headwind_speed(), expected_headwind), "迎面风按1.25倍基础滚动差值计算")
+	_check(is_equal_approx(absf(run.current_crosswind_speed()), Playfield.design_to_world(60.0)), "末段侧漂达到60px/s")
+	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
+	var mushroom: FoodData = load("res://data/foods/mushroom.tres") as FoodData
+	var normal_wind: Vector3 = run._projectile_environment_velocity(potato, false)
+	_check(run._projectile_environment_velocity(mushroom, false).is_zero_approx(), "蘑菇免疫位移风")
+	_check(run._projectile_environment_velocity(potato, true).is_equal_approx(normal_wind * 0.25), "巨型法棍只承受普通投射物25%的风偏")
+	state.cart_base_speed_factor = 0.8
+	state.cart_speed_bonus = 2700.0
+	var late_cart_speed: float = (
+		Cart3D.BASE_MOVE_SPEED_DESIGN * state.cart_base_speed_factor
+		+ state.effective_cart_speed_bonus(Cart3D.BASE_MOVE_SPEED_DESIGN)
+	)
+	var crossing_seconds: float = Playfield.world_to_design(6.12 - 1.08) / late_cart_speed
+	_check(crossing_seconds >= 0.28 and crossing_seconds <= 0.34, "末段混合构筑横穿可操作宽度约0.30秒")
+	run.free()
 
 
 func _test_resources() -> void:
@@ -981,7 +1010,7 @@ func _test_resources() -> void:
 	_check(potato != null and is_equal_approx(potato.base_satisfaction, 10.0), "土豆基线")
 	_check(potato.initial_aim_mode == FoodData.AimMode.FIXED_FORWARD, "土豆初始固定竖直发射")
 	_check(potato.initial_tracking_mode == FoodData.TrackingMode.NONE, "土豆初始为直线非追踪弹道")
-	_check(baguette != null and baguette.pierce_count == 2, "法棍默认额外穿透一个目标")
+	_check(baguette != null and baguette.pierce_count == 3, "法棍默认额外穿透两个目标")
 	_check(baguette.initial_tracking_mode == FoodData.TrackingMode.NONE, "法棍初始不追踪")
 	_check(
 		mushroom != null

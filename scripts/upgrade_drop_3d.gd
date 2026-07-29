@@ -33,7 +33,11 @@ func configure(
 	baseline_appetite = maxf(1.0, gate_baseline_appetite)
 	occupied_regions = clampi(gate_occupied_regions, 1, Playfield.REGION_COUNT)
 	spawn_index = index
-	upgrade_health = baseline_appetite * (1.0 - upgrade.value_ratio)
+	upgrade_health = (
+		baseline_appetite
+		* (1.0 - upgrade.value_ratio)
+		* maxf(0.0, upgrade.source_scale)
+	)
 	position = start_position
 	_configure_visual()
 	_refresh_label()
@@ -46,7 +50,7 @@ func _process(delta: float) -> void:
 		_hit_feedback_remaining = maxf(0.0, _hit_feedback_remaining - delta)
 		_refresh_feedback()
 	if run.is_world_scrolling():
-		position.z += move_speed * delta
+		position.z += travel_speed() * delta
 	if position.z >= run.cart_destination_z():
 		resolved = true
 		if contains_cart_x(run.cart.position.x):
@@ -82,14 +86,15 @@ func receive_damage(amount: float) -> void:
 	if resolved or amount <= 0.0 or upgrade_health <= 0.0001:
 		return
 	upgrade_health = maxf(0.0, upgrade_health - amount)
-	upgrade.set_value_ratio(1.0 - upgrade_health / baseline_appetite)
+	var scaled_health_pool: float = baseline_appetite * maxf(0.001, upgrade.source_scale)
+	upgrade.set_value_ratio(1.0 - upgrade_health / scaled_health_pool)
 	_hit_feedback_remaining = 0.12
 	_refresh_label()
 	_refresh_feedback()
 
 
 func travel_speed() -> float:
-	return move_speed
+	return move_speed * (run.forward_speed_multiplier() if run != null else 1.0)
 
 
 func _panel_width() -> float:
@@ -116,7 +121,12 @@ func _refresh_label() -> void:
 	if _label == null or upgrade == null:
 		return
 	var maximum_durability: float = 100.0 if run == null else run.state.maximum_durability
-	_label.text = "%s\n%s\n%s" % [upgrade.display_name, upgrade.effect_text(maximum_durability), upgrade.rarity_name]
+	_label.text = "%s%s\n%s\n%s" % [
+		"小份 " if not upgrade.source_label.is_empty() else "",
+		upgrade.display_name,
+		upgrade.effect_text(maximum_durability),
+		upgrade.rarity_name,
+	]
 	_label.modulate = Color.WHITE
 	_health_label.text = str(ceili(upgrade_health))
 	var panel_material: StandardMaterial3D = _panel_mesh.material_override as StandardMaterial3D

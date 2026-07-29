@@ -5,6 +5,7 @@ signal damaged(amount: float)
 signal destroyed
 
 const BASE_MOVE_SPEED: float = 9.0
+const BASE_MOVE_SPEED_DESIGN: float = BASE_MOVE_SPEED / Playfield.WORLD_UNITS_PER_PIXEL
 const COLLISION_RECT: Rect2 = Rect2(-0.96, -1.5, 1.92, 2.17)
 
 var state: RunState
@@ -37,7 +38,10 @@ func _physics_process(delta: float) -> void:
 		_visual_root.visible = true
 	if _upgrade_feedback_remaining > 0.0:
 		_upgrade_feedback_remaining = maxf(0.0, _upgrade_feedback_remaining - delta)
-	var speed: float = BASE_MOVE_SPEED + Playfield.design_to_world(state.cart_speed_bonus)
+	var speed: float = (
+		BASE_MOVE_SPEED * clampf(state.cart_base_speed_factor, 0.0, 1.0)
+		+ Playfield.design_to_world(state.effective_cart_speed_bonus(BASE_MOVE_SPEED_DESIGN))
+	)
 	position.x = move_toward(position.x, target_x, speed * delta)
 
 

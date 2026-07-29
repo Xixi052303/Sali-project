@@ -23,6 +23,9 @@ enum Kind {
 @export var maximum_value: float = 0.0
 @export_range(0.0, 1.0, 0.001) var value_ratio: float = 0.0
 @export var uses_value_range: bool = false
+# 普通门为1；小份奖励按来源缩放实际效果，但继续保留同一品质百分位。
+@export_range(0.0, 1.0, 0.001, "or_greater") var source_scale: float = 1.0
+@export var source_label: String = ""
 @export var rarity_name: String = "寻常"
 @export var rarity_color: Color = Color("#d7c59a")
 
@@ -43,8 +46,15 @@ func configure_value_range(lower: float, upper: float, ratio: float = 0.0) -> vo
 func set_value_ratio(ratio: float) -> void:
 	value_ratio = clampf(ratio, 0.0, 1.0)
 	if uses_value_range:
-		value = lerpf(minimum_value, maximum_value, value_ratio)
+		value = lerpf(minimum_value, maximum_value, value_ratio) * maxf(0.0, source_scale)
 	_update_rarity()
+
+
+# 奖励来源在不改变稀有度百分位的前提下重新计算实际效果。
+func set_source_scale(scale: float, label: String = "") -> void:
+	source_scale = maxf(0.0, scale)
+	source_label = label
+	set_value_ratio(value_ratio)
 
 
 func is_at_maximum() -> bool:

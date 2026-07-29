@@ -65,7 +65,7 @@ func _process(delta: float) -> void:
 		_right_hit_feedback = maxf(0.0, _right_hit_feedback - delta)
 		_refresh_feedback()
 	if run.is_world_scrolling():
-		position.z += move_speed * delta
+		position.z += travel_speed() * delta
 	if position.z >= run.cart_destination_z():
 		resolved = true
 		var cart_x: float = run.cart.position.x
@@ -138,7 +138,7 @@ func side_is_attackable(left_side: bool) -> bool:
 
 
 func travel_speed() -> float:
-	return move_speed
+	return move_speed * (run.forward_speed_multiplier() if run != null else 1.0)
 
 
 func _resolve_visual_nodes() -> void:
