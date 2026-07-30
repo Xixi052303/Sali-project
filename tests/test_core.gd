@@ -119,6 +119,24 @@ func _test_3d_plane_rules() -> void:
 	_check(cart.position.is_equal_approx(editor_position), "餐车配置不会覆盖编辑器设置的初始位置")
 	_check(is_equal_approx(cart.target_x, editor_position.x), "餐车横移目标从编辑器初始位置开始")
 	_check(is_equal_approx(cart.target_z, editor_position.z), "餐车纵移目标从编辑器初始位置开始")
+	cart.set_durability_display(50.0, 100.0, 25.0)
+	var cart_durability_fill: MeshInstance3D = cart.get_node(
+		"StatusBillboard/DurabilityFill"
+	) as MeshInstance3D
+	var cart_shield_outline: MeshInstance3D = cart.get_node(
+		"StatusBillboard/ShieldOutline"
+	) as MeshInstance3D
+	var cart_shield_badge: Label3D = cart.get_node(
+		"StatusBillboard/ShieldBadge"
+	) as Label3D
+	_check(is_equal_approx(cart_durability_fill.scale.x, 0.5), "餐车头顶耐久纸条按当前与上限比例缩放")
+	_check(cart_shield_outline.visible and cart_shield_badge.text == "+25", "临时护盾显示蓝色外框与点数徽记")
+	cart.set_durability_display(60.0, 120.0, 0.0)
+	var maximum_feedback: Label3D = cart.get_node(
+		"StatusBillboard/MaximumFeedbackLabel"
+	) as Label3D
+	_check(not cart_shield_outline.visible and not cart_shield_badge.visible, "护盾耗尽后头顶护盾表现隐藏")
+	_check(maximum_feedback.visible and maximum_feedback.text == "上限 +20", "最大耐久增加时显示短暂上限反馈")
 	var movement_boss: PrototypeBoss3D = PrototypeBoss3D.new()
 	movement_boss.position = Vector3(3.6, 0.0, 6.0)
 	cart.begin_boss_movement(movement_boss)
@@ -343,10 +361,64 @@ func _test_3d_background_and_hud() -> void:
 
 	var hud_scene: PackedScene = load("res://scenes/hud.tscn") as PackedScene
 	var hud: GameHud = hud_scene.instantiate() as GameHud
+	get_root().add_child(hud)
 	var durability_panel: PanelContainer = hud.get_node("Root/DurabilityPanel") as PanelContainer
 	_check(durability_panel.anchor_top == 1.0, "餐车耐久固定在屏幕下方")
 	_check(durability_panel.get_parent() == hud.get_node("Root"), "耐久条不再占用顶部信息布局")
 	_check(hud.get_node_or_null("Root/ChoiceOverlay/ChoiceStack/ChoiceButtons") != null, "HUD固定结构可以在编辑器预览和调整")
+	_check(hud.get_node_or_null("Root/PauseOverlay/PausePanel") != null, "正式暂停详情页保留在HUD场景中")
+	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
+	hud.add_cooking_food(potato, 2)
+	hud.set_cooking_progress(&"potato", 0.5, 0.74)
+	var cooking_row: HFlowContainer = hud.get_node("Root/CookingArea/CookingRow") as HFlowContainer
+	var cooking_indicator: CookingIndicator = cooking_row.get_child(0) as CookingIndicator
+	var remaining_label: Label = cooking_indicator.get_node("RemainingLabel") as Label
+	var level_label: Label = cooking_indicator.get_node("LevelLabel") as Label
+	_check(remaining_label.text == "0.7s", "烹饪圆环剩余时间固定显示一位小数")
+	_check(level_label.text == "Lv.2", "烹饪圆环显示当前食材等级")
+	hud.show_pause("餐车\n耐久 50 / 100")
+	_check(hud.is_pause_visible(), "HUD可以显示正式暂停详情")
+	hud.hide_pause()
+	_check(not hud.is_pause_visible(), "恢复出餐时正式暂停详情隐藏")
+	var status_state: RunState = RunState.new()
+	var status_field: Playfield = Playfield.new()
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var status_cart: Cart3D = cart_scene.instantiate() as Cart3D
+	get_root().add_child(status_field)
+	get_root().add_child(status_cart)
+	status_cart.configure(status_state, status_field)
+	status_state.durability_changed.connect(hud.set_durability)
+	status_state.durability_changed.connect(status_cart.set_durability_display)
+	status_state.add_temporary_shield(20.0)
+	var durability_label: Label = hud.get_node(
+		"Root/DurabilityPanel/DurabilityStack/DurabilityLabel"
+	) as Label
+	var shield_badge: Label3D = status_cart.get_node(
+		"StatusBillboard/ShieldBadge"
+	) as Label3D
+	_check(
+		durability_label.text.contains("临时护盾 +20") and shield_badge.text == "+20",
+		"同一耐久信号同步刷新底部精确值与头顶护盾"
+	)
+	status_state.take_durability_damage(30.0)
+	_check(
+		not shield_badge.visible and durability_label.text.contains("90 / 100"),
+		"护盾穿透伤害同步隐藏徽记并刷新底部耐久"
+	)
+	var sturdy_upgrade: UpgradeData = UpgradeData.new()
+	sturdy_upgrade.kind = UpgradeData.Kind.STURDY_CART
+	sturdy_upgrade.value = 0.2
+	status_state.apply_upgrade(sturdy_upgrade)
+	var maximum_feedback: Label3D = status_cart.get_node(
+		"StatusBillboard/MaximumFeedbackLabel"
+	) as Label3D
+	_check(
+		maximum_feedback.text == "上限 +20"
+		and durability_label.text.contains("110 / 120"),
+		"最大耐久成长同步刷新底部数值与头顶增量"
+	)
+	status_cart.free()
+	status_field.free()
 	hud.free()
 
 
@@ -472,6 +544,39 @@ func _test_projectile_evolutions() -> void:
 		"高弹速投射物使用上一位置到当前位置的连续线段防止穿透"
 	)
 	fast_projectile.free()
+
+	var wide_projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	run.add_child(wide_projectile)
+	wide_projectile.configure(
+		run,
+		Vector3(3.6, 0.0, 10.0),
+		Vector3.FORWARD,
+		potato,
+		10.0,
+		7.0,
+		Vector3.ZERO,
+		0.34,
+		1.0,
+		1,
+		null,
+		false,
+		0.0,
+		false,
+		0.0,
+		false
+	)
+	var wide_potato_visual: Node3D = wide_projectile.get_node("PotatoVisual") as Node3D
+	var wide_potato_diameter: float = (
+		wide_potato_visual.scale.x
+		* maxf(FoodProjectile3D.POTATO_MODEL_SIZE.x, FoodProjectile3D.POTATO_MODEL_SIZE.z)
+	)
+	_check(
+		is_equal_approx(wide_potato_diameter, 0.17 * 2.0 * 1.5),
+		"普通食材实体范围倍率在1.5倍封顶"
+	)
+	_check(wide_projectile._range_circle_outline.visible, "圆形食材超过视觉上限时显示实际范围轮廓")
+	_check(is_equal_approx(wide_projectile.radius, 0.34), "视觉封顶不改变普通食材实际命中半径")
+	wide_projectile.free()
 
 	var mushroom: FoodData = load("res://data/foods/mushroom.tres") as FoodData
 	var orbit: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
@@ -817,6 +922,23 @@ func _test_weapon_fires_without_target() -> void:
 	weapon.add_food(potato)
 	weapon._tick_food(weapon.foods[0], 0.0)
 	_check(projectiles.get_child_count() == 1, "没有目标时食材仍按冷却朝前发射")
+	_check(
+		is_equal_approx(weapon.foods[0].cooldown_duration, state.effective_interval(potato)),
+		"烹饪圆环保存本轮实际冷却间隔"
+	)
+	var half_interval: float = weapon.foods[0].cooldown_duration * 0.5
+	weapon._tick_food(weapon.foods[0], half_interval)
+	_check(
+		is_equal_approx(weapon.foods[0].cooldown_remaining, half_interval),
+		"独立烹饪进度按本轮间隔持续倒计时"
+	)
+	var remaining_before_pause: float = weapon.foods[0].cooldown_remaining
+	run.phase = RunController3D.Phase.CHOICE
+	weapon._process(10.0)
+	_check(
+		is_equal_approx(weapon.foods[0].cooldown_remaining, remaining_before_pause),
+		"非战斗与暂停阶段不会推进烹饪进度"
+	)
 	run.free()
 
 

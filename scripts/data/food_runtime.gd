@@ -3,6 +3,7 @@ extends RefCounted
 
 var data: FoodData
 var cooldown_remaining: float = 0.0
+var cooldown_duration: float = 0.0
 var ready: bool = true
 
 

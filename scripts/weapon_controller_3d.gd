@@ -1,6 +1,13 @@
 class_name WeaponController3D
 extends Node
 
+signal food_added(food: FoodData)
+signal cooking_progress_changed(
+	food_id: StringName,
+	progress: float,
+	remaining_seconds: float
+)
+
 var run: RunController3D
 var cart: Cart3D
 var state: RunState
@@ -23,6 +30,8 @@ func add_food(food: FoodData) -> void:
 	var runtime: FoodRuntime = FoodRuntime.new(food)
 	foods.append(runtime)
 	state.add_food(food.id)
+	food_added.emit(food)
+	cooking_progress_changed.emit(food.id, 1.0, 0.0)
 
 
 func _process(delta: float) -> void:
@@ -40,11 +49,21 @@ func _tick_food(runtime: FoodRuntime, delta: float) -> void:
 		if runtime.cooldown_remaining <= 0.0:
 			runtime.ready = true
 	if not runtime.ready:
+		_emit_cooking_progress(runtime)
 		return
 	var target: Node3D = run.get_priority_target_for_food(runtime.data)
 	runtime.ready = false
-	runtime.cooldown_remaining = state.effective_interval(runtime.data)
+	runtime.cooldown_duration = state.effective_interval(runtime.data)
+	runtime.cooldown_remaining = runtime.cooldown_duration
 	_fire(runtime.data, target)
+	_emit_cooking_progress(runtime)
+
+
+func _emit_cooking_progress(runtime: FoodRuntime) -> void:
+	var duration: float = maxf(runtime.cooldown_duration, RunState.MINIMUM_INTERVAL)
+	var remaining: float = maxf(0.0, runtime.cooldown_remaining)
+	var progress: float = 1.0 if runtime.ready else 1.0 - clampf(remaining / duration, 0.0, 1.0)
+	cooking_progress_changed.emit(runtime.data.id, progress, remaining)
 
 
 func _fire(food: FoodData, target: Node3D) -> void:

@@ -92,10 +92,10 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 - `Playfield`（`scripts/playfield.gd`）：定义道路边界、六个逻辑区域和餐车活动范围。
 - `EncounterDirector`与`EncounterTimeline`：按路程进度触发显式事件；`balance_tables/时间轴.xlsx`保存三段有效时间胃口曲线、独立总路程、路程事件与普通门/波次数量，`TimelineExcelLoader`生成运行时Resource，`data/timelines/vertical_slice.tres`负责失败回退，`RunController3D._advance_distance_spawns()`按路程生成普通门与普通食客组合。
 - `GameplayExcelLoader`：读取`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`和`特殊强化.xlsx`，生成本局独立的`CustomerData`、`FoodData`、`UpgradeData`与`SpecialUpgradeData`；读取失败时由场景资源或`RunController3D`默认池回退，食客表按当前四个必需ID整体回退。
-- `WeaponController3D`、`FoodRuntime` 与 `FoodProjectile3D`：负责武器冷却、目标获取后的发射、`X/Z`弹道和命中。
-- `Customer3D`、`PrototypeBoss3D` 与 `Cart3D`：分别负责食客、Boss 和餐车局部行为，并通过 `RunController3D` 协调伤害与流程。
+- `WeaponController3D`、`FoodRuntime` 与 `FoodProjectile3D`：负责武器冷却、烹饪进度通知、目标获取后的发射、`X/Z`弹道和命中；投射物判定范围保持完整，实体视觉在高倍率时独立封顶并显示超额轮廓。
+- `Customer3D`、`PrototypeBoss3D` 与 `Cart3D`：分别负责食客、Boss 和餐车局部行为；餐车只读显示`RunState`耐久与护盾，并通过 `RunController3D` 协调伤害与流程。
 - `road_segment_3d.tscn`持有马路、左右路沿与左右人行道的分层节点；`WorldBackground3D`只负责完整路段和街景面片的循环滚动。
-- `hud.tscn`保存可编辑的固定界面节点；`GameHud`负责内容刷新与选择、重开信号，不拥有玩法规则。
+- `hud.tscn`保存可编辑的固定界面、逐食材烹饪圆环和正式暂停详情节点；`GameHud`负责内容刷新与暂停、选择、重开信号，不拥有玩法规则。
 - `scripts/data/*.gd`定义类型化Resource；`balance_tables/时间轴.xlsx`、`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`与`特殊强化.xlsx`是对应领域运行主源，`data/**/*.tres`与脚本默认值保存食材、食客、Boss和数值安全回退。
 
 当前普通强化候选和部分特殊选择由 `RunController3D` 在运行时构建，并非全部来自 `.tres`。修改数据前必须先确认事实源位于具体 Resource、脚本构建逻辑还是 GDD。

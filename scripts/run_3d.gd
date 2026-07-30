@@ -124,6 +124,7 @@ var world_scroll_speed: float = BASE_WORLD_SCROLL_SPEED
 var state: RunState
 var playfield: Playfield
 var phase: Phase = Phase.INTRO
+var _manual_pause_active: bool = false
 var customers: Array[Customer3D] = []
 var boss: PrototypeBoss3D
 var _spawn_counter: int = 0
@@ -244,8 +245,14 @@ func _ready() -> void:
 	cart.damaged.connect(_on_cart_damaged)
 	cart.destroyed.connect(_on_cart_destroyed)
 	state.durability_changed.connect(hud.set_durability)
+	state.durability_changed.connect(cart.set_durability_display)
+	state.inventory_changed.connect(_refresh_hud_inventory)
+	weapon_controller.food_added.connect(_on_weapon_food_added)
+	weapon_controller.cooking_progress_changed.connect(hud.set_cooking_progress)
 	hud.special_choice_selected.connect(_on_special_choice_selected)
 	hud.restart_requested.connect(_on_restart_requested)
+	hud.pause_requested.connect(_on_pause_requested)
+	hud.resume_requested.connect(_on_resume_requested)
 	debug_menu.action_requested.connect(_on_debug_action_requested)
 	debug_menu.menu_opened.connect(_on_debug_menu_opened)
 	debug_menu.menu_closed.connect(_on_debug_menu_closed)
@@ -257,6 +264,7 @@ func _ready() -> void:
 	hud.set_phase("准备出餐 · 横向拖动餐车")
 	hud.show_toast("按住并横向拖动，松手后餐车留在原位")
 	phase = Phase.FORWARD
+	hud.set_pause_available(true)
 
 
 # 每次进入单局读取已保存的 Excel；非法表只回退场景装配的 .tres。
@@ -450,6 +458,7 @@ func _special_upgrade_target_error(upgrades: Array[SpecialUpgradeData]) -> Strin
 
 
 func _process(delta: float) -> void:
+	hud.set_pause_available(phase == Phase.FORWARD or phase == Phase.BOSS)
 	if phase == Phase.FORWARD:
 		state.elapsed_seconds += delta
 		# Boss请求到达后只让已排队对象完成接近，不再越过后续路程事件。
@@ -1738,8 +1747,110 @@ func _on_cart_destroyed() -> void:
 
 
 func _on_restart_requested() -> void:
+	_manual_pause_active = false
 	get_tree().paused = false
 	get_tree().reload_current_scene()
+
+
+func _on_pause_requested() -> void:
+	if _manual_pause_active or (phase != Phase.FORWARD and phase != Phase.BOSS):
+		return
+	_manual_pause_active = true
+	cart.cancel_pointer_input()
+	hud.show_pause(_build_pause_details_text())
+	get_tree().paused = true
+
+
+func _on_resume_requested() -> void:
+	if not _manual_pause_active:
+		return
+	_manual_pause_active = false
+	hud.hide_pause()
+	get_tree().paused = false
+	hud.set_pause_available(phase == Phase.FORWARD or phase == Phase.BOSS)
+
+
+func _on_weapon_food_added(food: FoodData) -> void:
+	hud.add_cooking_food(food, state.food_level(food.id))
+
+
+func _refresh_hud_inventory() -> void:
+	for runtime: FoodRuntime in weapon_controller.foods:
+		hud.add_cooking_food(runtime.data, state.food_level(runtime.data.id))
+		hud.set_cooking_level(runtime.data.id, state.food_level(runtime.data.id))
+
+
+func _build_pause_details_text() -> String:
+	var sections: PackedStringArray = []
+	sections.append(
+		"餐车\n耐久 %.0f / %.0f　临时护盾 %.0f" % [
+			state.current_durability,
+			state.maximum_durability,
+			state.temporary_shield,
+		]
+	)
+	var upgrade_lines: PackedStringArray = []
+	upgrade_lines.append("• %s" % state.cumulative_effect_text(UpgradeData.Kind.SUGAR))
+	upgrade_lines.append(
+		"• %s" % state.cumulative_effect_text(UpgradeData.Kind.QUICK_PREP)
+	)
+	upgrade_lines.append("• %s" % state.cumulative_effect_text(UpgradeData.Kind.WINE))
+	upgrade_lines.append(
+		"• %s" % state.cumulative_effect_text(UpgradeData.Kind.SCALLION)
+	)
+	upgrade_lines.append(
+		"• %s" % state.cumulative_effect_text(UpgradeData.Kind.STARCH)
+	)
+	upgrade_lines.append(
+		"• %s" % state.cumulative_effect_text(UpgradeData.Kind.LIGHT_CART)
+	)
+	upgrade_lines.append(
+		"• %s" % state.cumulative_effect_text(UpgradeData.Kind.STURDY_CART)
+	)
+	upgrade_lines.append("• %s" % state.cumulative_effect_text(UpgradeData.Kind.REPAIR))
+	sections.append("累计强化\n%s" % "\n".join(upgrade_lines))
+	var food_lines: PackedStringArray = []
+	for runtime: FoodRuntime in weapon_controller.foods:
+		var food: FoodData = runtime.data
+		var range_multiplier: float = (
+			state.effective_projectile_radius(food) / maxf(0.001, food.projectile_radius)
+		)
+		var traits: PackedStringArray = []
+		if state.is_food_target_aimed(food.id):
+			traits.append("瞄准投喂")
+		if state.is_food_homing(food.id):
+			traits.append("飞行追踪")
+		if food.id == &"baguette" and state.has_food_evolution(&"baguette_giant"):
+			traits.append("巨型法棍 %.1fs" % state.effective_giant_baguette_interval())
+		if food.id == &"mushroom" and state.has_food_evolution(&"mushroom_breath"):
+			traits.append("呼吸菌圈")
+		var trait_text: String = " · ".join(traits) if not traits.is_empty() else "无"
+		food_lines.append(
+			(
+				"%s Lv.%d\n"
+				+ "  满足 %.1f　烹饪 %.2fs　范围 ×%.2f\n"
+				+ "  持续 %.2fs　份数 %d　命中 %d\n"
+				+ "  特性 %s"
+			) % [
+				food.display_name,
+				state.food_level(food.id),
+				state.effective_satisfaction(food),
+				state.effective_interval(food),
+				range_multiplier,
+				state.effective_duration(food),
+				state.servings,
+				state.effective_pierce_count(food),
+				trait_text,
+			]
+		)
+	sections.append(
+		"食材详情\n%s" % (
+			"\n\n".join(food_lines)
+			if not food_lines.is_empty()
+			else "尚未装车"
+		)
+	)
+	return "\n\n".join(sections)
 
 
 # Debug菜单只发送动作ID，所有局内写操作继续集中在单局控制器及RunState中。

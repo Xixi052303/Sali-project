@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/hud.gd" id="1_hud"]
 
@@ -64,6 +64,46 @@ corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
+[sub_resource type="StyleBoxFlat" id="StylePauseButton"]
+bg_color = Color(0.305882, 0.215686, 0.176471, 0.94)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.839216, 0.682353, 0.333333, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StylePausePanel"]
+content_margin_left = 22.0
+content_margin_top = 18.0
+content_margin_right = 22.0
+content_margin_bottom = 18.0
+bg_color = Color(0.180392, 0.141176, 0.109804, 0.98)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.839216, 0.682353, 0.333333, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleResumeButton"]
+bg_color = Color(0.239216, 0.372549, 0.239216, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.839216, 0.682353, 0.333333, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
 [node name="Hud" type="CanvasLayer"]
 layer = 100
 script = ExtResource("1_hud")
@@ -123,6 +163,42 @@ theme_override_constants/outline_size = 4
 theme_override_font_sizes/font_size = 28
 text = "00:00"
 horizontal_alignment = 2
+
+[node name="PauseButton" type="Button" parent="Root/SafeMargin/TopLayout/Header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 52)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.94902, 0.870588, 0.690196, 1)
+theme_override_font_sizes/font_size = 23
+theme_override_styles/normal = SubResource("StylePauseButton")
+theme_override_styles/hover = SubResource("StylePauseButton")
+theme_override_styles/pressed = SubResource("StylePauseButton")
+text = "Ⅱ"
+
+[node name="CookingArea" type="MarginContainer" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -308.0
+offset_right = -24.0
+offset_bottom = -112.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="CookingRow" type="HFlowContainer" parent="Root/CookingArea"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 4
+alignment = 1
+last_wrap_alignment = 2
+reverse_fill = true
 
 [node name="DurabilityPanel" type="PanelContainer" parent="Root"]
 unique_name_in_owner = true
@@ -202,6 +278,68 @@ theme_override_constants/outline_size = 4
 theme_override_font_sizes/font_size = 15
 horizontal_alignment = 2
 vertical_alignment = 2
+
+[node name="PauseOverlay" type="ColorRect" parent="Root"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.07, 0.06, 0.05, 0.9)
+
+[node name="PausePanel" type="PanelContainer" parent="Root/PauseOverlay"]
+layout_mode = 0
+offset_left = 42.0
+offset_top = 112.0
+offset_right = 678.0
+offset_bottom = 1168.0
+theme_override_styles/panel = SubResource("StylePausePanel")
+
+[node name="PauseStack" type="VBoxContainer" parent="Root/PauseOverlay/PausePanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="PauseTitle" type="Label" parent="Root/PauseOverlay/PausePanel/PauseStack"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.94902, 0.831373, 0.482353, 1)
+theme_override_colors/font_outline_color = Color(0.141176, 0.121569, 0.101961, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 34
+text = "暂停 · 厨房详情"
+horizontal_alignment = 1
+
+[node name="PauseScroll" type="ScrollContainer" parent="Root/PauseOverlay/PausePanel/PauseStack"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="PauseDetails" type="Label" parent="Root/PauseOverlay/PausePanel/PauseStack/PauseScroll"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.94902, 0.870588, 0.690196, 1)
+theme_override_colors/font_outline_color = Color(0.141176, 0.121569, 0.101961, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 21
+text = "餐车耐久 100 / 100"
+autowrap_mode = 2
+
+[node name="ResumeButton" type="Button" parent="Root/PauseOverlay/PausePanel/PauseStack"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("StyleResumeButton")
+theme_override_styles/hover = SubResource("StyleResumeButton")
+theme_override_styles/pressed = SubResource("StyleResumeButton")
+text = "继续出餐"
 
 [node name="ChoiceOverlay" type="ColorRect" parent="Root"]
 unique_name_in_owner = true

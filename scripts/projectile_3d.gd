@@ -4,6 +4,8 @@ extends Node3D
 const MISS_DISAPPEAR_DURATION: float = 0.2
 const VISUAL_CENTER_Y: float = 0.82
 const GIANT_BAGUETTE_ROLL_SPEED: float = 6.0
+const MAXIMUM_VISUAL_RANGE_SCALE: float = 1.5
+const RANGE_OUTLINE_WIDTH: float = 0.035
 # 三份尺寸来自对应 GLB 的本地 AABB，只用于把美术模型映射到既有表现尺度。
 const POTATO_MODEL_SIZE: Vector3 = Vector3(0.849609375, 0.716796875, 0.998046875)
 const BAGUETTE_MODEL_SIZE: Vector3 = Vector3(0.400390625, 0.330078125, 0.998046875)
@@ -43,6 +45,12 @@ var _range_scale: float = 1.0
 @onready var _baguette_visual: Node3D = %BaguetteVisual
 @onready var _giant_baguette_visual: GiantBaguette3D = %GiantBaguetteVisual
 @onready var _mushroom_visual: Node3D = %MushroomVisual
+@onready var _range_circle_outline: MeshInstance3D = %RangeCircleOutline
+@onready var _range_box_outline: Node3D = %RangeBoxOutline
+@onready var _range_box_top: MeshInstance3D = %RangeBoxTop
+@onready var _range_box_bottom: MeshInstance3D = %RangeBoxBottom
+@onready var _range_box_left: MeshInstance3D = %RangeBoxLeft
+@onready var _range_box_right: MeshInstance3D = %RangeBoxRight
 
 
 func configure(
@@ -244,6 +252,8 @@ func _begin_miss_disappear() -> void:
 	_tween_visual_transparency(tween, _baguette_visual)
 	_tween_visual_transparency(tween, _giant_baguette_visual)
 	_tween_visual_transparency(tween, _mushroom_visual)
+	_tween_visual_transparency(tween, _range_circle_outline)
+	_tween_visual_transparency(tween, _range_box_outline)
 	tween.chain().tween_callback(queue_free)
 
 
@@ -258,6 +268,12 @@ func _resolve_visual_nodes() -> void:
 	_baguette_visual = get_node("BaguetteVisual") as Node3D
 	_giant_baguette_visual = get_node("GiantBaguetteVisual") as GiantBaguette3D
 	_mushroom_visual = get_node("MushroomVisual") as Node3D
+	_range_circle_outline = get_node("RangeCircleOutline") as MeshInstance3D
+	_range_box_outline = get_node("RangeBoxOutline") as Node3D
+	_range_box_top = get_node("RangeBoxOutline/RangeBoxTop") as MeshInstance3D
+	_range_box_bottom = get_node("RangeBoxOutline/RangeBoxBottom") as MeshInstance3D
+	_range_box_left = get_node("RangeBoxOutline/RangeBoxLeft") as MeshInstance3D
+	_range_box_right = get_node("RangeBoxOutline/RangeBoxRight") as MeshInstance3D
 
 
 # 按食材类型装配模型，并把美术尺寸映射到现有表现与判定尺度。
@@ -266,38 +282,103 @@ func _configure_visual() -> void:
 	_baguette_visual.visible = food_id == &"baguette" and not _giant_baguette
 	_giant_baguette_visual.visible = food_id == &"baguette" and _giant_baguette
 	_mushroom_visual.visible = food_id == &"mushroom"
+	_range_circle_outline.visible = false
+	_range_box_outline.visible = false
+	var visual_range_scale: float = minf(_range_scale, MAXIMUM_VISUAL_RANGE_SCALE)
 	if food_id == &"baguette":
-		var baguette_length: float = 0.8 * _range_scale
-		var baguette_width: float = 0.2 * _range_scale
-		var baguette_height: float = 0.18 * _range_scale
+		var baguette_length: float = 0.8 * visual_range_scale
+		var baguette_width: float = 0.2 * visual_range_scale
+		var baguette_height: float = 0.18 * visual_range_scale
 		if _giant_baguette:
+			var giant_base_width: float = (
+				_giant_half_width * 2.0 / maxf(0.001, _range_scale)
+			)
+			var giant_visual_span: Vector2 = _road_clipped_span(
+				giant_base_width * visual_range_scale
+			)
 			_giant_baguette_visual.configure_dimensions(
-				_giant_half_width * 2.0,
+				giant_visual_span.y,
 				baguette_width,
 				baguette_height
 			)
+			_giant_baguette_visual.position.x = giant_visual_span.x
 			_giant_baguette_visual.position.y = VISUAL_CENTER_Y
-			return
-		_baguette_visual.scale = Vector3(
-			baguette_width / BAGUETTE_MODEL_SIZE.x,
-			baguette_height / BAGUETTE_MODEL_SIZE.y,
-			baguette_length / BAGUETTE_MODEL_SIZE.z
-		)
-		_baguette_visual.position.y = VISUAL_CENTER_Y - baguette_height * 0.5
+			if _range_scale > MAXIMUM_VISUAL_RANGE_SCALE:
+				var giant_outline_span: Vector2 = _road_clipped_span(
+					_giant_half_width * 2.0
+				)
+				_configure_box_outline(
+					giant_outline_span.y,
+					0.2 * _range_scale,
+					giant_outline_span.x
+				)
+		else:
+			_baguette_visual.scale = Vector3(
+				baguette_width / BAGUETTE_MODEL_SIZE.x,
+				baguette_height / BAGUETTE_MODEL_SIZE.y,
+				baguette_length / BAGUETTE_MODEL_SIZE.z
+			)
+			_baguette_visual.position.y = VISUAL_CENTER_Y - baguette_height * 0.5
+			if _range_scale > MAXIMUM_VISUAL_RANGE_SCALE:
+				_configure_box_outline(0.2 * _range_scale, 0.8 * _range_scale)
 	elif food_id == &"mushroom":
-		var mushroom_diameter: float = maxf(0.18, radius * 2.0)
+		var base_radius: float = radius / maxf(0.001, _range_scale)
+		var mushroom_diameter: float = maxf(0.18, base_radius * visual_range_scale * 2.0)
 		var mushroom_scale: float = mushroom_diameter / maxf(
 			MUSHROOM_MODEL_SIZE.x,
 			MUSHROOM_MODEL_SIZE.z
 		)
 		_mushroom_visual.scale = Vector3.ONE * mushroom_scale
 		_mushroom_visual.position.y = VISUAL_CENTER_Y - MUSHROOM_MODEL_SIZE.y * mushroom_scale * 0.5
+		if _range_scale > MAXIMUM_VISUAL_RANGE_SCALE:
+			_configure_circle_outline(radius)
 	else:
-		var diameter: float = maxf(0.1, radius * 2.0)
+		var base_radius: float = radius / maxf(0.001, _range_scale)
+		var diameter: float = maxf(0.1, base_radius * visual_range_scale * 2.0)
 		var potato_scale: float = diameter / maxf(POTATO_MODEL_SIZE.x, POTATO_MODEL_SIZE.z)
 		_potato_visual.visible = true
 		_potato_visual.scale = Vector3.ONE * potato_scale
 		_potato_visual.position.y = VISUAL_CENTER_Y - POTATO_MODEL_SIZE.y * potato_scale * 0.5
+		if _range_scale > MAXIMUM_VISUAL_RANGE_SCALE:
+			_configure_circle_outline(radius)
+
+
+func _configure_circle_outline(outline_radius: float) -> void:
+	var torus: TorusMesh = _range_circle_outline.mesh as TorusMesh
+	var outer_radius: float = maxf(RANGE_OUTLINE_WIDTH * 2.0, outline_radius)
+	var inner_radius: float = maxf(RANGE_OUTLINE_WIDTH, outer_radius - RANGE_OUTLINE_WIDTH)
+	if outer_radius >= torus.outer_radius:
+		torus.outer_radius = outer_radius
+		torus.inner_radius = inner_radius
+	else:
+		torus.inner_radius = inner_radius
+		torus.outer_radius = outer_radius
+	_range_circle_outline.visible = true
+
+
+func _road_clipped_span(full_width: float) -> Vector2:
+	var half_width: float = maxf(0.0, full_width * 0.5)
+	var local_road_left: float = Playfield.ROAD_LEFT - position.x
+	var local_road_right: float = Playfield.ROAD_LEFT + Playfield.ROAD_WIDTH - position.x
+	var clipped_left: float = maxf(-half_width, local_road_left)
+	var clipped_right: float = minf(half_width, local_road_right)
+	var clipped_width: float = maxf(0.0, clipped_right - clipped_left)
+	return Vector2((clipped_left + clipped_right) * 0.5, clipped_width)
+
+
+func _configure_box_outline(width: float, depth: float, center_x: float = 0.0) -> void:
+	var safe_width: float = maxf(RANGE_OUTLINE_WIDTH * 2.0, width)
+	var safe_depth: float = maxf(RANGE_OUTLINE_WIDTH * 2.0, depth)
+	_range_box_outline.position.x = center_x
+	_range_box_top.position = Vector3(0.0, 0.0, -safe_depth * 0.5)
+	_range_box_bottom.position = Vector3(0.0, 0.0, safe_depth * 0.5)
+	_range_box_left.position = Vector3(-safe_width * 0.5, 0.0, 0.0)
+	_range_box_right.position = Vector3(safe_width * 0.5, 0.0, 0.0)
+	_range_box_top.scale = Vector3(safe_width, 0.02, RANGE_OUTLINE_WIDTH)
+	_range_box_bottom.scale = Vector3(safe_width, 0.02, RANGE_OUTLINE_WIDTH)
+	_range_box_left.scale = Vector3(RANGE_OUTLINE_WIDTH, 0.02, safe_depth)
+	_range_box_right.scale = Vector3(RANGE_OUTLINE_WIDTH, 0.02, safe_depth)
+	_range_box_outline.visible = true
 
 
 # 导入模型可能包含多层网格，统一淡出所有可绘制子节点。

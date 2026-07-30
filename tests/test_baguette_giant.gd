@@ -52,7 +52,7 @@ func _test_runtime(load_result: GameplayExcelLoader.WeaponLoadResult) -> void:
 	state.attack_speed_bonus = 1000.0
 	_check(is_equal_approx(state.effective_giant_baguette_interval(), 1.0), "巨型法棍间隔下限为1秒")
 	state.attack_speed_bonus = 0.0
-	state.range_multiplier = 1.5
+	state.range_multiplier = 3.0
 	state.add_food(&"baguette")
 	state.enable_food_evolution(&"baguette_giant")
 	run.state = state
@@ -81,14 +81,51 @@ func _test_runtime(load_result: GameplayExcelLoader.WeaponLoadResult) -> void:
 	_check(is_equal_approx(giant.satisfaction, state.effective_satisfaction(baguette) * 3.0), "巨型法棍应用满足倍率")
 	_check(background._camera_shake_remaining > 0.0, "巨型法棍发射时调用可复用震屏入口")
 	var giant_dimensions: Vector3 = giant._giant_baguette_visual.model_scale() * GiantBaguette3D.MODEL_SIZE
-	_check(giant_dimensions.is_equal_approx(Vector3(0.2, 0.18, 4.0) * range_scale), "巨型法棍范围扩大时长宽高同比增长")
+	var visual_scale: float = minf(range_scale, FoodProjectile3D.MAXIMUM_VISUAL_RANGE_SCALE)
+	_check(
+		giant_dimensions.is_equal_approx(
+			Vector3(
+				0.2 * visual_scale,
+				0.18 * visual_scale,
+				minf(4.0 * visual_scale, Playfield.ROAD_WIDTH)
+			)
+		),
+		"巨型法棍实体尺寸封顶且不超过六区道路"
+	)
+	_check(giant._range_box_outline.visible, "巨型法棍超过视觉上限时显示范围轮廓")
+	giant.position.x = Playfield.ROAD_LEFT + 0.1
+	giant._configure_visual()
+	var side_dimensions: Vector3 = (
+		giant._giant_baguette_visual.model_scale() * GiantBaguette3D.MODEL_SIZE
+	)
+	var side_visual_center: float = giant.position.x + giant._giant_baguette_visual.position.x
+	_check(
+		side_visual_center - side_dimensions.z * 0.5 >= Playfield.ROAD_LEFT - 0.001
+		and side_visual_center + side_dimensions.z * 0.5
+		<= Playfield.ROAD_LEFT + Playfield.ROAD_WIDTH + 0.001,
+		"道路侧边发射时巨型法棍实体裁到六区道路内"
+	)
+	giant.position.x = Playfield.ROAD_LEFT + Playfield.ROAD_WIDTH * 0.5
+	giant._configure_visual()
 	var giant_model: Node3D = giant._giant_baguette_visual.get_node("RollPivot/ModelScale/BaguetteModel") as Node3D
 	_check((giant_model.position + Vector3(0.0, 0.16503906, 0.0)).is_zero_approx(), "巨型法棍模型几何中心对齐滚动原点")
 	giant._process_forward_motion(0.1)
 	var roll_pivot: Node3D = giant._giant_baguette_visual.get_node("RollPivot") as Node3D
 	_check(not is_zero_approx(roll_pivot.rotation.z), "巨型法棍由独立中心节点驱动滚动")
-	_check(giant.overlaps_target(Vector3(6.5, 0.0, giant.position.z), 0.2), "范围强化后的横向判定同步扩大")
-	_check(not giant.overlaps_target(Vector3(7.3, 0.0, giant.position.z), 0.2), "巨型法棍不会命中扩大范围外目标")
+	_check(
+		giant.overlaps_target(
+			Vector3(giant.position.x + giant._giant_half_width - 0.1, 0.0, giant.position.z),
+			0.0
+		),
+		"视觉封顶后巨型法棍仍使用完整范围判定"
+	)
+	_check(
+		not giant.overlaps_target(
+			Vector3(giant.position.x + giant._giant_half_width + giant.radius + 0.1, 0.0, giant.position.z),
+			0.0
+		),
+		"巨型法棍不会命中完整范围之外的目标"
+	)
 
 	var projectile_scene: PackedScene = load("res://scenes/projectile_3d.tscn") as PackedScene
 	var aimed: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
@@ -115,7 +152,13 @@ func _test_runtime(load_result: GameplayExcelLoader.WeaponLoadResult) -> void:
 	_check(aimed.rotation.y < 0.0, "普通法棍朝右前目标时模型向右旋转")
 	var aimed_visual: Node3D = aimed.get_node("BaguetteVisual") as Node3D
 	var aimed_dimensions: Vector3 = aimed_visual.scale * FoodProjectile3D.BAGUETTE_MODEL_SIZE
-	_check(aimed_dimensions.is_equal_approx(Vector3(0.2, 0.18, 0.8) * range_scale), "普通法棍范围扩大时长宽高同比增长")
+	_check(
+		aimed_dimensions.is_equal_approx(
+			Vector3(0.2, 0.18, 0.8) * visual_scale
+		),
+		"普通法棍实体尺寸在1.5倍封顶"
+	)
+	_check(aimed._range_box_outline.visible, "普通法棍超过视觉上限时显示细长范围轮廓")
 	run.free()
 	background.free()
 

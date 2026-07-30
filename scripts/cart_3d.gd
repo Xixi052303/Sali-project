@@ -7,6 +7,8 @@ signal destroyed
 const BASE_MOVE_SPEED: float = 9.0
 const BASE_MOVE_SPEED_DESIGN: float = BASE_MOVE_SPEED / Playfield.WORLD_UNITS_PER_PIXEL
 const COLLISION_RECT: Rect2 = Rect2(-0.96, -1.5, 1.92, 2.17)
+const DURABILITY_FILL_WIDTH: float = 1.52
+const MAXIMUM_FEEDBACK_DURATION: float = 1.2
 
 var state: RunState
 var playfield: Playfield
@@ -20,19 +22,31 @@ var _primary_touch_active: bool = false
 var _mouse_drag_active: bool = false
 var _invincible_remaining: float = 0.0
 var _upgrade_feedback_remaining: float = 0.0
+var _maximum_feedback_remaining: float = 0.0
+var _last_maximum_durability: float = 0.0
 var _upgrade_tween: Tween
 # 保存编辑器配置的基础尺寸，碰撞与反馈动画都以它为准。
 var _base_scale: Vector3 = Vector3.ONE
 @onready var _visual_root: Node3D = %PaperCartVisual
+@onready var _durability_fill: MeshInstance3D = %DurabilityFill
+@onready var _shield_outline: MeshInstance3D = %ShieldOutline
+@onready var _shield_badge: Label3D = %ShieldBadge
+@onready var _maximum_feedback_label: Label3D = %MaximumFeedbackLabel
 
 
 func configure(run_state: RunState, field: Playfield) -> void:
 	state = run_state
 	playfield = field
+	_resolve_status_nodes()
 	_base_scale = scale
 	target_x = position.x
 	target_z = position.z
 	_default_z = position.z
+	set_durability_display(
+		state.current_durability,
+		state.maximum_durability,
+		state.temporary_shield
+	)
 
 
 func _physics_process(delta: float) -> void:
@@ -45,6 +59,9 @@ func _physics_process(delta: float) -> void:
 		_visual_root.visible = true
 	if _upgrade_feedback_remaining > 0.0:
 		_upgrade_feedback_remaining = maxf(0.0, _upgrade_feedback_remaining - delta)
+	if _maximum_feedback_remaining > 0.0:
+		_maximum_feedback_remaining = maxf(0.0, _maximum_feedback_remaining - delta)
+		_maximum_feedback_label.visible = _maximum_feedback_remaining > 0.0
 	var speed: float = (
 		BASE_MOVE_SPEED * clampf(state.cart_base_speed_factor, 0.0, 1.0)
 		+ Playfield.design_to_world(state.effective_cart_speed_bonus(BASE_MOVE_SPEED_DESIGN))
@@ -168,3 +185,30 @@ func play_upgrade_feedback(_color: Color) -> void:
 	_upgrade_tween = create_tween()
 	_upgrade_tween.tween_property(self, "scale", _base_scale * 1.16, 0.12)
 	_upgrade_tween.tween_property(self, "scale", _base_scale, 0.22)
+
+
+# 头顶纸条只呈现同一份RunState耐久，固定宽度避免上限成长扩大遮挡。
+func set_durability_display(current: float, maximum: float, temporary_shield: float) -> void:
+	_resolve_status_nodes()
+	var safe_maximum: float = maxf(1.0, maximum)
+	var ratio: float = clampf(current / safe_maximum, 0.0, 1.0)
+	_durability_fill.scale.x = ratio
+	_durability_fill.position.x = -DURABILITY_FILL_WIDTH * 0.5 * (1.0 - ratio)
+	var has_shield: bool = temporary_shield > 0.0001
+	_shield_outline.visible = has_shield
+	_shield_badge.visible = has_shield
+	_shield_badge.text = "+%.0f" % temporary_shield
+	if _last_maximum_durability > 0.0 and maximum > _last_maximum_durability + 0.0001:
+		_maximum_feedback_label.text = "上限 +%.0f" % (maximum - _last_maximum_durability)
+		_maximum_feedback_label.visible = true
+		_maximum_feedback_remaining = MAXIMUM_FEEDBACK_DURATION
+	_last_maximum_durability = maximum
+
+
+func _resolve_status_nodes() -> void:
+	if _durability_fill != null:
+		return
+	_durability_fill = get_node("StatusBillboard/DurabilityFill") as MeshInstance3D
+	_shield_outline = get_node("StatusBillboard/ShieldOutline") as MeshInstance3D
+	_shield_badge = get_node("StatusBillboard/ShieldBadge") as Label3D
+	_maximum_feedback_label = get_node("StatusBillboard/MaximumFeedbackLabel") as Label3D
