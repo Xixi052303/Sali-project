@@ -227,6 +227,7 @@ func _test_weapon_workbook() -> void:
 			and is_equal_approx(mushroom.duration_upgrade_scale, 0.15),
 			"蘑菇按1/1/0.5/0.15转译四项输出强化"
 		)
+		_check(is_equal_approx(mushroom.orbit_angular_speed, 4.0), "蘑菇初始一圈按π/2秒读取4rad/s")
 	_check(is_equal_approx(result.baguette_giant_interval_seconds, 3.0), "巨型法棍间隔由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_attack_speed_scale, 0.05), "巨型法棍攻速倍率由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_minimum_interval_seconds, 1.0), "巨型法棍最小间隔由武器表读取")

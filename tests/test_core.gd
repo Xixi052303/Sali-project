@@ -596,19 +596,45 @@ func _test_projectile_evolutions() -> void:
 		false
 	)
 	orbit._process_orbit(0.0)
-	var turn_duration: float = TAU / mushroom.orbit_angular_speed
 	var base_orbit_radius: float = Playfield.design_to_world(mushroom.orbit_radius)
 	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius), "蘑菇从配置的基础半径开始环绕")
-	orbit._process_orbit(turn_duration)
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius), "蘑菇先在基础半径完整旋转一圈")
-	orbit._process_orbit(turn_duration * 0.5)
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius * 1.25), "扩张圈中点平滑到基础半径的1.25倍")
-	orbit._process_orbit(turn_duration * 0.5)
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius * 1.5), "扩张圈结束到达当前半径的1.5倍")
-	orbit._process_orbit(turn_duration)
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius * 1.5), "蘑菇在1.5倍半径处再次完整旋转一圈")
-	orbit._process_orbit(turn_duration)
-	_check(is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius * 2.25), "下一扩张圈继续到当前半径的1.5倍")
+	_check(is_equal_approx(TAU / mushroom.orbit_angular_speed, PI / 2.0), "蘑菇初始一圈约为π/2秒")
+	_check(is_equal_approx(FoodProjectile3D.orbit_radius_multiplier_at_turns(1.0), 1.0), "蘑菇先在1倍半径驻留一圈")
+	_check(is_equal_approx(FoodProjectile3D.orbit_radius_multiplier_at_turns(1.5), 1.25), "第二圈中点扩到1.25倍半径")
+	_check(is_equal_approx(FoodProjectile3D.orbit_radius_multiplier_at_turns(2.0), 1.5), "第二圈结束到达1.5倍半径")
+	_check(is_equal_approx(FoodProjectile3D.orbit_radius_multiplier_at_turns(4.0), 1.5), "1.5倍半径驻留两圈")
+	_check(is_equal_approx(FoodProjectile3D.orbit_radius_multiplier_at_turns(4.5), 1.75), "第三次扩张中点到达1.75倍半径")
+	_check(is_equal_approx(FoodProjectile3D.orbit_radius_multiplier_at_turns(5.0), 2.0), "第三次扩张结束到达2倍半径")
+	_check(is_equal_approx(FoodProjectile3D.orbit_radius_multiplier_at_turns(9.0), 2.0), "2倍半径驻留四圈")
+	_check(is_equal_approx(FoodProjectile3D.orbit_radius_multiplier_at_turns(10.0), 2.5), "第四次扩张结束到达2.5倍半径")
+	_check(is_equal_approx(FoodProjectile3D.orbit_radius_multiplier_at_turns(18.0), 2.5), "2.5倍半径驻留八圈")
+	_check(is_equal_approx(FoodProjectile3D.orbit_radius_multiplier_at_turns(19.0), 3.0), "下一圈扩张结束到达3倍半径")
+	orbit._orbit_angle = 0.0
+	orbit._orbit_travel_angle = TAU * 1.99
+	orbit._process_orbit(0.05)
+	_check(
+		orbit._orbit_travel_angle > TAU * 2.0
+		and is_equal_approx(orbit.position.distance_to(cart.position), base_orbit_radius * 1.5),
+		"蘑菇可从第二圈扩张末端跨入1.5倍半径驻留阶段"
+	)
+
+	orbit._orbit_angle = 0.0
+	orbit._orbit_travel_angle = 0.0
+	orbit._process_orbit(0.1)
+	var base_angle_step: float = orbit._orbit_travel_angle
+	orbit._orbit_angle = 0.0
+	orbit._orbit_travel_angle = TAU * 2.0
+	orbit._process_orbit(0.1)
+	var one_half_radius_angle_step: float = orbit._orbit_travel_angle - TAU * 2.0
+	orbit._orbit_angle = 0.0
+	orbit._orbit_travel_angle = TAU * 5.0
+	orbit._process_orbit(0.1)
+	var double_radius_angle_step: float = orbit._orbit_travel_angle - TAU * 5.0
+	_check(
+		is_equal_approx(base_angle_step, one_half_radius_angle_step * 1.5)
+		and is_equal_approx(base_angle_step, double_radius_angle_step * 2.0),
+		"蘑菇保持切向线速度，1.5倍与2倍半径处角速度降为基础的2/3与1/2"
+	)
 
 	var faster_orbit: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
 	run.add_child(faster_orbit)
@@ -630,10 +656,10 @@ func _test_projectile_evolutions() -> void:
 		0.0,
 		false
 	)
-	faster_orbit._process_orbit(TAU * 1.5 / (mushroom.orbit_angular_speed * 1.5))
+	faster_orbit._process_orbit(0.1)
 	_check(
-		is_equal_approx(faster_orbit.position.distance_to(cart.position), base_orbit_radius * 1.25),
-		"酒只提高转速，相同累计转角仍使用相同分段半径"
+		is_equal_approx(faster_orbit._orbit_travel_angle, base_angle_step * 1.5),
+		"酒提高1倍半径基准角速度，并同比提高全程恒定切向速度"
 	)
 
 	var longer_orbit: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
@@ -690,6 +716,20 @@ func _test_projectile_evolutions() -> void:
 	_check(
 		is_equal_approx(breathing_orbit.position.distance_to(cart.position), base_orbit_radius * 2.0),
 		"呼吸进化在当前分段半径上叠加周期倍率"
+	)
+	var breathing_step_seconds: float = 0.001
+	breathing_orbit._lifetime_remaining = (
+		breathing_orbit._initial_lifetime
+		- mushroom.breathing_period * 0.5
+		- breathing_step_seconds
+	)
+	breathing_orbit._process_orbit(breathing_step_seconds)
+	_check(
+		is_equal_approx(
+			breathing_orbit._orbit_travel_angle,
+			mushroom.orbit_angular_speed * breathing_step_seconds * 0.5
+		),
+		"呼吸到2倍实际半径时角速度同步降为基础的一半"
 	)
 	run.free()
 

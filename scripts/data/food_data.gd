@@ -35,6 +35,7 @@ enum AimMode {
 @export_group("Orbiting attack")
 # 环绕食材以此为首档半径，完成驻留圈后再逐档扩大。
 @export var orbit_radius: float = 120.0
+# 只定义1倍环绕半径处的基准角速度，实际角速度由恒定切向速度按当前半径反推。
 @export var orbit_angular_speed: float = 3.2
 @export var breathing_period: float = 1.2
 @export var breathing_outer_multiplier: float = 2.0
