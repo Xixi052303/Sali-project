@@ -5,6 +5,7 @@ var _failures: int = 0
 
 func _init() -> void:
 	_test_timeline_workbook()
+	_test_combat_rules_workbook()
 	_test_customer_workbook()
 	_test_weapon_workbook()
 	_test_normal_upgrade_workbook()
@@ -42,15 +43,23 @@ func _test_timeline_workbook() -> void:
 		timeline.event_ids.count("elite") == 6
 		and timeline.event_ids.count("boss") == 2
 		and timeline.normal_gate_count == 50
-		and timeline.normal_wave_count == 235,
-		"时间轴读取六精英、两Boss、50门与235波"
+		and timeline.normal_wave_count == 250
+		and timeline.expected_normal_customer_count() == 312,
+		"时间轴读取六精英、两Boss、50门、250波与312只普通食客"
+	)
+	var start_gate_index: int = timeline.event_ids.find("start_gate")
+	_check(
+		start_gate_index >= 0
+		and is_equal_approx(timeline.event_progresses[start_gate_index], 0.01),
+		"开局食材门从时间轴表读取总路程1%进度"
 	)
 	_check(
 		is_equal_approx(timeline.course_distance, 1310.763)
 		and timeline.forward_speed_multipliers == PackedFloat32Array([1.0, 1.1, 1.3, 1.7, 2.3, 3.0])
+		and is_equal_approx(timeline.normal_wave_interval_jitter_ratio, 0.2)
 		and is_equal_approx(timeline.max_crosswind_speed, 60.0)
 		and is_equal_approx(timeline.minimum_cart_base_speed_factor, 0.8),
-		"独立总路程、六档压力、侧漂和疲劳参数由表读取"
+		"独立总路程、波次波动、六档压力、侧漂和疲劳参数由表读取"
 	)
 	var old_schema: TimelineExcelLoader.LoadResult = TimelineExcelLoader.load_from_excel(
 		"res://tests/fixtures/timeline_schema_v1.xlsx",
@@ -61,6 +70,30 @@ func _test_timeline_workbook() -> void:
 		and old_schema.timeline == fallback
 		and old_schema.error_message.contains("schema_version"),
 		"旧时间轴 Schema 整表回退"
+	)
+
+
+func _test_combat_rules_workbook() -> void:
+	var result: GameplayExcelLoader.CombatRulesLoadResult = (
+		GameplayExcelLoader.load_combat_rules("res://balance_tables/战斗规则.xlsx")
+	)
+	_check(result.loaded_from_excel, "战斗规则 Excel 可读取")
+	_check(
+		is_equal_approx(result.cart_invincibility_duration_seconds, 0.5),
+		"餐车受击无敌时间由战斗规则表读取为0.5秒"
+	)
+	var invalid_result: GameplayExcelLoader.CombatRulesLoadResult = (
+		GameplayExcelLoader._parse_combat_rule_values(
+			{"cart_invincibility_duration_seconds": 0.0}
+		)
+	)
+	_check(not invalid_result.loaded_from_excel, "非正无敌时间触发战斗规则回退")
+	_check(
+		is_equal_approx(
+			invalid_result.cart_invincibility_duration_seconds,
+			Cart3D.DEFAULT_INVINCIBILITY_DURATION_SECONDS
+		),
+		"战斗规则回退保持0.5秒安全值"
 	)
 
 
@@ -86,7 +119,7 @@ func _test_customer_workbook() -> void:
 	var fast: CustomerData = customers[&"fast_guest"]
 	var ranged: CustomerData = customers[&"ranged_guest"]
 	var elite: CustomerData = customers[&"elite_guest"]
-	_check(basic.display_name == "小鼠食客", "基础食客身份为小鼠")
+	_check(basic.id == &"basic_guest" and not basic.display_name.is_empty(), "基础食客ID映射且显示名非空")
 	_check(
 		basic.customer_scene != null
 		and basic.customer_scene.resource_path.ends_with("mouse_customer_3d.tscn"),
@@ -94,7 +127,7 @@ func _test_customer_workbook() -> void:
 	)
 	_check(is_equal_approx(basic.appetite_multiplier, 1.0), "基础食客保持1.0倍胃口")
 	_check(is_equal_approx(basic.move_speed, 42.0), "基础食客保持42px/s")
-	_check(fast.display_name == "急脚狐狸", "快速模板加载狐狸身份")
+	_check(fast.id == &"fast_guest" and not fast.display_name.is_empty(), "快速食客ID映射且显示名非空")
 	_check(
 		fast.customer_scene != null
 		and fast.customer_scene.resource_path.ends_with("fox_customer_3d.tscn"),
@@ -102,7 +135,7 @@ func _test_customer_workbook() -> void:
 	)
 	_check(is_equal_approx(fast.appetite_multiplier, 0.75), "急脚食客保持0.75倍胃口")
 	_check(is_equal_approx(fast.move_speed, 96.0), "急脚食客保持96px/s")
-	_check(ranged.display_name == "拍桌青蛙", "远程模板加载青蛙身份")
+	_check(ranged.id == &"ranged_guest" and not ranged.display_name.is_empty(), "远程食客ID映射且显示名非空")
 	_check(
 		ranged.customer_scene != null
 		and ranged.customer_scene.resource_path.ends_with("frog_customer_3d.tscn"),
@@ -128,7 +161,7 @@ func _test_customer_workbook() -> void:
 		and elite.customer_scene.resource_path.ends_with("elite_customer_3d.tscn"),
 		"六席贵客加载独立可预览场景"
 	)
-	_check(is_equal_approx(elite.move_speed, 18.0) and elite.occupied_regions == 6, "精英保持当前速度与六区占位")
+	_check(is_zero_approx(elite.move_speed) and elite.occupied_regions == 6, "精英不主动移动并横跨六区")
 
 
 func _test_weapon_workbook() -> void:
@@ -154,6 +187,20 @@ func _test_weapon_workbook() -> void:
 		var baguette: FoodData = foods[&"baguette"]
 		var mushroom: FoodData = foods[&"mushroom"]
 		_check(
+			is_equal_approx(potato.base_satisfaction, 10.0)
+			and is_equal_approx(potato.base_interval, 0.8)
+			and is_equal_approx(potato.projectile_speed, 680.0)
+			and is_equal_approx(potato.base_lifetime, 1.3473684),
+			"土豆从武器表读取当前基础输出与约0.72屏射程参数"
+		)
+		_check(
+			is_equal_approx(baguette.base_satisfaction, 10.0)
+			and is_equal_approx(baguette.base_interval, 1.0)
+			and is_equal_approx(baguette.projectile_speed, 2000.0)
+			and is_equal_approx(baguette.base_lifetime, 0.5),
+			"法棍从武器表读取当前10点DPS与约0.78屏射程参数"
+		)
+		_check(
 			is_equal_approx(potato.wine_upgrade_scale, 0.35)
 			and is_equal_approx(potato.range_upgrade_scale, 1.0)
 			and is_equal_approx(potato.duration_upgrade_scale, 0.2),
@@ -166,11 +213,21 @@ func _test_weapon_workbook() -> void:
 			"法棍按1/0.35/1/0.25转译四项输出强化"
 		)
 		_check(
+			is_equal_approx(baguette.targeting_half_angle_degrees, 30.0),
+			"法棍从武器表读取30度寻敌半角"
+		)
+		_check(
+			is_equal_approx(potato.targeting_half_angle_degrees, 90.0)
+			and is_equal_approx(mushroom.targeting_half_angle_degrees, 90.0),
+			"其他当前食材不额外收窄前方寻敌范围"
+		)
+		_check(
 			is_equal_approx(mushroom.wine_upgrade_scale, 1.0)
 			and is_equal_approx(mushroom.range_upgrade_scale, 0.5)
 			and is_equal_approx(mushroom.duration_upgrade_scale, 0.15),
 			"蘑菇按1/1/0.5/0.15转译四项输出强化"
 		)
+		_check(is_equal_approx(mushroom.orbit_angular_speed, 4.0), "蘑菇初始一圈按π/2秒读取4rad/s")
 	_check(is_equal_approx(result.baguette_giant_interval_seconds, 3.0), "巨型法棍间隔由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_attack_speed_scale, 0.05), "巨型法棍攻速倍率由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_minimum_interval_seconds, 1.0), "巨型法棍最小间隔由武器表读取")
@@ -333,6 +390,18 @@ func _test_invalid_customer_records() -> void:
 
 
 func _test_missing_workbook_fallback_signal() -> void:
+	var combat_result: GameplayExcelLoader.CombatRulesLoadResult = (
+		GameplayExcelLoader.load_combat_rules("res://balance_tables/__missing__.xlsx")
+	)
+	_check(
+		not combat_result.loaded_from_excel
+		and is_equal_approx(
+			combat_result.cart_invincibility_duration_seconds,
+			Cart3D.DEFAULT_INVINCIBILITY_DURATION_SECONDS
+		)
+		and not combat_result.error_message.is_empty(),
+		"战斗规则表缺失时返回0.5秒安全回退"
+	)
 	var weapon_result: GameplayExcelLoader.WeaponLoadResult = GameplayExcelLoader.load_weapons(
 		"res://balance_tables/__missing__.xlsx"
 	)

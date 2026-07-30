@@ -9,6 +9,7 @@ const BASE_MOVE_SPEED_DESIGN: float = BASE_MOVE_SPEED / Playfield.WORLD_UNITS_PE
 const COLLISION_RECT: Rect2 = Rect2(-0.96, -1.5, 1.92, 2.17)
 const DURABILITY_FILL_WIDTH: float = 1.52
 const MAXIMUM_FEEDBACK_DURATION: float = 1.2
+const DEFAULT_INVINCIBILITY_DURATION_SECONDS: float = 0.5
 
 var state: RunState
 var playfield: Playfield
@@ -20,6 +21,8 @@ var _boss_movement_active: bool = false
 var _boss_target: PrototypeBoss3D
 var _primary_touch_active: bool = false
 var _mouse_drag_active: bool = false
+# 每次实际受击后使用本局载入的无敌时长，避免运行中热改造成前后不一致。
+var _invincibility_duration_seconds: float = DEFAULT_INVINCIBILITY_DURATION_SECONDS
 var _invincible_remaining: float = 0.0
 var _upgrade_feedback_remaining: float = 0.0
 var _maximum_feedback_remaining: float = 0.0
@@ -34,9 +37,14 @@ var _base_scale: Vector3 = Vector3.ONE
 @onready var _maximum_feedback_label: Label3D = %MaximumFeedbackLabel
 
 
-func configure(run_state: RunState, field: Playfield) -> void:
+func configure(
+	run_state: RunState,
+	field: Playfield,
+	invincibility_duration_seconds: float = DEFAULT_INVINCIBILITY_DURATION_SECONDS
+) -> void:
 	state = run_state
 	playfield = field
+	_invincibility_duration_seconds = maxf(0.0, invincibility_duration_seconds)
 	_resolve_status_nodes()
 	_base_scale = scale
 	target_x = position.x
@@ -157,7 +165,7 @@ func take_damage(amount: float) -> bool:
 	var applied: float = state.take_durability_damage(amount)
 	if applied <= 0.0:
 		return false
-	_invincible_remaining = 1.0
+	_invincible_remaining = _invincibility_duration_seconds
 	damaged.emit(applied)
 	if state.current_durability <= 0.0:
 		destroyed.emit()

@@ -122,4 +122,6 @@ func _refresh_label() -> void:
 	if _appetite_label == null:
 		return
 	_appetite_label.text = str(ceili(remaining_appetite))
-	_appetite_label.modulate = Color("#fff0c8")
+	_appetite_label.modulate = (
+		reward_upgrade.rarity_color if reward_upgrade != null else Color("#fff0c8")
+	)

@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://co3bbf7bktnqp"
 path.s3tc="res://.godot/imported/熊_tripo_image_142d04dd-ac94-4613-84fe-1ac2c6e83a6f_0_1.jpg-d21fbe93bad86cca3aa1780fb6cef620.s3tc.ctex"
+path.etc2="res://.godot/imported/熊_tripo_image_142d04dd-ac94-4613-84fe-1ac2c6e83a6f_0_1.jpg-d21fbe93bad86cca3aa1780fb6cef620.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/角色/敌人/普通食客/熊_tripo_image_142d04dd-ac94-4613-84fe-1ac2c6e83a6f_0_1.jpg"
-dest_files=["res://.godot/imported/熊_tripo_image_142d04dd-ac94-4613-84fe-1ac2c6e83a6f_0_1.jpg-d21fbe93bad86cca3aa1780fb6cef620.s3tc.ctex"]
+dest_files=["res://.godot/imported/熊_tripo_image_142d04dd-ac94-4613-84fe-1ac2c6e83a6f_0_1.jpg-d21fbe93bad86cca3aa1780fb6cef620.s3tc.ctex", "res://.godot/imported/熊_tripo_image_142d04dd-ac94-4613-84fe-1ac2c6e83a6f_0_1.jpg-d21fbe93bad86cca3aa1780fb6cef620.etc2.ctex"]
 
 [params]
 

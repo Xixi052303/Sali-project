@@ -6,6 +6,8 @@ const VISUAL_CENTER_Y: float = 0.82
 const GIANT_BAGUETTE_ROLL_SPEED: float = 6.0
 const MAXIMUM_VISUAL_RANGE_SCALE: float = 1.5
 const RANGE_OUTLINE_WIDTH: float = 0.035
+const ORBIT_SIMULATION_STEP_SECONDS: float = 1.0 / 120.0
+const ORBIT_RADIUS_STEP_MULTIPLIER: float = 0.5
 # 三份尺寸来自对应 GLB 的本地 AABB，只用于把美术模型映射到既有表现尺度。
 const POTATO_MODEL_SIZE: Vector3 = Vector3(0.849609375, 0.716796875, 0.998046875)
 const BAGUETTE_MODEL_SIZE: Vector3 = Vector3(0.400390625, 0.330078125, 0.998046875)
@@ -30,8 +32,11 @@ var _previous_position: Vector3 = Vector3.ZERO
 var _hit_instances: Dictionary = {}
 var _miss_disappearing: bool = false
 var _orbit_angle: float = 0.0
+# 配置值表示1倍半径处的角速度；运行时据此锁定切向线速度。
 var _orbit_angular_speed: float = 3.2
-# 蘑菇用累计转角驱动“驻留一圈、扩张一圈”的半径阶段，不直接读取速度或持续倍率。
+# 配置完成后缓存，分段外扩与呼吸只改变角速度，不再改变此值。
+var _orbit_linear_speed: float = 0.0
+# 蘑菇用累计转角驱动翻倍驻留圈数和单圈扩张，不直接读取持续强化倍率。
 var _orbit_travel_angle: float = 0.0
 var _orbit_base_radius: float = 1.2
 var _breathing_enabled: bool = false
@@ -93,6 +98,7 @@ func configure(
 	_orbit_angular_speed = speed
 	_orbit_travel_angle = 0.0
 	_orbit_base_radius = Playfield.design_to_world(food.orbit_radius)
+	_orbit_linear_speed = absf(_orbit_angular_speed) * _orbit_base_radius
 	_breathing_enabled = breathing_enabled
 	_breathing_period = maxf(0.1, food.breathing_period)
 	_breathing_outer_multiplier = maxf(1.0, food.breathing_outer_multiplier)
@@ -151,16 +157,27 @@ func _process_forward_motion(delta: float) -> void:
 
 
 func _process_orbit(delta: float) -> void:
-	var angle_step: float = _orbit_angular_speed * delta
-	_orbit_angle += angle_step
-	_orbit_travel_angle += absf(angle_step)
-	var elapsed: float = _initial_lifetime - _lifetime_remaining
-	var radius_multiplier: float = 1.0
-	if _breathing_enabled:
-		var breath_progress: float = 0.5 - 0.5 * cos(TAU * elapsed / _breathing_period)
-		radius_multiplier = lerpf(1.0, _breathing_outer_multiplier, breath_progress)
+	var remaining_delta: float = maxf(0.0, delta)
+	var elapsed_end: float = maxf(0.0, _initial_lifetime - _lifetime_remaining)
+	var elapsed_start: float = maxf(0.0, elapsed_end - remaining_delta)
+	var simulated_seconds: float = 0.0
+	var angle_direction: float = -1.0 if _orbit_angular_speed < 0.0 else 1.0
+	while remaining_delta > 0.000001:
+		var step_seconds: float = minf(remaining_delta, ORBIT_SIMULATION_STEP_SECONDS)
+		var midpoint_elapsed: float = elapsed_start + simulated_seconds + step_seconds * 0.5
+		var actual_radius: float = maxf(
+			0.001,
+			_current_orbit_radius() * _breathing_multiplier_at_elapsed(midpoint_elapsed)
+		)
+		var angle_step: float = _orbit_linear_speed / actual_radius * step_seconds
+		_orbit_angle += angle_step * angle_direction
+		_orbit_travel_angle += angle_step
+		simulated_seconds += step_seconds
+		remaining_delta = maxf(0.0, remaining_delta - step_seconds)
 	var center: Vector3 = run.logic_position(run.cart)
-	var current_radius: float = _current_orbit_radius() * radius_multiplier
+	var current_radius: float = (
+		_current_orbit_radius() * _breathing_multiplier_at_elapsed(elapsed_end)
+	)
 	position = center + Vector3(
 		sin(_orbit_angle) * current_radius,
 		0.0,
@@ -168,15 +185,40 @@ func _process_orbit(delta: float) -> void:
 	)
 	rotation.y = -_orbit_angle
 
-
-# 每档先驻留一圈，再用一圈平滑扩到当前半径的1.5倍。
+# 每档驻留圈数按1、2、4、8翻倍，随后用一圈把半径线性增加0.5倍基础半径。
 func _current_orbit_radius() -> float:
-	var completed_phase_pairs: int = floori(_orbit_travel_angle / (TAU * 2.0))
-	var phase_turns: float = fmod(_orbit_travel_angle / TAU, 2.0)
-	var stage_radius: float = _orbit_base_radius * pow(1.5, completed_phase_pairs)
-	if phase_turns <= 1.0:
-		return stage_radius
-	return lerpf(stage_radius, stage_radius * 1.5, phase_turns - 1.0)
+	return _orbit_base_radius * orbit_radius_multiplier_at_turns(_orbit_travel_angle / TAU)
+
+
+# 累计圈数只决定所处驻留或扩张阶段，时间速度由当前半径另行反算。
+static func orbit_radius_multiplier_at_turns(travel_turns: float) -> float:
+	var remaining_turns: float = maxf(0.0, travel_turns)
+	var stage_index: int = 0
+	var hold_turns: float = 1.0
+	# 128档已远超任何可运行时长，同时避免异常无穷输入形成死循环。
+	while stage_index < 128:
+		var stage_multiplier: float = 1.0 + float(stage_index) * ORBIT_RADIUS_STEP_MULTIPLIER
+		if remaining_turns <= hold_turns:
+			return stage_multiplier
+		remaining_turns -= hold_turns
+		if remaining_turns <= 1.0:
+			return lerpf(
+				stage_multiplier,
+				stage_multiplier + ORBIT_RADIUS_STEP_MULTIPLIER,
+				remaining_turns
+			)
+		remaining_turns -= 1.0
+		stage_index += 1
+		hold_turns *= 2.0
+	return 1.0 + float(stage_index) * ORBIT_RADIUS_STEP_MULTIPLIER
+
+
+# 呼吸进化改变实际轨道半径，角速度会在同一帧按该半径反向调整。
+func _breathing_multiplier_at_elapsed(elapsed: float) -> float:
+	if not _breathing_enabled:
+		return 1.0
+	var breath_progress: float = 0.5 - 0.5 * cos(TAU * elapsed / _breathing_period)
+	return lerpf(1.0, _breathing_outer_multiplier, breath_progress)
 
 
 func can_hit(target: Node3D) -> bool:

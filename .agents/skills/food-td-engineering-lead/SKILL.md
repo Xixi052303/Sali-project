@@ -89,20 +89,21 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 
 - `RunController3D`（`scripts/run_3d.gd`）：拥有单局阶段、3D运行对象集合、生成、选择、Boss 和结算的跨系统编排。
 - `RunState`（`scripts/data/run_state.gd`）：拥有局内耐久、强化、食材、特殊能力和统计状态。
+- `ProgressionStore`（`scripts/data/progression_store.gd`）：在最终Boss结算时把首胜完成/后续内容解锁资格标记持久化到`user://progression.cfg`；不提前定义具体解锁内容树。
 - `Playfield`（`scripts/playfield.gd`）：定义道路边界、六个逻辑区域和餐车活动范围。
 - `EncounterDirector`与`EncounterTimeline`：按路程进度触发显式事件；`balance_tables/时间轴.xlsx`保存三段有效时间胃口曲线、独立总路程、路程事件与普通门/波次数量，`TimelineExcelLoader`生成运行时Resource，`data/timelines/vertical_slice.tres`负责失败回退，`RunController3D._advance_distance_spawns()`按路程生成普通门与普通食客组合。
-- `GameplayExcelLoader`：读取`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`和`特殊强化.xlsx`，生成本局独立的`CustomerData`、`FoodData`、`UpgradeData`与`SpecialUpgradeData`；读取失败时由场景资源或`RunController3D`默认池回退，食客表按当前四个必需ID整体回退。
+- `GameplayExcelLoader`：读取`战斗规则.xlsx`、`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`和`特殊强化.xlsx`，生成本局战斗参数与独立的`CustomerData`、`FoodData`、`UpgradeData`、`SpecialUpgradeData`；读取失败时由脚本安全值、场景资源或`RunController3D`默认池回退，食客表按当前四个必需ID整体回退。
 - `WeaponController3D`、`FoodRuntime` 与 `FoodProjectile3D`：负责武器冷却、烹饪进度通知、目标获取后的发射、`X/Z`弹道和命中；投射物判定范围保持完整，实体视觉在高倍率时独立封顶并显示超额轮廓。
 - `Customer3D`、`PrototypeBoss3D` 与 `Cart3D`：分别负责食客、Boss 和餐车局部行为；餐车只读显示`RunState`耐久与护盾，并通过 `RunController3D` 协调伤害与流程。
 - `road_segment_3d.tscn`持有马路、左右路沿与左右人行道的分层节点；`WorldBackground3D`只负责完整路段和街景面片的循环滚动。
 - `hud.tscn`保存可编辑的固定界面、逐食材烹饪圆环和正式暂停详情节点；`GameHud`负责内容刷新与暂停、选择、重开信号，不拥有玩法规则。
-- `scripts/data/*.gd`定义类型化Resource；`balance_tables/时间轴.xlsx`、`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`与`特殊强化.xlsx`是对应领域运行主源，`data/**/*.tres`与脚本默认值保存食材、食客、Boss和数值安全回退。
+- `scripts/data/*.gd`定义类型化Resource；`balance_tables/时间轴.xlsx`、`战斗规则.xlsx`、`食客.xlsx`、`武器.xlsx`、`普通强化.xlsx`与`特殊强化.xlsx`是对应领域运行主源，`data/**/*.tres`与脚本默认值保存食材、食客、Boss和数值安全回退。
 
 当前普通强化候选和部分特殊选择由 `RunController3D` 在运行时构建，并非全部来自 `.tres`。修改数据前必须先确认事实源位于具体 Resource、脚本构建逻辑还是 GDD。
 
-### 设计与实现差异
+### 设计与实现状态
 
-现行 GDD 的目标单局约 8 分钟、约 50 次普通强化门、6 只精英和 2 场 Boss；当前可运行竖切片约 3 分钟，包含 12 道普通强化门、1 只精英和 1 场 Boss。工程任务必须把前者标为“目标设计”、后者标为“当前实现”，除非用户明确要求同步，否则不得自动扩充原型。
+现行 GDD 与当前可运行实现均采用约 8 分钟的正式流程骨架：50 次普通强化门、250 个普通波次（按当前密度约 312 只普通食客）、6 只精英和 2 场 Boss。工程任务仍须把未接入的正式内容、表现和局外系统标为“目标设计”，不能因为流程骨架已接入就声称整套设计已经实现。
 
 ## 项目专属实现约束
 
@@ -110,11 +111,11 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
 - 普通阶段玩家只控制横向移动；Boss阶段可在开战站位与Boss之间有限二维移动。自动前进、自动瞄准和自动攻击的输入边界不得被局部功能静默改变。
 - 普通食材的投射方向在发射瞬间确定，默认不追踪；瞄准发射与飞行追踪是两项独立能力。
 - 同类持久百分比普通强化线性加算，快速备餐按`基础间隔 ÷ (1 + 累计攻速)`计算；攻击间隔下限为 `1/60s`。修改强化计算时同步检查 `FoodData`、`RunState`、`UpgradeData` 和核心测试。
-- 餐车耐久是唯一失败资源，受击后有 1 秒无敌；不得额外引入未获确认的生命或投诉计量。
+- 餐车耐久是唯一失败资源，受击后有 0.5 秒无敌；不得额外引入未获确认的生命或投诉计量。
 - 食客被满足后满意离场，不使用死亡、尸体或真实暴力反馈。
 - `RunState` 是局内可变数据的主要所有者；不得在 HUD、餐车、武器或敌人中建立第二份同义可写状态。
 - 当前 UI、角色和背景使用可编辑的临时3D节点与少量贴图。没有用户要求时不把它们误认作正式美术，也不顺手替换整套视觉。
-- 当前时间轴通过`TimelineExcelLoader`读取，食客、武器与两类强化通过`GameplayExcelLoader`读取，二者共同复用`ExcelReader47`；没有JSON导出器、资源生成器或对象池。不得照搬旧项目的数据管线，也不得为形式提前引入全局单例、生成链或池化架构。
+- 当前时间轴通过`TimelineExcelLoader`读取，战斗规则、食客、武器与两类强化通过`GameplayExcelLoader`读取，二者共同复用`ExcelReader47`；没有JSON导出器、资源生成器或对象池。不得照搬旧项目的数据管线，也不得为形式提前引入全局单例、生成链或池化架构。
 - 修改场景时保留现有 UID、节点唯一名称和外部资源引用；`.uid`、`.import` 和 `.godot/` 由 Godot 管理，不手工伪造或编辑。
 - Shader、粒子和后处理必须兼容 Mobile 渲染方式，并检查竖屏可读性和目标设备性能。
 
@@ -126,13 +127,19 @@ description: “小厨西”项目专用的技术负责人 Skill。用于任何�
   Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tests/test_core.gd
   ```
 
+- Excel 运行主源、读取适配器或数据回退改动：在核心测试后运行 Excel 数值链专项测试。
+
+  ```powershell
+  Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tests/test_balance_excel.gd
+  ```
+
 - 主流程、阶段切换、生成、Boss、HUD 或场景装配改动：在核心测试后运行完整流程烟雾测试。
 
   ```powershell
-  Godot_v4.7-stable_win64_console.exe --headless --path . --quit-after 20000 -- --smoke-test
+  Godot_v4.7-stable_win64_console.exe --headless --fixed-fps 60 --path . --quit-after 4000 -- --smoke-test
   ```
 
-- 成功标志分别为 `CORE_TESTS_OK` 和 `SMOKE_TEST_OK`；同时检查输出中没有新增的脚本解析、资源加载或场景依赖错误。
+- 成功标志分别为 `CORE_TESTS_OK`、`BALANCE_EXCEL_TEST_OK`和`SMOKE_TEST_OK`；同时检查输出中没有新增的脚本解析、资源加载或场景依赖错误。
 - 上述命令只表示参数基线；Codex 实际调用时还必须先获得非沙箱执行批准，确认直接使用 Godot 4.7 官方控制台程序，并按验证流程注入本次运行独立的 `APPDATA`、`LOCALAPPDATA` 和 `tmp/` 日志路径。
 - 输入、HUD、边界或表现改动还需检查 `720 × 1280`、`405 × 720` 和目标移动端比例。
 - Android 导出配置改动检查 `export_presets.cfg`；没有用户要求时不构建、签名或覆盖 APK。

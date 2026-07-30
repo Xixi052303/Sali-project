@@ -22,17 +22,20 @@ enum AimMode {
 @export var attack_kind: AttackKind = AttackKind.PROJECTILE
 @export var initial_aim_mode: AimMode = AimMode.FIXED_FORWARD
 @export var initial_tracking_mode: TrackingMode = TrackingMode.NONE
+# 寻敌半角以道路正前方为中心；90度表示不额外收窄前方候选。
+@export_range(0.0, 90.0, 0.1) var targeting_half_angle_degrees: float = 90.0
 @export var homing_turn_speed: float = 4.5
 @export var base_satisfaction: float = 10.0
 @export var base_interval: float = 0.8
-@export var projectile_speed: float = 760.0
-@export var projectile_radius: float = 16.0
-@export var base_lifetime: float = 1.6
+@export var projectile_speed: float = 680.0
+@export var projectile_radius: float = 17.0
+@export var base_lifetime: float = 1.3473684
 @export var pierce_count: int = 1
 @export var visual_color: Color = Color("#e2b650")
 @export_group("Orbiting attack")
 # 环绕食材以此为首档半径，完成驻留圈后再逐档扩大。
 @export var orbit_radius: float = 120.0
+# 只定义1倍环绕半径处的基准角速度，实际角速度由恒定切向速度按当前半径反推。
 @export var orbit_angular_speed: float = 3.2
 @export var breathing_period: float = 1.2
 @export var breathing_outer_multiplier: float = 2.0

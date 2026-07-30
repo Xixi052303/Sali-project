@@ -2,7 +2,7 @@ class_name EncounterTimeline
 extends Resource
 
 @export var event_progresses: PackedFloat32Array = PackedFloat32Array([
-	0.005, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0,
+	0.01, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0,
 ])
 @export var event_ids: PackedStringArray = PackedStringArray([
 	"start_gate", "elite", "elite", "elite", "boss",
@@ -22,7 +22,9 @@ extends Resource
 # 总路程独立于策划目标时长，避免调整Boss参考耗时改变事件触发位置。
 @export var course_distance: float = 1310.763
 @export var normal_gate_count: int = 50
-@export var normal_wave_count: int = 235
+@export var normal_wave_count: int = 250
+# 普通波次以平均路程间隔为基准做种子随机，数值表示单个间隔允许的正负比例。
+@export_range(0.0, 0.45, 0.01) var normal_wave_interval_jitter_ratio: float = 0.2
 @export var pressure_progresses: PackedFloat32Array = PackedFloat32Array([
 	0.0, 0.1875, 0.3125, 0.5, 0.6875, 0.8125,
 ])
@@ -51,6 +53,8 @@ func is_valid() -> bool:
 		or course_distance <= 0.0
 		or normal_gate_count < 1
 		or normal_wave_count < 1
+		or normal_wave_interval_jitter_ratio < 0.0
+		or normal_wave_interval_jitter_ratio > 0.45
 		or headwind_factor < 0.0
 		or max_crosswind_speed < 0.0
 		or minimum_cart_base_speed_factor <= 0.0
