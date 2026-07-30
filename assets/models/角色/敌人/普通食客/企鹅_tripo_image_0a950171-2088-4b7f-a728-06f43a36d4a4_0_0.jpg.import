@@ -4,9 +4,8 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bhgfs5feg0yb6"
 path.s3tc="res://.godot/imported/企鹅_tripo_image_0a950171-2088-4b7f-a728-06f43a36d4a4_0_0.jpg-7b36b8672503f3b10234ed2ffc8595ef.s3tc.ctex"
-path.etc2="res://.godot/imported/企鹅_tripo_image_0a950171-2088-4b7f-a728-06f43a36d4a4_0_0.jpg-7b36b8672503f3b10234ed2ffc8595ef.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -16,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/角色/敌人/普通食客/企鹅_tripo_image_0a950171-2088-4b7f-a728-06f43a36d4a4_0_0.jpg"
-dest_files=["res://.godot/imported/企鹅_tripo_image_0a950171-2088-4b7f-a728-06f43a36d4a4_0_0.jpg-7b36b8672503f3b10234ed2ffc8595ef.s3tc.ctex", "res://.godot/imported/企鹅_tripo_image_0a950171-2088-4b7f-a728-06f43a36d4a4_0_0.jpg-7b36b8672503f3b10234ed2ffc8595ef.etc2.ctex"]
+dest_files=["res://.godot/imported/企鹅_tripo_image_0a950171-2088-4b7f-a728-06f43a36d4a4_0_0.jpg-7b36b8672503f3b10234ed2ffc8595ef.s3tc.ctex"]
 
 [params]
 

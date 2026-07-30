@@ -4,16 +4,15 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bxqyjr4jf557o"
 path.s3tc="res://.godot/imported/左路沿.png-6e183a239cb1a634a4719695a946bc81.s3tc.ctex"
-path.etc2="res://.godot/imported/左路沿.png-6e183a239cb1a634a4719695a946bc81.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/image/左路沿.png"
-dest_files=["res://.godot/imported/左路沿.png-6e183a239cb1a634a4719695a946bc81.s3tc.ctex", "res://.godot/imported/左路沿.png-6e183a239cb1a634a4719695a946bc81.etc2.ctex"]
+dest_files=["res://.godot/imported/左路沿.png-6e183a239cb1a634a4719695a946bc81.s3tc.ctex"]
 
 [params]
 

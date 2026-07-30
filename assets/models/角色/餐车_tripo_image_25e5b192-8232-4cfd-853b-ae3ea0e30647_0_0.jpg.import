@@ -4,9 +4,8 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://5rbcfw2eewtt"
 path.s3tc="res://.godot/imported/餐车_tripo_image_25e5b192-8232-4cfd-853b-ae3ea0e30647_0_0.jpg-c41439eba91f01210026825566c5046a.s3tc.ctex"
-path.etc2="res://.godot/imported/餐车_tripo_image_25e5b192-8232-4cfd-853b-ae3ea0e30647_0_0.jpg-c41439eba91f01210026825566c5046a.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -16,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/角色/餐车_tripo_image_25e5b192-8232-4cfd-853b-ae3ea0e30647_0_0.jpg"
-dest_files=["res://.godot/imported/餐车_tripo_image_25e5b192-8232-4cfd-853b-ae3ea0e30647_0_0.jpg-c41439eba91f01210026825566c5046a.s3tc.ctex", "res://.godot/imported/餐车_tripo_image_25e5b192-8232-4cfd-853b-ae3ea0e30647_0_0.jpg-c41439eba91f01210026825566c5046a.etc2.ctex"]
+dest_files=["res://.godot/imported/餐车_tripo_image_25e5b192-8232-4cfd-853b-ae3ea0e30647_0_0.jpg-c41439eba91f01210026825566c5046a.s3tc.ctex"]
 
 [params]
 

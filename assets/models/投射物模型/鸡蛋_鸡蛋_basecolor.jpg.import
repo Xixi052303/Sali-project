@@ -4,9 +4,8 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://ywek5twduh3l"
 path.s3tc="res://.godot/imported/鸡蛋_鸡蛋_basecolor.jpg-4563f4db9f041cd7e23a0d828f50fa9c.s3tc.ctex"
-path.etc2="res://.godot/imported/鸡蛋_鸡蛋_basecolor.jpg-4563f4db9f041cd7e23a0d828f50fa9c.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -16,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/投射物模型/鸡蛋_鸡蛋_basecolor.jpg"
-dest_files=["res://.godot/imported/鸡蛋_鸡蛋_basecolor.jpg-4563f4db9f041cd7e23a0d828f50fa9c.s3tc.ctex", "res://.godot/imported/鸡蛋_鸡蛋_basecolor.jpg-4563f4db9f041cd7e23a0d828f50fa9c.etc2.ctex"]
+dest_files=["res://.godot/imported/鸡蛋_鸡蛋_basecolor.jpg-4563f4db9f041cd7e23a0d828f50fa9c.s3tc.ctex"]
 
 [params]
 

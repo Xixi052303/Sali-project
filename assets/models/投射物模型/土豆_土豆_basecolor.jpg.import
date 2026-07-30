@@ -4,9 +4,8 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://cc4ykeph7gae4"
 path.s3tc="res://.godot/imported/土豆_土豆_basecolor.jpg-0f91e5cd4d11e0f2b01ef16606acc285.s3tc.ctex"
-path.etc2="res://.godot/imported/土豆_土豆_basecolor.jpg-0f91e5cd4d11e0f2b01ef16606acc285.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -16,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/投射物模型/土豆_土豆_basecolor.jpg"
-dest_files=["res://.godot/imported/土豆_土豆_basecolor.jpg-0f91e5cd4d11e0f2b01ef16606acc285.s3tc.ctex", "res://.godot/imported/土豆_土豆_basecolor.jpg-0f91e5cd4d11e0f2b01ef16606acc285.etc2.ctex"]
+dest_files=["res://.godot/imported/土豆_土豆_basecolor.jpg-0f91e5cd4d11e0f2b01ef16606acc285.s3tc.ctex"]
 
 [params]
 

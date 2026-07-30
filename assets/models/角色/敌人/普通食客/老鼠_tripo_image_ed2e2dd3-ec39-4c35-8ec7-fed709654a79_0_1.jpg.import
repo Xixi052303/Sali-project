@@ -4,9 +4,8 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://cxkqkveqmbgs8"
 path.s3tc="res://.godot/imported/老鼠_tripo_image_ed2e2dd3-ec39-4c35-8ec7-fed709654a79_0_1.jpg-82a3a2fdc8907e56ed8d044aaf521d95.s3tc.ctex"
-path.etc2="res://.godot/imported/老鼠_tripo_image_ed2e2dd3-ec39-4c35-8ec7-fed709654a79_0_1.jpg-82a3a2fdc8907e56ed8d044aaf521d95.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -16,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/角色/敌人/普通食客/老鼠_tripo_image_ed2e2dd3-ec39-4c35-8ec7-fed709654a79_0_1.jpg"
-dest_files=["res://.godot/imported/老鼠_tripo_image_ed2e2dd3-ec39-4c35-8ec7-fed709654a79_0_1.jpg-82a3a2fdc8907e56ed8d044aaf521d95.s3tc.ctex", "res://.godot/imported/老鼠_tripo_image_ed2e2dd3-ec39-4c35-8ec7-fed709654a79_0_1.jpg-82a3a2fdc8907e56ed8d044aaf521d95.etc2.ctex"]
+dest_files=["res://.godot/imported/老鼠_tripo_image_ed2e2dd3-ec39-4c35-8ec7-fed709654a79_0_1.jpg-82a3a2fdc8907e56ed8d044aaf521d95.s3tc.ctex"]
 
 [params]
 

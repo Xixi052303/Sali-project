@@ -4,9 +4,8 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://dirlu5bmdbnh1"
 path.s3tc="res://.godot/imported/boss鸦_tripo_image_7de1ddae-f48d-4969-baf8-15849986dad1_0_1.jpg-5ab81005226ca3c21b26667eea3ed422.s3tc.ctex"
-path.etc2="res://.godot/imported/boss鸦_tripo_image_7de1ddae-f48d-4969-baf8-15849986dad1_0_1.jpg-5ab81005226ca3c21b26667eea3ed422.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -16,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/角色/敌人/boss/boss鸦_tripo_image_7de1ddae-f48d-4969-baf8-15849986dad1_0_1.jpg"
-dest_files=["res://.godot/imported/boss鸦_tripo_image_7de1ddae-f48d-4969-baf8-15849986dad1_0_1.jpg-5ab81005226ca3c21b26667eea3ed422.s3tc.ctex", "res://.godot/imported/boss鸦_tripo_image_7de1ddae-f48d-4969-baf8-15849986dad1_0_1.jpg-5ab81005226ca3c21b26667eea3ed422.etc2.ctex"]
+dest_files=["res://.godot/imported/boss鸦_tripo_image_7de1ddae-f48d-4969-baf8-15849986dad1_0_1.jpg-5ab81005226ca3c21b26667eea3ed422.s3tc.ctex"]
 
 [params]
 
