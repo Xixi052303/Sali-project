@@ -1056,7 +1056,7 @@ func _test_new_food_behaviors() -> void:
 	_check(
 		state.effective_duration(carrot) > carrot.base_lifetime
 		and state.effective_projectile_radius(carrot) > carrot.projectile_radius
-		and state.effective_projectile_speed(carrot) > carrot.projectile_speed
+		and state.effective_orbit_angular_speed(carrot) > carrot.orbit_angular_speed
 		and state.effective_interval(carrot) < carrot.base_interval
 		and is_equal_approx(
 			state.effective_projectile_distance(carrot),
@@ -1066,11 +1066,11 @@ func _test_new_food_behaviors() -> void:
 	)
 	_check(
 		is_equal_approx(
-			PI * carrot.sweep_radius / carrot.projectile_speed,
+			PI / carrot.orbit_angular_speed,
 			0.5,
 			0.0001
 		),
-		"胡萝卜基础弹速使180度单程历时0.5秒"
+		"胡萝卜基础环绕角速度使180度单程历时0.5秒"
 	)
 
 	var carrot_projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
@@ -1081,7 +1081,8 @@ func _test_new_food_behaviors() -> void:
 		Vector3.FORWARD,
 		carrot,
 		state.effective_satisfaction(carrot),
-		Playfield.design_to_world(state.effective_projectile_speed(carrot)),
+		Playfield.design_to_world(carrot.sweep_radius)
+		* state.effective_orbit_angular_speed(carrot),
 		Playfield.design_to_world(state.effective_projectile_radius(carrot)),
 		Vector3.ZERO,
 		state.effective_duration(carrot),
@@ -1135,9 +1136,10 @@ func _test_new_food_behaviors() -> void:
 	var first_position: Vector3 = carrot_projectile.position
 	carrot_projectile._process_carrot_sweep(one_way_seconds)
 	_check(
-		carrot_projectile._sweep_direction < 0.0
+		carrot_projectile._carrot_sweep_finished
+		and carrot_projectile._sweep_direction > 0.0
 		and absf(carrot_projectile._sweep_angle - PI * 0.5) < 0.0001,
-		"胡萝卜扫到右侧90度后立即反向"
+		"基础胡萝卜扫到右侧90度后固定在端点"
 	)
 	_check(
 		is_equal_approx(
@@ -1150,14 +1152,54 @@ func _test_new_food_behaviors() -> void:
 	_check(carrot_projectile.can_hit(target), "胡萝卜单程开始时可命中目标")
 	carrot_projectile.register_hit(target)
 	_check(not carrot_projectile.can_hit(target), "胡萝卜同一单程不会重复命中目标")
-	carrot_projectile._process_carrot_sweep(one_way_seconds)
-	_check(carrot_projectile.can_hit(target), "胡萝卜反向完成一程后允许再次命中")
+	carrot_projectile._process_carrot_sweep(0.1)
+	_check(
+		carrot_projectile._carrot_spin_angle > 0.0
+		and not carrot_projectile.can_hit(target),
+		"基础胡萝卜延长持续时间后只绕自身长轴自转"
+	)
 	target.free()
 	_check(
 		first_position != carrot_projectile.position,
 		"胡萝卜实际沿弧线移动而非只旋转模型"
 	)
 	carrot_projectile.free()
+	state.enable_food_evolution(&"carrot_bounce")
+	var bouncing_carrot: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	projectiles.add_child(bouncing_carrot)
+	bouncing_carrot.configure(
+		run,
+		cart.position,
+		Vector3.FORWARD,
+		carrot,
+		state.effective_satisfaction(carrot),
+		Playfield.design_to_world(carrot.sweep_radius)
+		* state.effective_orbit_angular_speed(carrot),
+		Playfield.design_to_world(state.effective_projectile_radius(carrot)),
+		Vector3.ZERO,
+		state.effective_duration(carrot),
+		state.effective_pierce_count(carrot),
+		null,
+		false,
+		0.0,
+		false,
+		0.0,
+		false
+	)
+	bouncing_carrot._process_carrot_sweep(one_way_seconds)
+	_check(
+		not bouncing_carrot._carrot_sweep_finished
+		and bouncing_carrot._sweep_direction < 0.0
+		and absf(bouncing_carrot._sweep_angle - PI * 0.5) < 0.0001,
+		"往返扫掠进化使胡萝卜抵达端点后立即反向"
+	)
+	var bounce_target: Node3D = Node3D.new()
+	_check(bouncing_carrot.can_hit(bounce_target), "胡萝卜进化的首个单程可命中目标")
+	bouncing_carrot.register_hit(bounce_target)
+	bouncing_carrot._process_carrot_sweep(one_way_seconds)
+	_check(bouncing_carrot.can_hit(bounce_target), "胡萝卜进化在下一单程允许再次命中")
+	bounce_target.free()
+	bouncing_carrot.free()
 	run.free()
 
 
@@ -1567,13 +1609,19 @@ func _test_customer_reward_randomness() -> void:
 	)
 	for choice_id: StringName in special_choices:
 		_check(run._special_choice_is_valid(choice_id), "未持有进化不会混入有效候选")
-	_check(run._special_choice_pool.size() == 10, "特殊奖励池包含五食材、三进化与两项全局牌")
+	_check(run._special_choice_pool.size() == 11, "特殊奖励池包含五食材、四项食材能力与两项全局牌")
 	_check(run._special_choice_pool.has(&"soy_sauce"), "酱油已进入特殊奖励候选池")
+	_check(run._special_choice_pool.has(&"carrot_bounce"), "胡萝卜往返扫掠已进入特殊奖励候选池")
 	_check(not run._special_choice_is_valid(&"mushroom_breath"), "蘑菇进化在取得蘑菇前无效")
 	run.state.add_food(&"mushroom")
 	_check(run._special_choice_is_valid(&"mushroom_breath"), "取得蘑菇后呼吸扩圈进入有效池")
 	run.state.enable_food_evolution(&"mushroom_breath")
 	_check(not run._special_choice_is_valid(&"mushroom_breath"), "已取得进化会移出有效池")
+	_check(not run._special_choice_is_valid(&"carrot_bounce"), "胡萝卜往返进化在取得胡萝卜前无效")
+	run.state.add_food(&"carrot")
+	_check(run._special_choice_is_valid(&"carrot_bounce"), "取得胡萝卜后往返进化进入有效池")
+	run.state.enable_food_evolution(&"carrot_bounce")
+	_check(not run._special_choice_is_valid(&"carrot_bounce"), "已取得胡萝卜往返进化会移出有效池")
 	run.state.level_food(&"mushroom")
 	run.state.level_food(&"mushroom")
 	_check(not run._special_choice_is_valid(&"mushroom"), "满级食材卡会移出有效池")
@@ -1796,11 +1844,12 @@ func _test_resources() -> void:
 		and carrot.display_name == "胡萝卜"
 		and carrot.attack_kind == FoodData.AttackKind.CARROT_SWEEP
 		and carrot.pierce_count == 999
-		and is_equal_approx(carrot.projectile_speed, 2878.36, 0.01)
+		and is_equal_approx(carrot.projectile_speed, 680.0)
 		and is_equal_approx(carrot.base_lifetime, 0.5)
+		and is_equal_approx(carrot.orbit_angular_speed, 6.2831853, 0.000001)
 		and is_equal_approx(carrot.sweep_radius, 458.1, 0.1)
 		and is_equal_approx(carrot.sweep_angle_degrees, 180.0),
-		"胡萝卜资源配置0.5秒单程、2878.36弹速、180度与999命中目标"
+		"胡萝卜资源使用环绕角速度控制0.5秒单程、180度与999命中目标"
 	)
 	_check(
 		is_equal_approx(potato.projectile_speed, 680.0)

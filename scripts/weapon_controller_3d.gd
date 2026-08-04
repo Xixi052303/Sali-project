@@ -86,6 +86,12 @@ func _fire(food: FoodData, target: Node3D) -> void:
 	var speed: float = Playfield.design_to_world(state.effective_projectile_speed(food))
 	if food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
 		speed = state.effective_orbit_angular_speed(food)
+	elif food.attack_kind == FoodData.AttackKind.CARROT_SWEEP:
+		# Excel用环绕角速度维护扫掠节拍；进入投射物后仍换算为弧线切向线速度。
+		speed = (
+			Playfield.design_to_world(food.sweep_radius)
+			* state.effective_orbit_angular_speed(food)
+		)
 	var radius: float = Playfield.design_to_world(state.effective_projectile_radius(food))
 	var count: int = maxi(1, state.servings)
 	var base_direction: Vector3 = Vector3.FORWARD

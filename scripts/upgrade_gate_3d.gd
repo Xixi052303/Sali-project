@@ -4,6 +4,8 @@ extends Node3D
 const LEFT_PANEL: Rect2 = Rect2(0.66, -0.72, 2.88, 1.44)
 const RIGHT_PANEL: Rect2 = Rect2(3.66, -0.72, 2.88, 1.44)
 const SIDE_DIVIDER_X: float = 3.6
+# 结算后沿用食客离屏线继续前进，避免门在餐车旁瞬间消失。
+const POST_CART_DESPAWN_OFFSET_Z: float = Playfield.CUSTOMER_DESPAWN_Z - Playfield.CART_Z
 
 var run: RunController3D
 var left_upgrade: UpgradeData
@@ -58,7 +60,15 @@ func configure(
 
 
 func _process(delta: float) -> void:
-	if run == null or resolved:
+	if run == null:
+		return
+	if resolved:
+		if not run.is_world_scrolling():
+			queue_free()
+			return
+		position.z += travel_speed() * delta
+		if position.z >= run.cart_destination_z() + POST_CART_DESPAWN_OFFSET_Z:
+			queue_free()
 		return
 	if _left_hit_feedback > 0.0 or _right_hit_feedback > 0.0:
 		_left_hit_feedback = maxf(0.0, _left_hit_feedback - delta)
@@ -66,11 +76,27 @@ func _process(delta: float) -> void:
 		_refresh_feedback()
 	if run.is_world_scrolling():
 		position.z += travel_speed() * delta
-	if position.z >= run.cart_destination_z():
+	var cart: Cart3D = run.cart
+	if cart == null:
+		return
+	var overlap_side: int = _cart_overlap_side(cart)
+	if overlap_side >= 0:
 		resolved = true
-		var cart_x: float = run.cart.position.x
-		run.on_gate_selected(selected_upgrade_for_x(cart_x), start_food_gate, selected_base_health_for_x(cart_x))
+		var use_left: bool = overlap_side == 0
+		run.on_gate_selected(
+			left_upgrade if use_left else right_upgrade,
+			start_food_gate,
+			left_base_health if use_left else right_base_health
+		)
 		queue_free()
+	elif start_food_gate and position.z >= run.cart_destination_z():
+		# 开局门的两块面板中间存在视觉分隔，中心线作为无法重叠时的安全兜底。
+		resolved = true
+		var cart_x: float = cart.position.x
+		run.on_gate_selected(selected_upgrade_for_x(cart_x), true, 0.0)
+		queue_free()
+	elif _has_passed_cart(cart):
+		resolved = true
 
 
 func target_for_cart_x(cart_x: float) -> Node3D:
@@ -88,6 +114,45 @@ func selected_upgrade_for_x(cart_x: float) -> UpgradeData:
 
 func selected_base_health_for_x(cart_x: float) -> float:
 	return left_base_health if cart_x < SIDE_DIVIDER_X else right_base_health
+
+
+# 把左右门板的逻辑范围转换为餐车所在的 X/Z 世界平面。
+func _panel_rect_xz(left_side: bool) -> Rect2:
+	var panel: Rect2 = LEFT_PANEL if left_side else RIGHT_PANEL
+	var gate_scale: Vector2 = Vector2(absf(scale.x), absf(scale.z))
+	var panel_position: Vector2 = Vector2(
+		panel.position.x * gate_scale.x,
+		panel.position.y * gate_scale.y
+	)
+	return Rect2(
+		Vector2(position.x, position.z) + panel_position,
+		panel.size * gate_scale
+	)
+
+
+# 返回与餐车碰撞箱重叠的门板，左右都重叠时沿用餐车中心线选择规则。
+func _cart_overlap_side(cart: Cart3D) -> int:
+	if cart == null:
+		return -1
+	var cart_rect: Rect2 = cart.collision_rect_xz()
+	var left_overlaps: bool = _panel_rect_xz(true).intersects(cart_rect)
+	var right_overlaps: bool = _panel_rect_xz(false).intersects(cart_rect)
+	if left_overlaps and right_overlaps:
+		return 0 if cart.position.x < SIDE_DIVIDER_X else 1
+	if left_overlaps:
+		return 0
+	if right_overlaps:
+		return 1
+	return -1
+
+
+# 横向错开的普通门在两块门板都完全越过餐车碰撞箱后结束拾取窗口。
+func _has_passed_cart(cart: Cart3D) -> bool:
+	if cart == null:
+		return false
+	var cart_rect: Rect2 = cart.collision_rect_xz()
+	var left_rect: Rect2 = _panel_rect_xz(true)
+	return left_rect.position.y >= cart_rect.position.y + cart_rect.size.y
 
 
 func try_receive_projectile(projectile: FoodProjectile3D) -> bool:

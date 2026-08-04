@@ -6,6 +6,7 @@ signal destroyed
 
 const BASE_MOVE_SPEED: float = 9.0
 const BASE_MOVE_SPEED_DESIGN: float = BASE_MOVE_SPEED / Playfield.WORLD_UNITS_PER_PIXEL
+# 无场景节点的规则测试仍使用这份几何回退；实机场景以 CollisionHitbox 为准。
 const COLLISION_RECT: Rect2 = Rect2(-0.96, -1.5, 1.92, 2.17)
 const MAXIMUM_FEEDBACK_DURATION: float = 1.2
 const DEFAULT_INVINCIBILITY_DURATION_SECONDS: float = 0.5
@@ -30,6 +31,8 @@ var _last_maximum_durability: float = 0.0
 var _upgrade_tween: Tween
 # 保存编辑器配置的基础尺寸，碰撞与反馈动画都以它为准。
 var _base_scale: Vector3 = Vector3.ONE
+# 从场景缓存可编辑的餐车碰撞节点；没有完整场景时允许为空并走默认几何。
+var _collision_shape: CollisionShape3D
 @onready var _visual_root: Node3D = %PaperCartVisual
 @onready var _durability_label: Label3D = %DurabilityLabel
 @onready var _maximum_durability_label: Label3D = %DurabilityLabel2
@@ -151,7 +154,11 @@ func end_boss_movement() -> void:
 func boss_minimum_z() -> float:
 	if not _boss_movement_active or not is_instance_valid(_boss_target):
 		return _default_z
-	var cart_forward_extent: float = absf(COLLISION_RECT.position.y * _base_scale.z)
+	var local_collision_rect: Rect2 = _collision_rect_local()
+	var cart_forward_extent: float = maxf(
+		0.0,
+		-local_collision_rect.position.y * absf(_base_scale.z)
+	)
 	return minf(
 		_default_z,
 		_boss_target.position.z + _boss_target.hit_radius() + cart_forward_extent
@@ -177,11 +184,32 @@ func cancel_pointer_input() -> void:
 
 
 func collision_rect_xz() -> Rect2:
+	var local_collision_rect: Rect2 = _collision_rect_local()
 	var collision_scale: Vector2 = Vector2(absf(_base_scale.x), absf(_base_scale.z))
 	return Rect2(
-		Vector2(position.x, position.z) + COLLISION_RECT.position * collision_scale,
-		COLLISION_RECT.size * collision_scale
+		Vector2(position.x, position.z) + local_collision_rect.position * collision_scale,
+		local_collision_rect.size * collision_scale
 	)
+
+
+# 从编辑器中的盒形碰撞节点恢复玩法所需的 X/Z 矩形，保持现有平面碰撞判定。
+func _collision_rect_local() -> Rect2:
+	if _collision_shape == null:
+		_collision_shape = get_node_or_null("CollisionHitbox") as CollisionShape3D
+	if _collision_shape == null:
+		return COLLISION_RECT
+	var box_shape: BoxShape3D = _collision_shape.shape as BoxShape3D
+	if box_shape == null:
+		return COLLISION_RECT
+	var shape_size: Vector2 = Vector2(
+		box_shape.size.x * absf(_collision_shape.scale.x),
+		box_shape.size.z * absf(_collision_shape.scale.z)
+	)
+	var shape_center: Vector2 = Vector2(
+		_collision_shape.position.x,
+		_collision_shape.position.z
+	)
+	return Rect2(shape_center - shape_size * 0.5, shape_size)
 
 
 func play_upgrade_feedback(_color: Color) -> void:

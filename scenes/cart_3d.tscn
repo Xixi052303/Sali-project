@@ -9,6 +9,10 @@ albedo_color = Color(0.168627, 0.141176, 0.113725, 1)
 
 [sub_resource type="SphereMesh" id="MeshShadow"]
 
+[sub_resource type="BoxShape3D" id="BoxShapeCartCollision"]
+resource_local_to_scene = true
+size = Vector3(1.2, 1, 1.7)
+
 [node name="Cart3D" type="Node3D" unique_id=1284887731]
 script = ExtResource("1_script")
 
@@ -27,6 +31,11 @@ material_override = SubResource("MatShadow")
 cast_shadow = 0
 mesh = SubResource("MeshShadow")
 
+[node name="CollisionHitbox" type="CollisionShape3D" parent="." unique_id=1594882472]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0.0012562871)
+shape = SubResource("BoxShapeCartCollision")
+
 [node name="StatusBillboard" type="Node3D" parent="." unique_id=853189386]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5999064, 0.18)
 
@@ -34,8 +43,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5999064, 0.18)
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.024575472, 0.16710567, -0.27098334)
 pixel_size = 0.007
-render_priority = 100
 no_depth_test = true
+render_priority = 100
 outline_render_priority = 99
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 text = "100"
@@ -47,8 +56,8 @@ width = 1.72
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1653848, -0.6598382, 0)
 pixel_size = 0.007
-render_priority = 100
 no_depth_test = true
+render_priority = 100
 outline_render_priority = 99
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 text = "/ 100"
@@ -61,8 +70,8 @@ unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.01)
 visible = false
 pixel_size = 0.007
-render_priority = 100
 no_depth_test = true
+render_priority = 100
 outline_render_priority = 99
 modulate = Color(0, 0.38709083, 1, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
@@ -76,8 +85,8 @@ unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.68, 0.13)
 visible = false
 pixel_size = 0.007
-render_priority = 100
 no_depth_test = true
+render_priority = 100
 outline_render_priority = 99
 modulate = Color(0.94902, 0.831373, 0.482353, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)

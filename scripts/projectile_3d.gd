@@ -53,6 +53,11 @@ var _sweep_half_angle: float = 0.0
 var _sweep_angle: float = 0.0
 var _sweep_direction: float = 1.0
 var _sweep_linear_speed: float = 0.0
+# 基础胡萝卜到端点后只自转；取得特殊进化后才恢复端点反向。
+var _carrot_bounce_enabled: bool = false
+var _carrot_sweep_finished: bool = false
+# 端点后的剩余持续时间只累计模型绕自身长轴的自转角度。
+var _carrot_spin_angle: float = 0.0
 # 食材包装场景的编辑器变换作为基准，运行时只叠加战斗范围带来的动态尺寸。
 var _visual_nodes_resolved: bool = false
 var _potato_visual_base_scale: Vector3 = Vector3.ONE
@@ -67,6 +72,9 @@ var _egg_visual_base_position: Vector3 = Vector3.ZERO
 var _carrot_visual_base_position: Vector3 = Vector3.ZERO
 # 胡萝卜包装根节点的可编辑旋转，以及模型基础缩放；根节点本身就是扫掠轴心。
 var _carrot_visual_base_rotation: Vector3 = Vector3.ZERO
+# 胡萝卜模型单独缓存编辑器变换，端点后仅绕其本地长轴自转。
+var _carrot_model: Node3D
+var _carrot_model_base_transform: Transform3D = Transform3D.IDENTITY
 # 胡萝卜模型在包装根节点局部空间中的最低点，用于把场景模型自动贴到道路平面。
 var _carrot_visual_base_bottom_y: float = 0.0
 # 胡萝卜场景中的盒形伤害轮廓；运行时只读取其编辑器变换，不连接物理系统。
@@ -118,6 +126,13 @@ func configure(
 	_initial_lifetime = lifetime
 	remaining_hits = maxi(1, hit_count)
 	food_id = food.id
+	_carrot_bounce_enabled = (
+		food.id == &"carrot"
+		and run.state != null
+		and run.state.has_food_evolution(&"carrot_bounce")
+	)
+	_carrot_sweep_finished = false
+	_carrot_spin_angle = 0.0
 	tracking_target = target if should_home else null
 	homing_enabled = should_home
 	homing_turn_speed = food.homing_turn_speed
@@ -207,12 +222,16 @@ func _process_forward_motion(delta: float) -> void:
 	rotation.y = atan2(-velocity.x, -velocity.z)
 
 
-# 胡萝卜固定跟随餐车，在前方弧线上按切向线速度往返扫掠。
+# 胡萝卜固定跟随餐车，在前方弧线上按切向线速度扫掠；端点回弹由特殊进化开启。
 func _process_carrot_sweep(delta: float) -> void:
 	_previous_position = position
 	var angular_speed: float = _sweep_linear_speed / maxf(0.001, _sweep_radius)
 	var remaining_delta: float = maxf(0.0, delta)
 	while remaining_delta > 0.000001:
+		if _carrot_sweep_finished:
+			_spin_carrot_model(remaining_delta, angular_speed)
+			remaining_delta = 0.0
+			break
 		var remaining_angle: float = (
 			_sweep_half_angle - _sweep_angle
 			if _sweep_direction > 0.0
@@ -228,9 +247,14 @@ func _process_carrot_sweep(delta: float) -> void:
 				0.0,
 				remaining_delta - remaining_angle / maxf(0.001, angular_speed)
 			)
-			_sweep_direction *= -1.0
-			# 每次到达另一端代表一个新的单程，允许目标在下一程再次受击。
-			_hit_instances.clear()
+			if _carrot_bounce_enabled:
+				_sweep_direction *= -1.0
+				# 每次到达另一端代表一个新的单程，允许目标在下一程再次受击。
+				_hit_instances.clear()
+			else:
+				_carrot_sweep_finished = true
+				_spin_carrot_model(remaining_delta, angular_speed)
+				remaining_delta = 0.0
 	_set_sweep_position()
 
 
@@ -277,6 +301,9 @@ func _update_carrot_visual_transform(center: Vector3) -> void:
 	var yaw: float = atan2(-outward.x, -outward.z)
 	_carrot_visual.rotation = _carrot_visual_base_rotation
 	_carrot_visual.rotation.y += yaw
+	if _carrot_model != null:
+		_carrot_model.transform = _carrot_model_base_transform
+		_carrot_model.rotate_object_local(Vector3.FORWARD, _carrot_spin_angle)
 	var desired_pivot: Vector3 = center + Vector3(
 		0.0,
 		_carrot_visual_ground_y(),
@@ -287,6 +314,16 @@ func _update_carrot_visual_transform(center: Vector3) -> void:
 		desired_pivot
 		- position
 		+ _carrot_visual_base_position
+	)
+
+
+# 端点后的剩余时间只让胡萝卜绕自身本地-Z长轴旋转，扫掠轴心保持不动。
+func _spin_carrot_model(delta: float, angular_speed: float) -> void:
+	if _carrot_model == null:
+		return
+	_carrot_spin_angle = fposmod(
+		_carrot_spin_angle + maxf(0.0, delta) * angular_speed,
+		TAU
 	)
 
 
@@ -575,6 +612,9 @@ func _resolve_visual_nodes() -> void:
 	_egg_visual_base_position = _egg_visual.position
 	_carrot_visual_base_position = _carrot_visual.position
 	_carrot_visual_base_rotation = _carrot_visual.rotation
+	_carrot_model = _carrot_visual.get_node_or_null("Model") as Node3D
+	if _carrot_model != null:
+		_carrot_model_base_transform = _carrot_model.transform
 	_cache_carrot_visual_bottom_y()
 	_carrot_damage_hitbox = _carrot_visual.get_node_or_null("DamageHitbox") as CollisionShape3D
 	_visual_nodes_resolved = true

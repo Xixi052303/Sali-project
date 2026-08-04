@@ -34,7 +34,7 @@ enum AimMode {
 @export var projectile_radius: float = 17.0
 @export var base_lifetime: float = 1.3473684
 @export var pierce_count: int = 1
-# 胡萝卜固定扫掠终点和总弧度；持续强化只延长扫掠时间，不改变终点。
+# 胡萝卜固定扫掠终点和总弧度；持续强化只延长到达端点后的剩余攻击时间，不改变终点。
 @export var sweep_radius: float = 0.0
 @export_range(0.0, 180.0, 0.1) var sweep_angle_degrees: float = 0.0
 @export var visual_color: Color = Color("#e2b650")

@@ -269,11 +269,12 @@ func _test_weapon_workbook() -> void:
 		_check(
 			carrot.attack_kind == FoodData.AttackKind.CARROT_SWEEP
 			and carrot.pierce_count == 999
-			and is_equal_approx(carrot.projectile_speed, 2878.36, 0.01)
+			and is_equal_approx(carrot.projectile_speed, 680.0)
 			and is_equal_approx(carrot.base_lifetime, 0.5)
+			and is_equal_approx(carrot.orbit_angular_speed, 6.2831853, 0.000001)
 			and is_equal_approx(carrot.sweep_radius, 458.1053)
 			and is_equal_approx(carrot.sweep_angle_degrees, 180.0),
-			"胡萝卜从武器表读取2878.36弹速、0.5秒持续、999穿透和180度扫掠"
+			"胡萝卜从武器表读取环绕角速度、0.5秒持续、999穿透和180度扫掠"
 		)
 	_check(is_equal_approx(result.baguette_giant_interval_seconds, 3.0), "巨型法棍间隔由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_attack_speed_scale, 0.05), "巨型法棍攻速倍率由武器表读取")
@@ -331,11 +332,13 @@ func _test_special_upgrade_workbook() -> void:
 	)
 	_check(result.loaded_from_excel, "特殊强化 Excel 可读取")
 	_check(result.upgrades.size() >= 3, "特殊候选池至少可以组成三选一")
+	_check(result.upgrades.size() == 11, "特殊强化 Excel 当前包含十一项候选")
 	_check(result.food_max_level >= 1, "食材最高等级有效")
 	_check(is_equal_approx(result.food_level_satisfaction_multiplier, 2.25), "食材等级倍率为2.25")
 	var giant_upgrade_found: bool = false
 	var egg_card_found: bool = false
 	var carrot_card_found: bool = false
+	var carrot_bounce_found: bool = false
 	for upgrade: SpecialUpgradeData in result.upgrades:
 		if upgrade.id == &"baguette_giant":
 			giant_upgrade_found = true
@@ -343,8 +346,15 @@ func _test_special_upgrade_workbook() -> void:
 			egg_card_found = true
 		if upgrade.id == &"carrot":
 			carrot_card_found = true
+		if upgrade.id == &"carrot_bounce":
+			carrot_bounce_found = (
+				upgrade.effect_kind == SpecialUpgradeData.EffectKind.EVOLUTION
+				and upgrade.target_id == &"carrot"
+				and not upgrade.repeatable
+			)
 	_check(giant_upgrade_found, "特殊候选池包含巨型法棍进化")
 	_check(egg_card_found and carrot_card_found, "特殊候选池包含鸡蛋和胡萝卜食材卡")
+	_check(carrot_bounce_found, "特殊候选池包含胡萝卜往返扫掠进化")
 	var food_result: GameplayExcelLoader.WeaponLoadResult = GameplayExcelLoader.load_weapons(
 		"res://balance_tables/武器.xlsx"
 	)

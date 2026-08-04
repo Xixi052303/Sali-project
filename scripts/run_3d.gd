@@ -2921,6 +2921,7 @@ func _build_fallback_special_upgrades() -> void:
 		_make_special_upgrade(&"potato_aim", "瞄准投喂", SpecialUpgradeData.EffectKind.TARGET_AIM, &"potato", 1.0, false, "土豆发射时朝向当前目标", ""),
 		_make_special_upgrade(&"baguette_giant", "巨型法棍", SpecialUpgradeData.EffectKind.EVOLUTION, &"baguette", 1.0, false, "以3秒基础间隔额外发射一根横跨四格、滚动直行的巨型法棍", ""),
 		_make_special_upgrade(&"mushroom_breath", "呼吸菌圈", SpecialUpgradeData.EffectKind.EVOLUTION, &"mushroom", 1.0, false, "蘑菇环绕半径按武器表周期与倍率呼吸", ""),
+		_make_special_upgrade(&"carrot_bounce", "往返扫掠", SpecialUpgradeData.EffectKind.EVOLUTION, &"carrot", 1.0, false, "胡萝卜扫到端点后反向往返", ""),
 		_make_special_upgrade(&"soy_sauce", "酱油", SpecialUpgradeData.EffectKind.PIERCE, &"", 1.0, true, "提高全部食材可命中目标数", ""),
 	])
 

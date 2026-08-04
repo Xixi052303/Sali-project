@@ -2,6 +2,8 @@ class_name UpgradeDrop3D
 extends Node3D
 
 const PANEL_HEIGHT: float = 1.44
+# 结算后沿用食客离屏线继续前进，避免未拾取的奖励门贴着餐车消失。
+const POST_CART_DESPAWN_OFFSET_Z: float = Playfield.CUSTOMER_DESPAWN_Z - Playfield.CART_Z
 
 var run: RunController3D
 var upgrade: UpgradeData
@@ -44,18 +46,32 @@ func configure(
 
 
 func _process(delta: float) -> void:
-	if resolved or run == null or upgrade == null:
+	if run == null:
+		return
+	if resolved:
+		if not run.is_world_scrolling():
+			queue_free()
+			return
+		position.z += travel_speed() * delta
+		if position.z >= run.cart_destination_z() + POST_CART_DESPAWN_OFFSET_Z:
+			queue_free()
+		return
+	if upgrade == null:
 		return
 	if _hit_feedback_remaining > 0.0:
 		_hit_feedback_remaining = maxf(0.0, _hit_feedback_remaining - delta)
 		_refresh_feedback()
 	if run.is_world_scrolling():
 		position.z += travel_speed() * delta
-	if position.z >= run.cart_destination_z():
+	var cart: Cart3D = run.cart
+	if cart == null:
+		return
+	if overlaps_cart(cart):
 		resolved = true
-		if contains_cart_x(run.cart.position.x):
-			run.on_customer_reward_gate_collected(upgrade)
+		run.on_customer_reward_gate_collected(upgrade)
 		queue_free()
+	elif has_passed_cart(cart):
+		resolved = true
 
 
 func target_for_cart_x(cart_x: float) -> Node3D:
@@ -67,6 +83,29 @@ func target_for_cart_x(cart_x: float) -> Node3D:
 func contains_cart_x(cart_x: float) -> bool:
 	var half_width: float = _panel_width() * 0.5
 	return cart_x >= position.x - half_width and cart_x < position.x + half_width
+
+
+# 奖励门使用自身占用矩形与餐车可编辑碰撞矩形做 X/Z 平面重叠判定。
+func collision_rect_xz() -> Rect2:
+	var gate_scale: Vector2 = Vector2(absf(scale.x), absf(scale.z))
+	var gate_size: Vector2 = Vector2(_panel_width(), PANEL_HEIGHT) * gate_scale
+	return Rect2(Vector2(position.x, position.z) - gate_size * 0.5, gate_size)
+
+
+# 只有横向和纵向都重叠时才视为奖励门被餐车拾取。
+func overlaps_cart(cart: Cart3D) -> bool:
+	if cart == null:
+		return false
+	return collision_rect_xz().intersects(cart.collision_rect_xz())
+
+
+# 横向错开的奖励门在完整越过餐车碰撞箱后结束本次拾取窗口。
+func has_passed_cart(cart: Cart3D) -> bool:
+	if cart == null:
+		return false
+	var gate_rect: Rect2 = collision_rect_xz()
+	var cart_rect: Rect2 = cart.collision_rect_xz()
+	return gate_rect.position.y >= cart_rect.position.y + cart_rect.size.y
 
 
 func try_receive_projectile(projectile: FoodProjectile3D) -> bool:
