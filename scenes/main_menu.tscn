@@ -1,0 +1,566 @@
+[gd_scene format=3 uid="uid://cxf6qnvl8sme1"]
+
+[ext_resource type="Script" uid="uid://cu1ium6wsgyu8" path="res://scripts/main_menu.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://dmw4g7ru4aa0e" path="res://assets/ui/food_icons/potato.svg" id="2_potato"]
+[ext_resource type="Texture2D" uid="uid://c40wlsieig5w4" path="res://assets/ui/food_icons/baguette.svg" id="3_baguette"]
+[ext_resource type="Texture2D" uid="uid://cpeo4jobmu3r0" path="res://assets/ui/food_icons/mushroom.svg" id="4_mushroom"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoard"]
+content_margin_left = 36.0
+content_margin_top = 32.0
+content_margin_right = 36.0
+content_margin_bottom = 32.0
+bg_color = Color(0.102, 0.086, 0.071, 0.93)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.886, 0.714, 0.357, 0.96)
+corner_radius_top_left = 9
+corner_radius_top_right = 9
+corner_radius_bottom_right = 9
+corner_radius_bottom_left = 9
+
+[sub_resource type="StyleBoxFlat" id="StyleAccentLine"]
+bg_color = Color(0.804, 0.278, 0.204, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StylePrimaryNormal"]
+content_margin_left = 24.0
+content_margin_top = 13.0
+content_margin_right = 24.0
+content_margin_bottom = 13.0
+bg_color = Color(0.706, 0.22, 0.161, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.949, 0.8, 0.459, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StylePrimaryPressed"]
+content_margin_left = 24.0
+content_margin_top = 15.0
+content_margin_right = 24.0
+content_margin_bottom = 11.0
+bg_color = Color(0.533, 0.157, 0.122, 1)
+border_width_left = 4
+border_width_top = 6
+border_width_right = 4
+border_width_bottom = 2
+border_color = Color(0.949, 0.8, 0.459, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StylePrimaryHover"]
+content_margin_left = 24.0
+content_margin_top = 13.0
+content_margin_right = 24.0
+content_margin_bottom = 13.0
+bg_color = Color(0.808, 0.302, 0.212, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(1, 0.89, 0.6, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleSecondaryNormal"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.13, 0.223, 0.216, 0.96)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.549, 0.725, 0.608, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleSecondaryHover"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 10.0
+bg_color = Color(0.188, 0.314, 0.294, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.753, 0.894, 0.729, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="StyleStrip"]
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+bg_color = Color(0.17, 0.145, 0.118, 0.8)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.38, 0.31, 0.23, 0.92)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleFoodUnit"]
+content_margin_left = 10.0
+content_margin_top = 8.0
+content_margin_right = 10.0
+content_margin_bottom = 8.0
+bg_color = Color(0.12, 0.105, 0.09, 0.82)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.427, 0.35, 0.25, 0.9)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBookPanel"]
+content_margin_left = 28.0
+content_margin_top = 26.0
+content_margin_right = 28.0
+content_margin_bottom = 26.0
+bg_color = Color(0.098, 0.082, 0.068, 0.98)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.886, 0.714, 0.357, 1)
+corner_radius_top_left = 9
+corner_radius_top_right = 9
+corner_radius_bottom_right = 9
+corner_radius_bottom_left = 9
+
+[sub_resource type="StyleBoxFlat" id="StyleBookRow"]
+content_margin_left = 16.0
+content_margin_top = 14.0
+content_margin_right = 16.0
+content_margin_bottom = 14.0
+bg_color = Color(0.15, 0.13, 0.106, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.38, 0.31, 0.23, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[node name="MainMenu" type="CanvasLayer" unique_id=1503521221]
+process_mode = 3
+layer = 150
+script = ExtResource("1_script")
+
+[node name="MenuRoot" type="Control" parent="." unique_id=1249935050]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="MenuRoot" unique_id=1873770788]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.039, 0.031, 0.025, 0.68)
+
+[node name="Board" type="PanelContainer" parent="MenuRoot" unique_id=1671789007]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.07
+anchor_top = 0.075
+anchor_right = 0.93
+anchor_bottom = 0.87
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoard")
+
+[node name="Body" type="MarginContainer" parent="MenuRoot/Board" unique_id=632480402]
+layout_mode = 2
+
+[node name="Layout" type="VBoxContainer" parent="MenuRoot/Board/Body" unique_id=1535026108]
+layout_mode = 2
+theme_override_constants/separation = 13
+
+[node name="Header" type="HBoxContainer" parent="MenuRoot/Board/Body/Layout" unique_id=923786328]
+layout_mode = 2
+
+[node name="Mark" type="Label" parent="MenuRoot/Board/Body/Layout/Header" unique_id=1432802839]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.886, 0.714, 0.357, 1)
+theme_override_colors/font_outline_color = Color(0.055, 0.043, 0.035, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 18
+text = "小厨西  /  厨房值班板"
+
+[node name="Shift" type="Label" parent="MenuRoot/Board/Body/Layout/Header" unique_id=1595094848]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.718, 0.647, 0.514, 1)
+theme_override_colors/font_outline_color = Color(0.055, 0.043, 0.035, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 16
+text = "今日出餐"
+horizontal_alignment = 2
+
+[node name="AccentLine" type="Panel" parent="MenuRoot/Board/Body/Layout" unique_id=1554348287]
+custom_minimum_size = Vector2(0, 5)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleAccentLine")
+
+[node name="Brand" type="VBoxContainer" parent="MenuRoot/Board/Body/Layout" unique_id=1072707371]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="Title" type="Label" parent="MenuRoot/Board/Body/Layout/Brand" unique_id=214078782]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.969, 0.87, 0.635, 1)
+theme_override_colors/font_outline_color = Color(0.055, 0.043, 0.035, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 72
+text = "小厨西"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="MenuRoot/Board/Body/Layout/Brand" unique_id=227247462]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.89, 0.75, 0.48, 1)
+theme_override_colors/font_outline_color = Color(0.055, 0.043, 0.035, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 21
+text = "街头料理 · 现在开火"
+horizontal_alignment = 1
+
+[node name="Tagline" type="Label" parent="MenuRoot/Board/Body/Layout" unique_id=705188809]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.82, 0.69, 1)
+theme_override_colors/font_outline_color = Color(0.055, 0.043, 0.035, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 23
+text = "把一辆餐车，喂饱整条街。"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="StartButton" type="Button" parent="MenuRoot/Board/Body/Layout" unique_id=791411250]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 92)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.82, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.9, 0.72, 1)
+theme_override_colors/font_hover_color = Color(1, 0.98, 0.9, 1)
+theme_override_colors/font_outline_color = Color(0.2, 0.055, 0.035, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 31
+theme_override_styles/normal = SubResource("StylePrimaryNormal")
+theme_override_styles/pressed = SubResource("StylePrimaryPressed")
+theme_override_styles/hover = SubResource("StylePrimaryHover")
+theme_override_styles/focus = SubResource("StylePrimaryHover")
+text = "开始出餐    →"
+
+[node name="SecondaryRow" type="HBoxContainer" parent="MenuRoot/Board/Body/Layout" unique_id=1760069993]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="HandbookButton" type="Button" parent="MenuRoot/Board/Body/Layout/SecondaryRow" unique_id=1093130483]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.86, 0.94, 0.84, 1)
+theme_override_colors/font_hover_color = Color(0.95, 1, 0.91, 1)
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleSecondaryNormal")
+theme_override_styles/pressed = SubResource("StyleSecondaryNormal")
+theme_override_styles/hover = SubResource("StyleSecondaryHover")
+theme_override_styles/focus = SubResource("StyleSecondaryHover")
+text = "料理手册  ?"
+
+[node name="RunLength" type="PanelContainer" parent="MenuRoot/Board/Body/Layout/SecondaryRow" unique_id=1229322600]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleStrip")
+
+[node name="Label" type="Label" parent="MenuRoot/Board/Body/Layout/SecondaryRow/RunLength" unique_id=411033279]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.73, 0.56, 1)
+theme_override_font_sizes/font_size = 17
+text = "正式流程  ·  约 8 分钟"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="FoodPanel" type="PanelContainer" parent="MenuRoot/Board/Body/Layout" unique_id=202648441]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleStrip")
+
+[node name="FoodStack" type="VBoxContainer" parent="MenuRoot/Board/Body/Layout/FoodPanel" unique_id=335401185]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="FoodHeader" type="HBoxContainer" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack" unique_id=330706092]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodHeader" unique_id=2138480248]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.949, 0.8, 0.459, 1)
+theme_override_font_sizes/font_size = 18
+text = "厨房备餐"
+
+[node name="Detail" type="Label" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodHeader" unique_id=2026381013]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.64, 0.51, 1)
+theme_override_font_sizes/font_size = 15
+text = "三种食材待命"
+horizontal_alignment = 2
+
+[node name="FoodRow" type="HBoxContainer" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack" unique_id=1201034882]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Potato" type="PanelContainer" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow" unique_id=941248610]
+custom_minimum_size = Vector2(0, 85)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleFoodUnit")
+
+[node name="Content" type="HBoxContainer" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow/Potato" unique_id=1213224967]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Icon" type="TextureRect" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow/Potato/Content" unique_id=788419594]
+custom_minimum_size = Vector2(54, 54)
+layout_mode = 2
+texture = ExtResource("2_potato")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Name" type="Label" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow/Potato/Content" unique_id=648582266]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.9, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 17
+text = "土豆"
+vertical_alignment = 1
+
+[node name="Baguette" type="PanelContainer" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow" unique_id=1262184820]
+custom_minimum_size = Vector2(0, 85)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleFoodUnit")
+
+[node name="Content" type="HBoxContainer" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow/Baguette" unique_id=1803650641]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Icon" type="TextureRect" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow/Baguette/Content" unique_id=1519381805]
+custom_minimum_size = Vector2(54, 54)
+layout_mode = 2
+texture = ExtResource("3_baguette")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Name" type="Label" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow/Baguette/Content" unique_id=890704188]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.9, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 17
+text = "法棍"
+vertical_alignment = 1
+
+[node name="Mushroom" type="PanelContainer" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow" unique_id=62085668]
+custom_minimum_size = Vector2(0, 85)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleFoodUnit")
+
+[node name="Content" type="HBoxContainer" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow/Mushroom" unique_id=1934240536]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="Icon" type="TextureRect" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow/Mushroom/Content" unique_id=1766471661]
+custom_minimum_size = Vector2(54, 54)
+layout_mode = 2
+texture = ExtResource("4_mushroom")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Name" type="Label" parent="MenuRoot/Board/Body/Layout/FoodPanel/FoodStack/FoodRow/Mushroom/Content" unique_id=1393835842]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.9, 0.84, 0.7, 1)
+theme_override_font_sizes/font_size = 17
+text = "蘑菇"
+vertical_alignment = 1
+
+[node name="Footer" type="VBoxContainer" parent="MenuRoot/Board/Body/Layout" unique_id=1371462535]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 4
+alignment = 2
+
+[node name="Hint" type="Label" parent="MenuRoot/Board/Body/Layout/Footer" unique_id=1427931965]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.72, 0.61, 1)
+theme_override_font_sizes/font_size = 17
+text = "单指横移  ·  自动投喂  ·  满意离场"
+horizontal_alignment = 1
+
+[node name="Edition" type="Label" parent="MenuRoot/Board/Body/Layout/Footer" unique_id=90325671]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.52, 0.46, 0.37, 1)
+theme_override_font_sizes/font_size = 14
+text = "街头出餐原型  /  竖屏版"
+horizontal_alignment = 1
+
+[node name="HandbookOverlay" type="Control" parent="MenuRoot" unique_id=595550161]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="MenuRoot/HandbookOverlay" unique_id=1333528882]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.039, 0.031, 0.025, 0.9)
+
+[node name="Panel" type="PanelContainer" parent="MenuRoot/HandbookOverlay" unique_id=581277952]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.06
+anchor_top = 0.08
+anchor_right = 0.94
+anchor_bottom = 0.91
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBookPanel")
+
+[node name="Layout" type="VBoxContainer" parent="MenuRoot/HandbookOverlay/Panel" unique_id=1838024819]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="MenuRoot/HandbookOverlay/Panel/Layout" unique_id=1686165174]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.969, 0.87, 0.635, 1)
+theme_override_colors/font_outline_color = Color(0.055, 0.043, 0.035, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 34
+text = "料理手册"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="MenuRoot/HandbookOverlay/Panel/Layout" unique_id=1828747143]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.72, 0.61, 1)
+theme_override_font_sizes/font_size = 17
+text = "三条规矩，撑起一趟出餐。"
+horizontal_alignment = 1
+
+[node name="RuleList" type="VBoxContainer" parent="MenuRoot/HandbookOverlay/Panel/Layout" unique_id=1318677542]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="RuleMove" type="PanelContainer" parent="MenuRoot/HandbookOverlay/Panel/Layout/RuleList" unique_id=1975291729]
+custom_minimum_size = Vector2(0, 124)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBookRow")
+
+[node name="Text" type="Label" parent="MenuRoot/HandbookOverlay/Panel/Layout/RuleList/RuleMove" unique_id=1672797413]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.91, 0.85, 0.72, 1)
+theme_override_colors/font_outline_color = Color(0.055, 0.043, 0.035, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 20
+text = "01  横向拖动
+      餐车会跟着手指走，松手后留在原位。"
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="RuleGate" type="PanelContainer" parent="MenuRoot/HandbookOverlay/Panel/Layout/RuleList" unique_id=1758323149]
+custom_minimum_size = Vector2(0, 124)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBookRow")
+
+[node name="Text" type="Label" parent="MenuRoot/HandbookOverlay/Panel/Layout/RuleList/RuleGate" unique_id=1151747580]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.91, 0.85, 0.72, 1)
+theme_override_colors/font_outline_color = Color(0.055, 0.043, 0.035, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 20
+text = "02  看准强化门
+      自动投喂，横移选择你想带走的那一侧。"
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="RuleBoss" type="PanelContainer" parent="MenuRoot/HandbookOverlay/Panel/Layout/RuleList" unique_id=1648008159]
+custom_minimum_size = Vector2(0, 124)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBookRow")
+
+[node name="Text" type="Label" parent="MenuRoot/HandbookOverlay/Panel/Layout/RuleList/RuleBoss" unique_id=249370248]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.91, 0.85, 0.72, 1)
+theme_override_colors/font_outline_color = Color(0.055, 0.043, 0.035, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 20
+text = "03  让食客满意
+      普通食客可绕行，精英和 Boss 会检查构筑。"
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="Footer" type="Label" parent="MenuRoot/HandbookOverlay/Panel/Layout" unique_id=858198499]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.55, 0.44, 1)
+theme_override_font_sizes/font_size = 16
+text = "食客会满意离场，不会倒下。"
+horizontal_alignment = 1
+
+[node name="CloseBookButton" type="Button" parent="MenuRoot/HandbookOverlay/Panel/Layout" unique_id=858469993]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 70)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.94, 0.84, 1)
+theme_override_font_sizes/font_size = 23
+theme_override_styles/normal = SubResource("StyleSecondaryNormal")
+theme_override_styles/pressed = SubResource("StyleSecondaryNormal")
+theme_override_styles/hover = SubResource("StyleSecondaryHover")
+text = "返回厨房"

@@ -122,6 +122,7 @@ const SPAWN_SEED_SALT: int = 0x5EED5EED
 @onready var director: EncounterDirector = %EncounterDirector
 @onready var hud: GameHud = %Hud
 @onready var debug_menu: DebugMenu = %DebugMenu
+@onready var main_menu: MainMenu = %MainMenu
 
 var world_scroll_speed: float = BASE_WORLD_SCROLL_SPEED
 var state: RunState
@@ -253,6 +254,8 @@ func _ready() -> void:
 	add_child(playfield)
 	cart.configure(state, playfield, _cart_invincibility_duration_seconds)
 	background.set_cart(cart)
+	# 主菜单展示期间冻结道路滚动，保持启动画面可读且不改变开局距离。
+	background.scrolling = false
 	weapon_controller.configure(self, cart, state)
 	_build_prototype_upgrades()
 	director.event_triggered.connect(_on_timeline_event)
@@ -267,6 +270,7 @@ func _ready() -> void:
 	hud.restart_requested.connect(_on_restart_requested)
 	hud.pause_requested.connect(_on_pause_requested)
 	hud.resume_requested.connect(_on_resume_requested)
+	main_menu.start_requested.connect(_on_main_menu_start_requested)
 	debug_menu.action_requested.connect(_on_debug_action_requested)
 	debug_menu.menu_opened.connect(_on_debug_menu_opened)
 	debug_menu.menu_closed.connect(_on_debug_menu_closed)
@@ -275,9 +279,29 @@ func _ready() -> void:
 		state.maximum_durability,
 		state.temporary_shield
 	)
+	hud.set_phase("厨房待命 · 点击开始出餐")
+	hud.set_pause_available(false)
+	hud.visible = false
+	phase = Phase.INTRO
+	main_menu.open()
+	if _smoke_test:
+		_start_run()
+
+
+func _on_main_menu_start_requested() -> void:
+	_start_run()
+
+
+# 从启动菜单进入单局，只有这里把 INTRO 变为正式前进阶段。
+func _start_run() -> void:
+	if phase != Phase.INTRO:
+		return
+	phase = Phase.FORWARD
+	background.scrolling = true
+	hud.visible = true
+	main_menu.close()
 	hud.set_phase("准备出餐 · 横向拖动餐车")
 	hud.show_toast("按住并横向拖动，松手后餐车留在原位")
-	phase = Phase.FORWARD
 	hud.set_pause_available(true)
 
 

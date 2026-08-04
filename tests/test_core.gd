@@ -165,6 +165,16 @@ func _test_3d_plane_rules() -> void:
 	_check(scene_cart.scale.is_equal_approx(Vector3.ONE * 0.5), "3D主场景餐车长宽高均缩小为一半")
 	var scene_debug_menu: DebugMenu = run_scene_instance.get_node("DebugMenu") as DebugMenu
 	_check(scene_debug_menu != null, "3D主场景装配独立Debug菜单")
+	var scene_main_menu: MainMenu = run_scene_instance.get_node("MainMenu") as MainMenu
+	_check(scene_main_menu != null, "3D主场景装配启动主菜单")
+	_check(
+		scene_main_menu.get_node_or_null("MenuRoot/Board/Body/Layout/StartButton") != null,
+		"启动主菜单保留开始出餐主入口"
+	)
+	_check(
+		scene_main_menu.get_node_or_null("MenuRoot/HandbookOverlay") != null,
+		"启动主菜单保留料理手册入口"
+	)
 	run_scene_instance.free()
 	var cart: Cart3D = cart_scene.instantiate() as Cart3D
 	var editor_position: Vector3 = Vector3(2.75, 0.25, 12.25)

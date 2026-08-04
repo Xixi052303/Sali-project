@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://cs08n61e72365"
 path.s3tc="res://.godot/imported/蘑菇_蘑菇_basecolor.jpg-b33c6f22cbbb1debe812b4e987df7e21.s3tc.ctex"
+path.etc2="res://.godot/imported/蘑菇_蘑菇_basecolor.jpg-b33c6f22cbbb1debe812b4e987df7e21.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/投射物模型/蘑菇_蘑菇_basecolor.jpg"
-dest_files=["res://.godot/imported/蘑菇_蘑菇_basecolor.jpg-b33c6f22cbbb1debe812b4e987df7e21.s3tc.ctex"]
+dest_files=["res://.godot/imported/蘑菇_蘑菇_basecolor.jpg-b33c6f22cbbb1debe812b4e987df7e21.s3tc.ctex", "res://.godot/imported/蘑菇_蘑菇_basecolor.jpg-b33c6f22cbbb1debe812b4e987df7e21.etc2.ctex"]
 
 [params]
 

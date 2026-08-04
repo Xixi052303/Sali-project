@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://btcrv847dmkvi"
 path.s3tc="res://.godot/imported/厨师_tripo_image_30664aaf-4855-4b28-8b50-ec473d382c47_0_0.jpg-d1d63d8fa605f4a899e31a0671ebeeef.s3tc.ctex"
+path.etc2="res://.godot/imported/厨师_tripo_image_30664aaf-4855-4b28-8b50-ec473d382c47_0_0.jpg-d1d63d8fa605f4a899e31a0671ebeeef.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/角色/厨师_tripo_image_30664aaf-4855-4b28-8b50-ec473d382c47_0_0.jpg"
-dest_files=["res://.godot/imported/厨师_tripo_image_30664aaf-4855-4b28-8b50-ec473d382c47_0_0.jpg-d1d63d8fa605f4a899e31a0671ebeeef.s3tc.ctex"]
+dest_files=["res://.godot/imported/厨师_tripo_image_30664aaf-4855-4b28-8b50-ec473d382c47_0_0.jpg-d1d63d8fa605f4a899e31a0671ebeeef.s3tc.ctex", "res://.godot/imported/厨师_tripo_image_30664aaf-4855-4b28-8b50-ec473d382c47_0_0.jpg-d1d63d8fa605f4a899e31a0671ebeeef.etc2.ctex"]
 
 [params]
 

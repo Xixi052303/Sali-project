@@ -16,6 +16,7 @@
 [ext_resource type="Resource" uid="uid://88dew4uimxmv" path="res://data/timelines/vertical_slice.tres" id="14_timeline"]
 [ext_resource type="Resource" uid="uid://ct6d28ydagjg2" path="res://data/foods/mushroom.tres" id="15_mushroom"]
 [ext_resource type="PackedScene" path="res://scenes/debug_menu.tscn" id="16_debug"]
+[ext_resource type="PackedScene" path="res://scenes/main_menu.tscn" id="17_main_menu"]
 
 [node name="Run3D" type="Node3D" unique_id=1265626159]
 script = ExtResource("1_run")
@@ -60,4 +61,7 @@ timeline = ExtResource("14_timeline")
 unique_name_in_owner = true
 
 [node name="DebugMenu" parent="." instance=ExtResource("16_debug")]
+unique_name_in_owner = true
+
+[node name="MainMenu" parent="." instance=ExtResource("17_main_menu")]
 unique_name_in_owner = true
