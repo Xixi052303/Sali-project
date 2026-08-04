@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://bmujuw7gx3hft"]
+
+[ext_resource type="PackedScene" uid="uid://cgyd5nr84pjlh" path="res://assets/models/投射物模型/鸡蛋.glb" id="1_model"]
+
+[node name="EggFood3D" type="Node3D" unique_id=694106285]
+
+[node name="Model" parent="." unique_id=1828036167 instance=ExtResource("1_model")]
+transform = Transform3D(1.9106855e-15, 4.371139e-08, -1, 1, -4.371139e-08, 0, -4.371139e-08, -1, -4.371139e-08, 0, 0, 0)
+
+[node name="Model2" parent="." unique_id=1218351029 instance=ExtResource("1_model")]
+transform = Transform3D(1.9106853e-15, -4.371139e-08, 0.99999994, -0.99999994, -4.371139e-08, 0, 4.3711385e-08, -1, -4.3711385e-08, 0.00010406971, -0.37442437, -1.1324883e-06)

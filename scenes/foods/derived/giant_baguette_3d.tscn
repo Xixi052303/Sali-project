@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/giant_baguette_3d.gd" id="1_script"]
-[ext_resource type="PackedScene" uid="uid://j67j4ykkn1kb" path="res://assets/models/投射物模型/法棍.glb" id="2_baguette"]
+[ext_resource type="PackedScene" path="res://scenes/foods/base/baguette_3d.tscn" id="2_baguette"]
 
 [node name="GiantBaguette3D" type="Node3D"]
 rotation = Vector3(0, 1.5707963, 0)

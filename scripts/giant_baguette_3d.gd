@@ -7,14 +7,11 @@ const MODEL_SIZE: Vector3 = Vector3(0.400390625, 0.330078125, 0.998046875)
 @onready var _model_scale: Node3D = %ModelScale
 
 
-# 旋转容器保持单位缩放，模型尺寸在其子层独立设置，避免滚动时发生非均匀缩放变形。
-func configure_dimensions(length: float, width: float, height: float) -> void:
+# 旋转容器保持单位缩放，巨型法棍模型使用同一比例放大长宽高。
+func configure_uniform_scale(scale: float) -> void:
 	_resolve_nodes()
-	_model_scale.scale = Vector3(
-		maxf(0.001, width) / MODEL_SIZE.x,
-		maxf(0.001, height) / MODEL_SIZE.y,
-		maxf(0.001, length) / MODEL_SIZE.z
-	)
+	var safe_scale: float = maxf(0.001, scale)
+	_model_scale.scale = Vector3.ONE * safe_scale
 
 
 func set_roll_angle(angle: float) -> void:

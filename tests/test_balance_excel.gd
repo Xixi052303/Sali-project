@@ -169,7 +169,12 @@ func _test_weapon_workbook() -> void:
 		"res://balance_tables/武器.xlsx"
 	)
 	_check(result.loaded_from_excel, "武器 Excel 可读取")
-	_check(result.foods.size() >= 3, "武器 Excel 至少包含当前三件食材")
+	_check(result.foods.size() >= 5, "武器 Excel 包含当前五件食材")
+	_check(
+		result.egg_puddle_data != null
+		and result.egg_puddle_data.attack_kind == FoodData.AttackKind.EGG_PUDDLE,
+		"武器衍生攻击表包含独立蛋液配置"
+	)
 	var ids: Array[StringName] = []
 	var foods: Dictionary[StringName, FoodData] = {}
 	for food: FoodData in result.foods:
@@ -181,11 +186,20 @@ func _test_weapon_workbook() -> void:
 		_check(food.wine_upgrade_scale >= 0.0, "食材酒强化倍率有效")
 		_check(food.range_upgrade_scale >= 0.0, "食材范围强化倍率有效")
 		_check(food.duration_upgrade_scale >= 0.0, "食材持续强化倍率有效")
-	_check(ids.has(&"potato") and ids.has(&"baguette") and ids.has(&"mushroom"), "当前三件食材ID齐全")
-	if foods.size() >= 3:
+	_check(
+		ids.has(&"potato")
+		and ids.has(&"baguette")
+		and ids.has(&"mushroom")
+		and ids.has(&"egg")
+		and ids.has(&"carrot"),
+		"当前五件食材ID齐全"
+	)
+	if foods.size() >= 5:
 		var potato: FoodData = foods[&"potato"]
 		var baguette: FoodData = foods[&"baguette"]
 		var mushroom: FoodData = foods[&"mushroom"]
+		var egg: FoodData = foods[&"egg"]
+		var carrot: FoodData = foods[&"carrot"]
 		_check(
 			is_equal_approx(potato.base_satisfaction, 10.0)
 			and is_equal_approx(potato.base_interval, 0.8)
@@ -228,6 +242,37 @@ func _test_weapon_workbook() -> void:
 			"蘑菇按1/1/0.5/0.15转译四项输出强化"
 		)
 		_check(is_equal_approx(mushroom.orbit_angular_speed, 4.0), "蘑菇初始一圈按π/2秒读取4rad/s")
+		_check(
+			egg.attack_kind == FoodData.AttackKind.EGG_PROJECTILE
+			and is_equal_approx(egg.base_interval, potato.base_interval)
+			and is_equal_approx(egg.projectile_speed, potato.projectile_speed),
+			"鸡蛋主行使用土豆基础值"
+		)
+		_check(
+			result.egg_puddle_data != null
+			and is_equal_approx(result.egg_puddle_data.base_satisfaction, egg.base_satisfaction)
+			and is_equal_approx(result.egg_puddle_data.base_interval, 0.5)
+			and is_equal_approx(result.egg_puddle_data.projectile_radius, egg.projectile_radius)
+			and is_equal_approx(result.egg_puddle_data.base_lifetime, egg.base_lifetime)
+			and is_equal_approx(
+				result.egg_puddle_data.attack_speed_upgrade_scale,
+				egg.attack_speed_upgrade_scale
+			)
+			and is_equal_approx(result.egg_puddle_data.wine_upgrade_scale, egg.wine_upgrade_scale)
+			and is_equal_approx(result.egg_puddle_data.range_upgrade_scale, egg.range_upgrade_scale)
+			and is_equal_approx(
+				result.egg_puddle_data.duration_upgrade_scale,
+				egg.duration_upgrade_scale
+			),
+			"蛋液衍生行只覆盖节拍与输出倍率，其余属性和强化倍率继承鸡蛋"
+		)
+		_check(
+			carrot.attack_kind == FoodData.AttackKind.CARROT_SWEEP
+			and carrot.pierce_count == 999
+			and is_equal_approx(carrot.sweep_radius, 458.1053)
+			and is_equal_approx(carrot.sweep_angle_degrees, 180.0),
+			"胡萝卜从武器表读取999穿透、458.1像素半径和180度扫掠"
+		)
 	_check(is_equal_approx(result.baguette_giant_interval_seconds, 3.0), "巨型法棍间隔由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_attack_speed_scale, 0.05), "巨型法棍攻速倍率由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_minimum_interval_seconds, 1.0), "巨型法棍最小间隔由武器表读取")
@@ -287,11 +332,17 @@ func _test_special_upgrade_workbook() -> void:
 	_check(result.food_max_level >= 1, "食材最高等级有效")
 	_check(is_equal_approx(result.food_level_satisfaction_multiplier, 2.25), "食材等级倍率为2.25")
 	var giant_upgrade_found: bool = false
+	var egg_card_found: bool = false
+	var carrot_card_found: bool = false
 	for upgrade: SpecialUpgradeData in result.upgrades:
 		if upgrade.id == &"baguette_giant":
 			giant_upgrade_found = true
-			break
+		if upgrade.id == &"egg":
+			egg_card_found = true
+		if upgrade.id == &"carrot":
+			carrot_card_found = true
 	_check(giant_upgrade_found, "特殊候选池包含巨型法棍进化")
+	_check(egg_card_found and carrot_card_found, "特殊候选池包含鸡蛋和胡萝卜食材卡")
 	var food_result: GameplayExcelLoader.WeaponLoadResult = GameplayExcelLoader.load_weapons(
 		"res://balance_tables/武器.xlsx"
 	)

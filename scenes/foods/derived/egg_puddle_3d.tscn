@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://3j458axvss7a"]
+
+[ext_resource type="Script" uid="uid://cqjw37jgmnucw" path="res://scripts/food_puddle_3d.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scenes/foods/base/egg_puddle_liquid_3d.tscn" id="2_liquid"]
+
+[sub_resource type="StandardMaterial3D" id="MatRangeOutline"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.94902, 0.831373, 0.482353, 0.16)
+
+[sub_resource type="TorusMesh" id="MeshRangeCircle"]
+resource_local_to_scene = true
+inner_radius = 0.465
+outer_radius = 0.5
+rings = 32
+ring_segments = 6
+
+[node name="FoodPuddle3D" type="Node3D" unique_id=38320744]
+script = ExtResource("1_script")
+
+[node name="LiquidVisual" parent="." unique_id=688177001 instance=ExtResource("2_liquid")]
+unique_name_in_owner = true
+transform = Transform3D(5, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0)
+
+[node name="RangeCircleOutline" type="MeshInstance3D" parent="." unique_id=1988448038]
+unique_name_in_owner = true
+transform = Transform3D(5, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0.045, 0)
+material_override = SubResource("MatRangeOutline")
+cast_shadow = 0
+mesh = SubResource("MeshRangeCircle")

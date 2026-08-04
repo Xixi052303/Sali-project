@@ -1,0 +1,86 @@
+[gd_scene format=3 uid="uid://b1o5fk1nxpfq7"]
+
+[ext_resource type="Script" uid="uid://v5xjq8i1ff27" path="res://scripts/projectile_3d.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scenes/foods/base/potato_3d.tscn" id="2_potato"]
+[ext_resource type="PackedScene" path="res://scenes/foods/base/baguette_3d.tscn" id="3_baguette"]
+[ext_resource type="PackedScene" path="res://scenes/foods/base/mushroom_3d.tscn" id="4_mushroom"]
+[ext_resource type="PackedScene" path="res://scenes/foods/derived/giant_baguette_3d.tscn" id="5_giant_baguette"]
+[ext_resource type="PackedScene" uid="uid://bmujuw7gx3hft" path="res://scenes/foods/base/egg_3d.tscn" id="6_egg"]
+[ext_resource type="PackedScene" uid="uid://pubm03ww0hks" path="res://scenes/foods/base/carrot_3d.tscn" id="7_carrot"]
+
+[sub_resource type="StandardMaterial3D" id="MatRangeOutline"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.94902, 0.831373, 0.482353, 0.16)
+
+[sub_resource type="TorusMesh" id="MeshRangeCircle"]
+resource_local_to_scene = true
+inner_radius = 0.465
+outer_radius = 0.5
+rings = 32
+ring_segments = 6
+
+[sub_resource type="BoxMesh" id="MeshRangeEdge"]
+
+[node name="FoodProjectile3D" type="Node3D" unique_id=529700117]
+script = ExtResource("1_script")
+
+[node name="PotatoVisual" parent="." unique_id=1849323721 instance=ExtResource("2_potato")]
+unique_name_in_owner = true
+
+[node name="BaguetteVisual" parent="." unique_id=1575129432 instance=ExtResource("3_baguette")]
+unique_name_in_owner = true
+visible = false
+
+[node name="GiantBaguetteVisual" parent="." unique_id=963558960 instance=ExtResource("5_giant_baguette")]
+unique_name_in_owner = true
+transform = Transform3D(7.54979e-08, 0, 1, 0, 1, 0, -1, 0, 7.54979e-08, 0, 0, 0)
+visible = false
+
+[node name="MushroomVisual" parent="." unique_id=2094771665 instance=ExtResource("4_mushroom")]
+unique_name_in_owner = true
+visible = false
+
+[node name="EggVisual" parent="." unique_id=1027760758 instance=ExtResource("6_egg")]
+unique_name_in_owner = true
+visible = false
+
+[node name="CarrotVisual" parent="." unique_id=906923133 instance=ExtResource("7_carrot")]
+unique_name_in_owner = true
+
+[node name="RangeCircleOutline" type="MeshInstance3D" parent="." unique_id=1149133773]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.045, 0)
+visible = false
+material_override = SubResource("MatRangeOutline")
+cast_shadow = 0
+mesh = SubResource("MeshRangeCircle")
+
+[node name="RangeBoxOutline" type="Node3D" parent="." unique_id=1055340265]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.045, 0)
+visible = false
+
+[node name="RangeBoxTop" type="MeshInstance3D" parent="RangeBoxOutline" unique_id=929831742]
+unique_name_in_owner = true
+material_override = SubResource("MatRangeOutline")
+cast_shadow = 0
+mesh = SubResource("MeshRangeEdge")
+
+[node name="RangeBoxBottom" type="MeshInstance3D" parent="RangeBoxOutline" unique_id=1958763131]
+unique_name_in_owner = true
+material_override = SubResource("MatRangeOutline")
+cast_shadow = 0
+mesh = SubResource("MeshRangeEdge")
+
+[node name="RangeBoxLeft" type="MeshInstance3D" parent="RangeBoxOutline" unique_id=1392154456]
+unique_name_in_owner = true
+material_override = SubResource("MatRangeOutline")
+cast_shadow = 0
+mesh = SubResource("MeshRangeEdge")
+
+[node name="RangeBoxRight" type="MeshInstance3D" parent="RangeBoxOutline" unique_id=1723767895]
+unique_name_in_owner = true
+material_override = SubResource("MatRangeOutline")
+cast_shadow = 0
+mesh = SubResource("MeshRangeEdge")

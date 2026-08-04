@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="FoodData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/food_data.gd" id="1_food"]
+
+[resource]
+script = ExtResource("1_food")
+id = &"egg"
+display_name = "鸡蛋"
+attack_kind = 3
+base_satisfaction = 10.0
+base_interval = 0.8
+projectile_speed = 680.0
+projectile_radius = 17.0
+base_lifetime = 1.3473684
+pierce_count = 1
+visual_color = Color(0.93, 0.84, 0.55, 1)
+wine_upgrade_scale = 0.35
+duration_upgrade_scale = 0.2

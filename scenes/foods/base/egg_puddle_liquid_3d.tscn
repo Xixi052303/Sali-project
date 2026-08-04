@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://c4qmb6o04ht4p" path="res://assets/models/投射物模型/蛋液.glb" id="1_model"]
+
+[node name="EggPuddleLiquid3D" type="Node3D"]
+
+[node name="Model" parent="." instance=ExtResource("1_model")]

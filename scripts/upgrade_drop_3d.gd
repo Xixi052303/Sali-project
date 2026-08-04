@@ -78,8 +78,22 @@ func try_receive_projectile(projectile: FoodProjectile3D) -> bool:
 		return false
 	if not projectile.can_hit(_target):
 		return false
-	receive_damage(projectile.satisfaction)
+	if run != null:
+		run.resolve_reward_projectile_hit(self, _target, projectile)
+	else:
+		receive_damage(projectile.satisfaction)
 	return projectile.register_hit(_target)
+
+
+func try_receive_puddle(puddle: FoodPuddle3D) -> void:
+	if resolved or puddle == null or upgrade_health <= 0.0001:
+		return
+	var local_position_3d: Vector3 = to_local(puddle.global_position)
+	var panel: Rect2 = Rect2(-_panel_width() * 0.5, -PANEL_HEIGHT * 0.5, _panel_width(), PANEL_HEIGHT)
+	if not panel.grow(puddle.radius).has_point(Vector2(local_position_3d.x, local_position_3d.z)):
+		return
+	if puddle.observe_target(_target):
+		receive_puddle_damage(_target, puddle.satisfaction)
 
 
 func receive_damage(amount: float) -> void:
@@ -91,6 +105,11 @@ func receive_damage(amount: float) -> void:
 	_hit_feedback_remaining = 0.12
 	_refresh_label()
 	_refresh_feedback()
+
+
+func receive_puddle_damage(target: Node3D, amount: float) -> void:
+	if target == _target:
+		receive_damage(amount)
 
 
 func travel_speed() -> float:

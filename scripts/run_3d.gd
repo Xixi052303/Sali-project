@@ -72,7 +72,8 @@ const DEFAULT_CUSTOMER_SCENE: PackedScene = preload(
 const BOSS_SCENE: PackedScene = preload(
 	"res://scenes/characters/bosses/prototype_boss_3d.tscn"
 )
-const PROJECTILE_SCENE: PackedScene = preload("res://scenes/projectile_3d.tscn")
+const PROJECTILE_SCENE: PackedScene = preload("res://scenes/foods/projectiles/food_projectile_3d.tscn")
+const EGG_PUDDLE_SCENE: PackedScene = preload("res://scenes/foods/derived/egg_puddle_3d.tscn")
 const GATE_SCENE: PackedScene = preload("res://scenes/upgrade_gate_3d.tscn")
 const REWARD_GATE_SCENE: PackedScene = preload("res://scenes/upgrade_drop_3d.tscn")
 const LEGACY_CUSTOMER_SPAWN_Z: float = -6.4
@@ -104,6 +105,10 @@ const SPAWN_SEED_SALT: int = 0x5EED5EED
 @export var potato_data: FoodData
 @export var baguette_data: FoodData
 @export var mushroom_data: FoodData
+@export var egg_data: FoodData
+@export var carrot_data: FoodData
+# 武器表“衍生攻击”页的蛋液参数；工作簿失败时由代码回退值补齐。
+@export var egg_puddle_data: FoodData
 # 空数组表示当前原型默认解锁全部食材；后续局外解锁可在场景中显式配置子集。
 @export var unlocked_foods: Array[FoodData] = []
 @export var basic_guest_data: CustomerData
@@ -198,6 +203,8 @@ var _special_choice_pool: Array[StringName] = [
 	&"potato",
 	&"baguette",
 	&"mushroom",
+	&"egg",
+	&"carrot",
 	&"serving",
 	&"potato_aim",
 	&"baguette_giant",
@@ -265,6 +272,7 @@ func _ready() -> void:
 	state.durability_changed.connect(cart.set_durability_display)
 	state.inventory_changed.connect(_refresh_hud_inventory)
 	weapon_controller.food_added.connect(_on_weapon_food_added)
+	weapon_controller.food_removed.connect(_on_weapon_food_removed)
 	weapon_controller.cooking_progress_changed.connect(hud.set_cooking_progress)
 	hud.special_choice_selected.connect(_on_special_choice_selected)
 	hud.restart_requested.connect(_on_restart_requested)
@@ -403,6 +411,12 @@ func _load_weapon_balance() -> void:
 			baguette_data = _food_data_by_id[&"baguette"]
 		if _food_data_by_id.has(&"mushroom"):
 			mushroom_data = _food_data_by_id[&"mushroom"]
+		if _food_data_by_id.has(&"egg"):
+			egg_data = _food_data_by_id[&"egg"]
+		if _food_data_by_id.has(&"carrot"):
+			carrot_data = _food_data_by_id[&"carrot"]
+		if load_result.egg_puddle_data != null:
+			egg_puddle_data = load_result.egg_puddle_data
 		if not unlocked_foods.is_empty():
 			var replaced_unlocks: Array[FoodData] = []
 			for configured_food: FoodData in unlocked_foods:
@@ -484,9 +498,31 @@ func _load_special_upgrade_balance() -> void:
 
 func _register_fallback_foods() -> void:
 	_food_data_by_id.clear()
-	for food: FoodData in [potato_data, baguette_data, mushroom_data]:
+	for food: FoodData in [potato_data, baguette_data, mushroom_data, egg_data, carrot_data]:
 		if food != null:
 			_food_data_by_id[food.id] = food
+	if egg_data != null:
+		# 回退时仍从当前鸡蛋资源重建，避免场景中的旧副本绕过继承规则。
+		egg_puddle_data = _make_fallback_egg_puddle_data()
+	elif egg_puddle_data == null:
+		egg_puddle_data = _make_fallback_egg_puddle_data()
+
+
+func _make_fallback_egg_puddle_data() -> FoodData:
+	var puddle: FoodData = (
+		egg_data.duplicate(true) as FoodData
+		if egg_data != null
+		else FoodData.new()
+	)
+	puddle.id = &"egg_puddle"
+	puddle.display_name = "蛋液"
+	puddle.attack_kind = FoodData.AttackKind.EGG_PUDDLE
+	puddle.base_interval = 0.5
+	if egg_data == null:
+		puddle.base_satisfaction = 10.0
+		puddle.projectile_radius = 17.0
+		puddle.base_lifetime = 1.3473684
+	return puddle
 
 
 func _register_fallback_customers() -> void:
@@ -897,7 +933,10 @@ func spawn_projectile(
 
 # 蘑菇随餐车环绕不受位移风；巨型法棍只承受普通投射物四分之一风偏。
 func _projectile_environment_velocity(food: FoodData, giant_baguette: bool) -> Vector3:
-	if food == null or food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
+	if food == null or food.attack_kind in [
+		FoodData.AttackKind.ORBITING_MUSHROOM,
+		FoodData.AttackKind.CARROT_SWEEP,
+	]:
 		return Vector3.ZERO
 	var susceptibility: float = 0.25 if giant_baguette else 1.0
 	return Vector3(
@@ -914,9 +953,10 @@ func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 		if not is_instance_valid(customer) or not customer.active or not projectile.can_hit(customer):
 			continue
 		if projectile.overlaps_target(logic_position(customer), customer.hit_radius()):
-			var applied: float = minf(projectile.satisfaction, customer.remaining_appetite)
-			customer.receive_satisfaction(projectile.satisfaction)
-			state.record_food_satisfaction(projectile.food_id, applied)
+			if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
+				_spawn_egg_puddle(projectile, customer)
+			else:
+				_apply_customer_satisfaction(customer, projectile.satisfaction, projectile.food_id)
 			if projectile.register_hit(customer):
 				return
 	for child: Node in gates.get_children():
@@ -933,10 +973,138 @@ func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 			return
 	if boss != null and is_instance_valid(boss) and boss.active and projectile.can_hit(boss):
 		if projectile.overlaps_target(logic_position(boss), boss.hit_radius()):
-			var applied: float = minf(projectile.satisfaction, boss.remaining_appetite)
-			boss.receive_satisfaction(projectile.satisfaction)
-			state.record_food_satisfaction(projectile.food_id, applied)
+			if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
+				_spawn_egg_puddle(projectile, boss)
+			else:
+				_apply_boss_satisfaction(boss, projectile.satisfaction, projectile.food_id)
 			projectile.register_hit(boss)
+
+
+# 鸡蛋命中任何可攻击目标时只生成蛋液；首跳由蛋液立即结算，鸡蛋本体不扣目标数值。
+func _spawn_egg_puddle(projectile: FoodProjectile3D, target: Node3D) -> void:
+	var source_food: FoodData = _food_data_for_id(projectile.food_id)
+	var puddle_data: FoodData = egg_puddle_data
+	if (
+		source_food == null
+		or puddle_data == null
+		or target == null
+		or not is_instance_valid(target)
+	):
+		return
+	var puddle: FoodPuddle3D = EGG_PUDDLE_SCENE.instantiate() as FoodPuddle3D
+	projectiles.add_child(puddle)
+	var target_position: Vector3 = logic_position(target)
+	var puddle_damage: float = state.effective_derived_satisfaction(
+		puddle_data,
+		source_food
+	)
+	var puddle_radius: float = Playfield.design_to_world(
+		state.effective_projectile_radius(puddle_data)
+	)
+	var puddle_duration: float = state.effective_duration(puddle_data)
+	var puddle_interval: float = state.effective_derived_interval(puddle_data, source_food)
+	puddle.configure(
+		self,
+		Vector3(target_position.x, 0.03, target_position.z),
+		source_food,
+		puddle_data,
+		puddle_damage,
+		puddle_radius,
+		puddle_duration,
+		puddle_interval
+	)
+	apply_puddle_damage(target, puddle.satisfaction, puddle.food_id)
+	puddle.prime_target(target)
+
+
+func _apply_customer_satisfaction(
+	customer: Customer3D,
+	amount: float,
+	food_id: StringName
+) -> void:
+	var applied: float = minf(amount, customer.remaining_appetite)
+	customer.receive_satisfaction(amount)
+	state.record_food_satisfaction(food_id, applied)
+
+
+func _apply_boss_satisfaction(
+	target_boss: PrototypeBoss3D,
+	amount: float,
+	food_id: StringName
+) -> void:
+	var applied: float = minf(amount, target_boss.remaining_appetite)
+	target_boss.receive_satisfaction(amount)
+	state.record_food_satisfaction(food_id, applied)
+
+
+# 蛋液与普通投射物共用目标效果语义；门和奖励门通过父节点暴露自己的扣血接口。
+func apply_puddle_damage(target: Node3D, amount: float, food_id: StringName) -> void:
+	if target == null or not is_instance_valid(target) or amount <= 0.0:
+		return
+	if target is Customer3D:
+		var customer: Customer3D = target as Customer3D
+		if customer.active:
+			_apply_customer_satisfaction(customer, amount, food_id)
+		return
+	if target is PrototypeBoss3D:
+		var target_boss: PrototypeBoss3D = target as PrototypeBoss3D
+		if target_boss.active:
+			_apply_boss_satisfaction(target_boss, amount, food_id)
+		return
+	var parent: Node = target.get_parent()
+	if parent is UpgradeGate3D:
+		(parent as UpgradeGate3D).receive_puddle_damage(target, amount)
+	elif parent is UpgradeDrop3D:
+		(parent as UpgradeDrop3D).receive_puddle_damage(target, amount)
+
+
+func resolve_gate_projectile_hit(
+	gate: UpgradeGate3D,
+	hit_left: bool,
+	target: Node3D,
+	projectile: FoodProjectile3D
+) -> void:
+	if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
+		_spawn_egg_puddle(projectile, target)
+	else:
+		gate.receive_damage(hit_left, projectile.satisfaction)
+
+
+func resolve_reward_projectile_hit(
+	reward_gate: UpgradeDrop3D,
+	target: Node3D,
+	projectile: FoodProjectile3D
+) -> void:
+	if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
+		_spawn_egg_puddle(projectile, target)
+	else:
+		reward_gate.receive_damage(projectile.satisfaction)
+
+
+func resolve_puddle_hits(puddle: FoodPuddle3D) -> void:
+	if not is_instance_valid(puddle) or puddle.is_queued_for_deletion():
+		return
+	puddle.begin_contact_scan()
+	for customer: Customer3D in customers:
+		if (
+			not is_instance_valid(customer)
+			or not customer.active
+			or not puddle.overlaps_target(logic_position(customer), customer.hit_radius())
+		):
+			continue
+		if puddle.observe_target(customer):
+			apply_puddle_damage(customer, puddle.satisfaction, puddle.food_id)
+	for child: Node in gates.get_children():
+		if child is UpgradeGate3D and not child.is_queued_for_deletion():
+			(child as UpgradeGate3D).try_receive_puddle(puddle)
+	for child: Node in drops.get_children():
+		if child is UpgradeDrop3D and not child.is_queued_for_deletion():
+			(child as UpgradeDrop3D).try_receive_puddle(puddle)
+	if boss != null and is_instance_valid(boss) and boss.active:
+		if puddle.overlaps_target(logic_position(boss), boss.hit_radius()):
+			if puddle.observe_target(boss):
+				apply_puddle_damage(boss, puddle.satisfaction, puddle.food_id)
+	puddle.end_contact_scan()
 
 
 func on_gate_selected(
@@ -1881,6 +2049,10 @@ func _on_weapon_food_added(food: FoodData) -> void:
 	hud.add_cooking_food(food, state.food_level(food.id))
 
 
+func _on_weapon_food_removed(food_id: StringName) -> void:
+	hud.remove_cooking_food(food_id)
+
+
 func _refresh_hud_inventory() -> void:
 	for runtime: FoodRuntime in weapon_controller.foods:
 		hud.add_cooking_food(runtime.data, state.food_level(runtime.data.id))
@@ -1964,6 +2136,21 @@ func _build_pause_details_text() -> String:
 func _on_debug_action_requested(action_id: StringName) -> void:
 	var feedback: String = ""
 	var success: bool = true
+	var debug_food_id: StringName = _debug_food_id_for_action(action_id)
+	if not debug_food_id.is_empty():
+		var debug_food: FoodData = _food_data_for_id(debug_food_id)
+		if debug_food == null:
+			success = false
+			feedback = "未找到食材数据：%s" % String(debug_food_id)
+		elif state.has_food(debug_food.id):
+			success = false
+			feedback = "%s 已在车上" % debug_food.display_name
+		else:
+			weapon_controller.add_food(debug_food)
+			feedback = "已获取食材：%s" % debug_food.display_name
+		debug_menu.show_feedback(feedback, success)
+		_refresh_debug_menu()
+		return
 	match action_id:
 		&"speed_0_5":
 			Engine.time_scale = 0.5
@@ -2006,6 +2193,14 @@ func _on_debug_action_requested(action_id: StringName) -> void:
 		&"max_all_foods":
 			var level_count: int = _debug_max_all_foods()
 			feedback = "全部食材已满级（提升 %d 级）" % level_count
+		&"remove_all_foods":
+			var removed_count: int = _debug_remove_all_foods()
+			success = removed_count > 0
+			feedback = (
+				"已移除当前所有食材（%d 种）" % removed_count
+				if success
+				else "当前没有可移除的食材"
+			)
 		&"unlock_all_specials":
 			var special_count: int = _debug_unlock_all_specials()
 			feedback = "全部特殊能力已解锁（新增 %d 项）" % special_count
@@ -2138,6 +2333,22 @@ func _debug_phase_name() -> String:
 	return "未知"
 
 
+# 将控制台按钮映射到当前武器表中的基础食材ID。
+func _debug_food_id_for_action(action_id: StringName) -> StringName:
+	match action_id:
+		&"get_food_potato":
+			return &"potato"
+		&"get_food_baguette":
+			return &"baguette"
+		&"get_food_mushroom":
+			return &"mushroom"
+		&"get_food_egg":
+			return &"egg"
+		&"get_food_carrot":
+			return &"carrot"
+	return &""
+
+
 func _debug_unlock_all_foods() -> int:
 	var unlocked_count: int = 0
 	for food: FoodData in _food_data_by_id.values():
@@ -2213,6 +2424,14 @@ func _debug_satisfy_targets() -> int:
 		customer.receive_satisfaction(customer.remaining_appetite)
 		satisfied_count += 1
 	return satisfied_count
+
+
+func _debug_remove_all_foods() -> int:
+	var removed_count: int = weapon_controller.remove_all_foods()
+	# 已发射的投射物属于当前食材攻击，移除库存时一并回收，避免清空后继续结算命中。
+	for child: Node in projectiles.get_children():
+		child.queue_free()
+	return removed_count
 
 
 func _clear_forward_objects() -> void:
@@ -2592,14 +2811,14 @@ func _roll_start_food_options() -> Array[UpgradeData]:
 	return options
 
 
-# 当前原型未配置解锁子集时，三种已装配食材共同构成默认解锁池。
+# 当前原型未配置解锁子集时，全部已装配食材共同构成默认解锁池。
 func _available_start_foods() -> Array[FoodData]:
 	var configured_foods: Array[FoodData] = unlocked_foods.duplicate()
 	if configured_foods.is_empty() and not _food_data_by_id.is_empty():
 		for food: FoodData in _food_data_by_id.values():
 			configured_foods.append(food)
 	if configured_foods.is_empty():
-		configured_foods = [potato_data, baguette_data, mushroom_data]
+		configured_foods = [potato_data, baguette_data, mushroom_data, egg_data, carrot_data]
 	var available: Array[FoodData] = []
 	var seen_ids: Dictionary[StringName, bool] = {}
 	for food: FoodData in configured_foods:
@@ -2690,12 +2909,14 @@ func _set_special_upgrades(upgrades: Array[SpecialUpgradeData]) -> void:
 		_special_choice_pool.append(upgrade.id)
 
 
-# 回退池完整保留当前实现，确保三个 Excel 任一损坏时仍可开始新局。
+# 回退池完整保留当前实现，确保任一 Excel 损坏时仍可开始新局。
 func _build_fallback_special_upgrades() -> void:
 	_set_special_upgrades([
 		_make_special_upgrade(&"potato", "土豆", SpecialUpgradeData.EffectKind.FOOD_CARD, &"potato", 1.0, true, "获得新食材并加入自动投喂", "提高自身基础满足值"),
 		_make_special_upgrade(&"baguette", "法棍", SpecialUpgradeData.EffectKind.FOOD_CARD, &"baguette", 1.0, true, "获得新食材并加入自动投喂", "提高自身基础满足值"),
 		_make_special_upgrade(&"mushroom", "蘑菇", SpecialUpgradeData.EffectKind.FOOD_CARD, &"mushroom", 1.0, true, "获得新食材并加入自动投喂", "提高自身基础满足值"),
+		_make_special_upgrade(&"egg", "鸡蛋", SpecialUpgradeData.EffectKind.FOOD_CARD, &"egg", 1.0, true, "获得新食材并加入自动投喂", "提高自身基础满足值"),
+		_make_special_upgrade(&"carrot", "胡萝卜", SpecialUpgradeData.EffectKind.FOOD_CARD, &"carrot", 1.0, true, "获得新食材并加入自动投喂", "提高自身基础满足值"),
 		_make_special_upgrade(&"serving", "全局加量", SpecialUpgradeData.EffectKind.SERVING, &"", 1.0, true, "当前与未来食材增加攻击份数", ""),
 		_make_special_upgrade(&"potato_aim", "瞄准投喂", SpecialUpgradeData.EffectKind.TARGET_AIM, &"potato", 1.0, false, "土豆发射时朝向当前目标", ""),
 		_make_special_upgrade(&"baguette_giant", "巨型法棍", SpecialUpgradeData.EffectKind.EVOLUTION, &"baguette", 1.0, false, "以3秒基础间隔额外发射一根横跨四格、滚动直行的巨型法棍", ""),

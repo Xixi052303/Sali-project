@@ -5,6 +5,9 @@ enum AttackKind {
 	PROJECTILE,
 	PIERCING_PROJECTILE,
 	ORBITING_MUSHROOM,
+	EGG_PROJECTILE,
+	CARROT_SWEEP,
+	EGG_PUDDLE,
 }
 
 enum TrackingMode {
@@ -31,6 +34,9 @@ enum AimMode {
 @export var projectile_radius: float = 17.0
 @export var base_lifetime: float = 1.3473684
 @export var pierce_count: int = 1
+# 胡萝卜固定扫掠终点和总弧度；持续强化只延长扫掠时间，不改变终点。
+@export var sweep_radius: float = 0.0
+@export_range(0.0, 180.0, 0.1) var sweep_angle_degrees: float = 0.0
 @export var visual_color: Color = Color("#e2b650")
 @export_group("Orbiting attack")
 # 环绕食材以此为首档半径，完成驻留圈后再逐档扩大。
@@ -41,6 +47,7 @@ enum AimMode {
 @export var breathing_outer_multiplier: float = 2.0
 @export_group("Upgrade scaling")
 # 普通强化先全局累计，再按食材转译倍率换算，避免特殊攻击方式获得完整通用收益。
+@export var damage_upgrade_scale: float = 1.0
 @export var attack_speed_upgrade_scale: float = 1.0
 @export var wine_upgrade_scale: float = 1.0
 @export var range_upgrade_scale: float = 1.0

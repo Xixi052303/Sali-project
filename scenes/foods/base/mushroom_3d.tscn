@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://bcycrl3414wq8" path="res://assets/models/投射物模型/蘑菇.glb" id="1_model"]
+
+[node name="MushroomFood3D" type="Node3D"]
+
+[node name="Model" parent="." instance=ExtResource("1_model")]

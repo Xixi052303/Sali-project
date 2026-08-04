@@ -7,7 +7,6 @@ signal destroyed
 const BASE_MOVE_SPEED: float = 9.0
 const BASE_MOVE_SPEED_DESIGN: float = BASE_MOVE_SPEED / Playfield.WORLD_UNITS_PER_PIXEL
 const COLLISION_RECT: Rect2 = Rect2(-0.96, -1.5, 1.92, 2.17)
-const DURABILITY_FILL_WIDTH: float = 1.52
 const MAXIMUM_FEEDBACK_DURATION: float = 1.2
 const DEFAULT_INVINCIBILITY_DURATION_SECONDS: float = 0.5
 const SHIELD_COLOR: Color = Color("#78d8ff")
@@ -32,10 +31,9 @@ var _upgrade_tween: Tween
 # 保存编辑器配置的基础尺寸，碰撞与反馈动画都以它为准。
 var _base_scale: Vector3 = Vector3.ONE
 @onready var _visual_root: Node3D = %PaperCartVisual
-@onready var _durability_fill: MeshInstance3D = %DurabilityFill
 @onready var _durability_label: Label3D = %DurabilityLabel
-@onready var _shield_outline: MeshInstance3D = %ShieldOutline
-@onready var _shield_badge: Label3D = %ShieldBadge
+@onready var _maximum_durability_label: Label3D = %DurabilityLabel2
+@onready var _effective_durability_label: Label3D = %ShieldDurabilityLabel
 @onready var _maximum_feedback_label: Label3D = %MaximumFeedbackLabel
 
 
@@ -47,7 +45,6 @@ func configure(
 	state = run_state
 	playfield = field
 	_invincibility_duration_seconds = maxf(0.0, invincibility_duration_seconds)
-	_resolve_status_nodes()
 	_base_scale = scale
 	target_x = position.x
 	target_z = position.z
@@ -197,35 +194,23 @@ func play_upgrade_feedback(_color: Color) -> void:
 	_upgrade_tween.tween_property(self, "scale", _base_scale, 0.22)
 
 
-# 头顶纸条只呈现同一份RunState耐久，固定宽度避免上限成长扩大遮挡。
+# 头顶纸条把实际耐久与上限分层显示；有护盾时只覆盖当前值，保留白色上限作为阅读锚点。
 func set_durability_display(current: float, maximum: float, temporary_shield: float) -> void:
-	_resolve_status_nodes()
 	var safe_maximum: float = maxf(1.0, maximum)
-	var ratio: float = clampf(current / safe_maximum, 0.0, 1.0)
-	var durability_color: Color = UpgradeData.rarity_color_for_ratio(ratio)
-	_durability_fill.scale.x = ratio
-	_durability_fill.position.x = -DURABILITY_FILL_WIDTH * 0.5 * (1.0 - ratio)
-	_durability_label.text = "%.0f / %.0f" % [maxf(0.0, current), safe_maximum]
-	_durability_label.modulate = durability_color
-	var durability_material: Material = _durability_fill.material_override
-	if durability_material is StandardMaterial3D:
-		(durability_material as StandardMaterial3D).albedo_color = durability_color
-	var has_shield: bool = temporary_shield > 0.0001
-	_shield_outline.visible = has_shield
-	_shield_badge.visible = has_shield
-	_shield_badge.text = "护盾 +%.0f" % temporary_shield
-	_shield_badge.modulate = SHIELD_COLOR
+	var safe_current: float = maxf(0.0, current)
+	var safe_shield: float = maxf(0.0, temporary_shield)
+	var has_shield: bool = safe_shield > 0.0001
+	var effective_current: float = safe_current + safe_shield
+	# 白色底值与蓝色护盾层始终显示同一有效值，蓝色只负责表达护盾状态。
+	_durability_label.text = "%.0f" % effective_current
+	_durability_label.modulate = Color.WHITE
+	_maximum_durability_label.text = "/ %.0f" % safe_maximum
+	_maximum_durability_label.modulate = Color.WHITE
+	_effective_durability_label.text = "%.0f" % effective_current
+	_effective_durability_label.modulate = SHIELD_COLOR
+	_effective_durability_label.visible = has_shield
 	if _last_maximum_durability > 0.0 and maximum > _last_maximum_durability + 0.0001:
 		_maximum_feedback_label.text = "上限 +%.0f" % (maximum - _last_maximum_durability)
 		_maximum_feedback_label.visible = true
 		_maximum_feedback_remaining = MAXIMUM_FEEDBACK_DURATION
 	_last_maximum_durability = maximum
-
-
-func _resolve_status_nodes() -> void:
-	if _durability_fill != null:
-		return
-	_durability_fill = get_node("StatusBillboard/DurabilityFill") as MeshInstance3D
-	_shield_outline = get_node("StatusBillboard/ShieldOutline") as MeshInstance3D
-	_shield_badge = get_node("StatusBillboard/ShieldBadge") as Label3D
-	_maximum_feedback_label = get_node("StatusBillboard/MaximumFeedbackLabel") as Label3D

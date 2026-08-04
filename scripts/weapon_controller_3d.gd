@@ -2,6 +2,7 @@ class_name WeaponController3D
 extends Node
 
 signal food_added(food: FoodData)
+signal food_removed(food_id: StringName)
 signal cooking_progress_changed(
 	food_id: StringName,
 	progress: float,
@@ -32,6 +33,20 @@ func add_food(food: FoodData) -> void:
 	state.add_food(food.id)
 	food_added.emit(food)
 	cooking_progress_changed.emit(food.id, 1.0, 0.0)
+
+
+# Debug移除全部运行中食材，并让新取得的食材从首轮烹饪节拍重新开始。
+func remove_all_foods() -> int:
+	var removed_count: int = foods.size()
+	for runtime: FoodRuntime in foods:
+		if runtime.data != null:
+			food_removed.emit(runtime.data.id)
+	foods.clear()
+	_giant_baguette_enabled = false
+	_giant_baguette_cooldown = 0.0
+	if state != null:
+		state.clear_foods()
+	return removed_count
 
 
 func _process(delta: float) -> void:
@@ -87,6 +102,7 @@ func _fire(food: FoodData, target: Node3D) -> void:
 		var direction: Vector3 = base_direction
 		var spread: float = (float(index) - float(count - 1) * 0.5) * 0.075
 		direction = direction.rotated(Vector3.UP, spread)
+		# 蘑菇使用角度相位，胡萝卜复用同一相位在往返周期内错峰。
 		var orbit_phase: float = TAU * float(index) / float(count)
 		run.spawn_projectile(
 			cart_position + Vector3(0.0, 0.0, -1.35),

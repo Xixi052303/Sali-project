@@ -115,6 +115,20 @@ func _build_actions() -> void:
 		["全部食材升满级", &"max_all_foods"],
 		["解锁全部特殊能力", &"unlock_all_specials"],
 	])
+
+	_add_section("食材调试")
+	_add_action_row([
+		["获取土豆", &"get_food_potato"],
+		["获取法棍", &"get_food_baguette"],
+	])
+	_add_action_row([
+		["获取蘑菇", &"get_food_mushroom"],
+		["获取鸡蛋", &"get_food_egg"],
+	])
+	_add_action_row([
+		["获取胡萝卜", &"get_food_carrot"],
+		["移除当前所有食材", &"remove_all_foods"],
+	])
 	_add_action_row([
 		["随机满品质普通强化", &"random_normal_upgrade"],
 		["全部普通强化各 1 层", &"all_normal_upgrades"],

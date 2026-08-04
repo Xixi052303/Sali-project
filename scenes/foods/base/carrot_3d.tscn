@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://pubm03ww0hks"]
+
+[ext_resource type="PackedScene" uid="uid://c7t3ge37a48jp" path="res://assets/models/投射物模型/萝卜.glb" id="1_model"]
+
+[node name="CarrotFood3D" type="Node3D" unique_id=186898772]
+
+[node name="Model" parent="." unique_id=1750037086 instance=ExtResource("1_model")]
+transform = Transform3D(2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5, 0, -0.634104, -1.2250657)

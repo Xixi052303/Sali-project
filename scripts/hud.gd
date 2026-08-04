@@ -81,6 +81,17 @@ func add_cooking_food(food: FoodData, level: int) -> void:
 	_refresh_cooking_indicator_sizes()
 
 
+# 调试清空时移除对应烹饪圆环，避免HUD保留已卸下的食材。
+func remove_cooking_food(food_id: StringName) -> void:
+	var indicator: CookingIndicator = _cooking_indicators.get(food_id)
+	if indicator == null:
+		return
+	_cooking_indicators.erase(food_id)
+	if is_instance_valid(indicator):
+		indicator.free()
+	_refresh_cooking_indicator_sizes()
+
+
 func set_cooking_progress(
 	food_id: StringName,
 	progress: float,

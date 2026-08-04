@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FoodData" format=3 uid="uid://bowcxk4njy7tl"]
+
+[ext_resource type="Script" uid="uid://blbv2gfbbrm1l" path="res://scripts/data/food_data.gd" id="1_food"]
+
+[resource]
+script = ExtResource("1_food")
+id = &"carrot"
+display_name = "胡萝卜"
+attack_kind = 4
+pierce_count = 999
+sweep_radius = 458.1053
+sweep_angle_degrees = 180.0
+visual_color = Color(0.93, 0.36, 0.12, 1)
+wine_upgrade_scale = 0.35
+duration_upgrade_scale = 0.2

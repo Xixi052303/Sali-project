@@ -9,29 +9,6 @@ albedo_color = Color(0.168627, 0.141176, 0.113725, 1)
 
 [sub_resource type="SphereMesh" id="MeshShadow"]
 
-[sub_resource type="StandardMaterial3D" id="MatShieldOutline"]
-albedo_color = Color(0.345098, 0.74902, 0.941176, 1)
-roughness = 0.88
-
-[sub_resource type="BoxMesh" id="MeshShieldOutline"]
-size = Vector3(1.9, 0.42, 0.04)
-
-[sub_resource type="StandardMaterial3D" id="MatDurabilityBack"]
-albedo_color = Color(0.141176, 0.121569, 0.101961, 1)
-roughness = 0.96
-
-[sub_resource type="BoxMesh" id="MeshDurabilityBack"]
-size = Vector3(1.72, 0.3, 0.05)
-
-[sub_resource type="StandardMaterial3D" id="MatDurabilityFill"]
-resource_local_to_scene = true
-albedo_color = Color(0.815686, 0.415686, 0.247059, 1)
-roughness = 0.92
-
-[sub_resource type="BoxMesh" id="MeshDurabilityFill"]
-resource_local_to_scene = true
-size = Vector3(1.52, 0.14, 0.06)
-
 [node name="Cart3D" type="Node3D" unique_id=1284887731]
 script = ExtResource("1_script")
 
@@ -43,7 +20,6 @@ transform = Transform3D(-8.742278e-08, 0, -2, 0, 2, 0, 2, 0, -8.742278e-08, -0.0
 
 [node name="ChefModel" parent="PaperCartVisual" unique_id=565962607 instance=ExtResource("2_chef")]
 transform = Transform3D(-1.6292068e-07, 0, 1, 0, 1, 0, -1, 0, -1.6292068e-07, -0.06307061, 0, 0.7359624)
-visible = false
 
 [node name="ContactShadow" type="MeshInstance3D" parent="PaperCartVisual" unique_id=1518168467]
 transform = Transform3D(1.5, 0, 0, 0, 0.05, 0, 0, 0, 1.8, 0, 0.03, 0)
@@ -52,58 +28,59 @@ cast_shadow = 0
 mesh = SubResource("MeshShadow")
 
 [node name="StatusBillboard" type="Node3D" parent="." unique_id=853189386]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.35, 0.18)
-
-[node name="ShieldOutline" type="MeshInstance3D" parent="StatusBillboard" unique_id=803837284]
-unique_name_in_owner = true
-visible = false
-material_override = SubResource("MatShieldOutline")
-cast_shadow = 0
-mesh = SubResource("MeshShieldOutline")
-
-[node name="DurabilityBack" type="MeshInstance3D" parent="StatusBillboard" unique_id=1613493154]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.03)
-material_override = SubResource("MatDurabilityBack")
-cast_shadow = 0
-mesh = SubResource("MeshDurabilityBack")
-
-[node name="DurabilityFill" type="MeshInstance3D" parent="StatusBillboard" unique_id=190787258]
-unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.07)
-material_override = SubResource("MatDurabilityFill")
-cast_shadow = 0
-mesh = SubResource("MeshDurabilityFill")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5999064, 0.18)
 
 [node name="DurabilityLabel" type="Label3D" parent="StatusBillboard" unique_id=583205986]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.024575472, 0.36000013, 0.120000005)
-visible = false
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.024575472, 0.16710567, -0.27098334)
 pixel_size = 0.007
+render_priority = 100
+no_depth_test = true
+outline_render_priority = 99
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
-text = "100 / 100"
-font_size = 52
-outline_size = 10
+text = "100"
+font_size = 144
+outline_size = 3
 width = 1.72
 
-[node name="ShieldBadge" type="Label3D" parent="StatusBillboard" unique_id=1715827869]
+[node name="DurabilityLabel2" type="Label3D" parent="StatusBillboard/DurabilityLabel" unique_id=378692602]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.54479694, 0, 0.120000005)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1653848, -0.6598382, 0)
+pixel_size = 0.007
+render_priority = 100
+no_depth_test = true
+outline_render_priority = 99
+outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
+text = "/ 100"
+font_size = 50
+outline_size = 20
+width = 1.72
+
+[node name="ShieldDurabilityLabel" type="Label3D" parent="StatusBillboard/DurabilityLabel" unique_id=603483233]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.01)
 visible = false
 pixel_size = 0.007
-modulate = Color(0.470588, 0.847059, 1, 1)
+render_priority = 100
+no_depth_test = true
+outline_render_priority = 99
+modulate = Color(0, 0.38709083, 1, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
-text = "护盾 +100"
-font_size = 36
-outline_size = 10
-horizontal_alignment = 0
+text = "100"
+font_size = 144
+outline_size = 3
+width = 1.72
 
 [node name="MaximumFeedbackLabel" type="Label3D" parent="StatusBillboard" unique_id=308663202]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.68, 0.12)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.68, 0.13)
 visible = false
 pixel_size = 0.007
+render_priority = 100
+no_depth_test = true
+outline_render_priority = 99
 modulate = Color(0.94902, 0.831373, 0.482353, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 text = "上限 +10"
-font_size = 40
-outline_size = 10
+font_size = 64
+outline_size = 20

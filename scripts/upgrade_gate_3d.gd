@@ -104,8 +104,27 @@ func try_receive_projectile(projectile: FoodProjectile3D) -> bool:
 	var target: Node3D = _left_target if hit_left else _right_target
 	if not projectile.can_hit(target):
 		return false
-	receive_damage(hit_left, projectile.satisfaction)
+	if run != null:
+		run.resolve_gate_projectile_hit(self, hit_left, target, projectile)
+	else:
+		receive_damage(hit_left, projectile.satisfaction)
 	return projectile.register_hit(target)
+
+
+func try_receive_puddle(puddle: FoodPuddle3D) -> void:
+	if start_food_gate or resolved or puddle == null:
+		return
+	var local_position_3d: Vector3 = to_local(puddle.global_position)
+	var local_position_xz: Vector2 = Vector2(local_position_3d.x, local_position_3d.z)
+	for hit_left: bool in [true, false]:
+		if not side_is_attackable(hit_left):
+			continue
+		var target: Node3D = _left_target if hit_left else _right_target
+		var panel: Rect2 = LEFT_PANEL if hit_left else RIGHT_PANEL
+		if not panel.grow(puddle.radius).has_point(local_position_xz):
+			continue
+		if puddle.observe_target(target):
+			receive_puddle_damage(target, puddle.satisfaction)
 
 
 func receive_damage(hit_left: bool, amount: float) -> void:
@@ -127,6 +146,13 @@ func receive_damage(hit_left: bool, amount: float) -> void:
 		_right_hit_feedback = 0.12
 	_refresh_labels()
 	_refresh_feedback()
+
+
+func receive_puddle_damage(target: Node3D, amount: float) -> void:
+	if target == _left_target:
+		receive_damage(true, amount)
+	elif target == _right_target:
+		receive_damage(false, amount)
 
 
 func side_is_attackable(left_side: bool) -> bool:

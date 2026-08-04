@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="FoodData" format=3 uid="uid://w72spn4rh17e"]
+
+[ext_resource type="Script" uid="uid://blbv2gfbbrm1l" path="res://scripts/data/food_data.gd" id="1_food"]
+
+[resource]
+script = ExtResource("1_food")
+id = &"egg_puddle"
+display_name = "蛋液"
+attack_kind = 5
+base_interval = 0.5
+wine_upgrade_scale = 0.35
+duration_upgrade_scale = 0.2

@@ -17,12 +17,18 @@
 [ext_resource type="Resource" uid="uid://ct6d28ydagjg2" path="res://data/foods/mushroom.tres" id="15_mushroom"]
 [ext_resource type="PackedScene" path="res://scenes/debug_menu.tscn" id="16_debug"]
 [ext_resource type="PackedScene" path="res://scenes/main_menu.tscn" id="17_main_menu"]
+[ext_resource type="Resource" path="res://data/foods/egg.tres" id="18_egg"]
+[ext_resource type="Resource" path="res://data/foods/carrot.tres" id="19_carrot"]
+[ext_resource type="Resource" path="res://data/foods/egg_puddle.tres" id="20_egg_puddle"]
 
 [node name="Run3D" type="Node3D" unique_id=1265626159]
 script = ExtResource("1_run")
 potato_data = ExtResource("7_potato")
 baguette_data = ExtResource("8_baguette")
 mushroom_data = ExtResource("15_mushroom")
+egg_data = ExtResource("18_egg")
+carrot_data = ExtResource("19_carrot")
+egg_puddle_data = ExtResource("20_egg_puddle")
 basic_guest_data = ExtResource("9_basic")
 fast_guest_data = ExtResource("10_fast")
 ranged_guest_data = ExtResource("11_ranged")

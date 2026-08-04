@@ -80,15 +80,20 @@ func _test_runtime(load_result: GameplayExcelLoader.WeaponLoadResult) -> void:
 	_check(is_equal_approx(giant._initial_lifetime, state.effective_duration(baguette) * 1.5), "巨型法棍应用持续倍率")
 	_check(is_equal_approx(giant.satisfaction, state.effective_satisfaction(baguette) * 3.0), "巨型法棍应用满足倍率")
 	_check(background._camera_shake_remaining > 0.0, "巨型法棍发射时调用可复用震屏入口")
-	var giant_dimensions: Vector3 = giant._giant_baguette_visual.model_scale() * GiantBaguette3D.MODEL_SIZE
 	var visual_scale: float = minf(range_scale, FoodProjectile3D.MAXIMUM_VISUAL_RANGE_SCALE)
+	var giant_visual_length: float = minf(4.0 * visual_scale, Playfield.ROAD_WIDTH)
+	var expected_uniform_scale: float = (
+		giant_visual_length / GiantBaguette3D.MODEL_SIZE.z
+	)
+	var giant_model_scale: Vector3 = giant._giant_baguette_visual.model_scale()
+	var giant_dimensions: Vector3 = giant_model_scale * GiantBaguette3D.MODEL_SIZE
+	_check(
+		giant_model_scale.is_equal_approx(Vector3.ONE * expected_uniform_scale),
+		"巨型法棍长宽高使用同一模型缩放比例"
+	)
 	_check(
 		giant_dimensions.is_equal_approx(
-			Vector3(
-				0.2 * visual_scale,
-				0.18 * visual_scale,
-				minf(4.0 * visual_scale, Playfield.ROAD_WIDTH)
-			)
+			GiantBaguette3D.MODEL_SIZE * expected_uniform_scale
 		),
 		"巨型法棍实体尺寸封顶且不超过六区道路"
 	)
@@ -127,7 +132,7 @@ func _test_runtime(load_result: GameplayExcelLoader.WeaponLoadResult) -> void:
 		"巨型法棍不会命中完整范围之外的目标"
 	)
 
-	var projectile_scene: PackedScene = load("res://scenes/projectile_3d.tscn") as PackedScene
+	var projectile_scene: PackedScene = load("res://scenes/foods/projectiles/food_projectile_3d.tscn") as PackedScene
 	var aimed: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
 	run.add_child(aimed)
 	aimed.configure(

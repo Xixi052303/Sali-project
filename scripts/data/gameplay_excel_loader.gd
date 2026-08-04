@@ -3,7 +3,7 @@ extends RefCounted
 
 const CONFIG_SHEET: String = "配置"
 const EXPECTED_SCHEMA_VERSION: int = 1
-const WEAPON_SCHEMA_VERSION: int = 2
+const WEAPON_SCHEMA_VERSION: int = 5
 const NORMAL_UPGRADE_SCHEMA_VERSION: int = 2
 const REQUIRED_CUSTOMER_IDS: Array[StringName] = [
 	&"basic_guest",
@@ -31,6 +31,8 @@ class WeaponLoadResult:
 	var baguette_giant_pierce_count: int = RunState.BAGUETTE_GIANT_PIERCE_COUNT
 	var baguette_giant_duration_multiplier: float = RunState.BAGUETTE_GIANT_DURATION_MULTIPLIER
 	var baguette_giant_satisfaction_multiplier: float = RunState.BAGUETTE_GIANT_SATISFACTION_MULTIPLIER
+	# 蛋液作为独立衍生攻击行解析，供鸡蛋命中时创建持续区域。
+	var egg_puddle_data: FoodData
 	var loaded_from_excel: bool = false
 	var error_message: String = ""
 	var source_path: String = ""
@@ -297,6 +299,8 @@ static func load_weapons(path: String) -> WeaponLoadResult:
 		food.wine_upgrade_scale = _required_number(record, "酒强化倍率", row_number, errors)
 		food.range_upgrade_scale = _required_number(record, "范围强化倍率", row_number, errors)
 		food.duration_upgrade_scale = _required_number(record, "持续强化倍率", row_number, errors)
+		food.sweep_radius = _required_number(record, "扫掠半径(px)", row_number, errors)
+		food.sweep_angle_degrees = _required_number(record, "扫掠角度(°)", row_number, errors)
 		food.visual_color = Color.from_string(str(record.get("颜色HEX", "")), Color.WHITE)
 		if food.display_name.is_empty():
 			errors.append("武器表第 %d 行显示名称不能为空" % row_number)
@@ -316,6 +320,11 @@ static func load_weapons(path: String) -> WeaponLoadResult:
 		if food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
 			if food.orbit_radius <= 0.0 or food.orbit_angular_speed <= 0.0:
 				errors.append("武器表第 %d 行环绕武器的半径和角速度必须大于0" % row_number)
+		if food.attack_kind == FoodData.AttackKind.CARROT_SWEEP:
+			if food.sweep_radius <= 0.0 or food.sweep_angle_degrees <= 0.0:
+				errors.append("武器表第 %d 行胡萝卜扫掠半径和角度必须大于0" % row_number)
+			if food.sweep_angle_degrees > 180.0:
+				errors.append("武器表第 %d 行胡萝卜扫掠角度不能超过180度" % row_number)
 		if (
 			food.attack_speed_upgrade_scale < 0.0
 			or food.wine_upgrade_scale < 0.0
@@ -340,12 +349,20 @@ static func _parse_derived_attack_records(
 	errors: PackedStringArray
 ) -> void:
 	var found_giant_baguette: bool = false
+	var found_egg_puddle: bool = false
 	var row_number: int = 1
 	for record: Dictionary in records:
 		row_number += 1
 		if not _as_bool(record.get("启用", true)):
 			continue
 		var config_id: StringName = StringName(str(record.get("配置ID", "")).strip_edges())
+		if config_id == &"egg_puddle":
+			if found_egg_puddle:
+				errors.append("衍生攻击表第 %d 行重复配置: egg_puddle" % row_number)
+				continue
+			found_egg_puddle = true
+			_parse_egg_puddle_record(record, row_number, result, errors)
+			continue
 		if config_id != &"baguette_giant":
 			errors.append("衍生攻击表第 %d 行配置ID不受支持: %s" % [row_number, String(config_id)])
 			continue
@@ -407,6 +424,55 @@ static func _parse_derived_attack_records(
 			errors.append("衍生攻击表第 %d 行持续和满足倍率必须大于0" % row_number)
 	if not found_giant_baguette:
 		errors.append("衍生攻击表缺少已启用的baguette_giant配置")
+	if not found_egg_puddle:
+		errors.append("衍生攻击表缺少已启用的egg_puddle配置")
+
+
+# 蛋液只独立保存节拍和衍生输出倍率，其余基础属性与强化转译复制自来源鸡蛋。
+static func _parse_egg_puddle_record(
+	record: Dictionary,
+	row_number: int,
+	result: WeaponLoadResult,
+	errors: PackedStringArray
+) -> void:
+	var source_food_id: StringName = StringName(
+		str(record.get("来源食材ID", "")).strip_edges()
+	)
+	if source_food_id != &"egg":
+		errors.append("衍生攻击表第 %d 行蛋液来源食材必须为egg" % row_number)
+		return
+	var source_food: FoodData
+	for food: FoodData in result.foods:
+		if food.id == source_food_id:
+			source_food = food
+			break
+	if source_food == null:
+		errors.append("衍生攻击表第 %d 行蛋液来源食材不存在: egg" % row_number)
+		return
+	var base_interval: float = _required_number(
+		record, "基础间隔(s)", row_number, errors, "衍生攻击"
+	)
+	var duration_multiplier: float = _required_number(
+		record, "持续倍率", row_number, errors, "衍生攻击"
+	)
+	var satisfaction_multiplier: float = _required_number(
+		record, "满足倍率", row_number, errors, "衍生攻击"
+	)
+	if base_interval <= 0.0:
+		errors.append("衍生攻击表第 %d 行蛋液基础间隔必须大于0" % row_number)
+	if duration_multiplier <= 0.0 or satisfaction_multiplier <= 0.0:
+		errors.append("衍生攻击表第 %d 行蛋液持续和满足倍率必须大于0" % row_number)
+	var puddle: FoodData = source_food.duplicate(true) as FoodData
+	if puddle == null:
+		errors.append("衍生攻击表第 %d 行蛋液无法复制来源食材数据" % row_number)
+		return
+	puddle.id = &"egg_puddle"
+	puddle.display_name = "蛋液"
+	puddle.attack_kind = FoodData.AttackKind.EGG_PUDDLE
+	puddle.base_interval = base_interval
+	puddle.base_satisfaction = source_food.base_satisfaction * satisfaction_multiplier
+	puddle.base_lifetime = source_food.base_lifetime * duration_multiplier
+	result.egg_puddle_data = puddle
 
 
 # 普通门与食客奖励门共用同一候选池，每个实际选项仍由运行时独立抽百分位。
@@ -689,6 +755,10 @@ static func _attack_kind(value: Variant, row_number: int, errors: PackedStringAr
 			return FoodData.AttackKind.PIERCING_PROJECTILE
 		"orbiting_mushroom":
 			return FoodData.AttackKind.ORBITING_MUSHROOM
+		"egg_projectile":
+			return FoodData.AttackKind.EGG_PROJECTILE
+		"carrot_sweep":
+			return FoodData.AttackKind.CARROT_SWEEP
 	errors.append("武器表第 %d 行攻击类型不受支持: %s" % [row_number, str(value)])
 	return FoodData.AttackKind.PROJECTILE
 

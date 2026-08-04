@@ -13,6 +13,7 @@ func _init() -> void:
 	_test_3d_background_and_hud()
 	_test_projectile_miss_disappear()
 	_test_projectile_evolutions()
+	_test_new_food_behaviors()
 	_test_run_state()
 	_test_damage_camera_shake_rules()
 	_test_weapon_fires_without_target()
@@ -534,7 +535,7 @@ func _test_3d_background_and_hud() -> void:
 
 
 func _test_projectile_miss_disappear() -> void:
-	var projectile_scene: PackedScene = load("res://scenes/projectile_3d.tscn") as PackedScene
+	var projectile_scene: PackedScene = load("res://scenes/foods/projectiles/food_projectile_3d.tscn") as PackedScene
 	var projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
 	get_root().add_child(projectile)
 	projectile._begin_miss_disappear()
@@ -545,7 +546,7 @@ func _test_projectile_miss_disappear() -> void:
 
 
 func _test_projectile_evolutions() -> void:
-	var projectile_scene: PackedScene = load("res://scenes/projectile_3d.tscn") as PackedScene
+	var projectile_scene: PackedScene = load("res://scenes/foods/projectiles/food_projectile_3d.tscn") as PackedScene
 	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
 	var run: RunController3D = RunController3D.new()
 	var cart: Cart3D = cart_scene.instantiate() as Cart3D
@@ -849,6 +850,297 @@ func _test_projectile_evolutions() -> void:
 	run.free()
 
 
+func _test_new_food_behaviors() -> void:
+	var projectile_scene: PackedScene = load("res://scenes/foods/projectiles/food_projectile_3d.tscn") as PackedScene
+	var puddle_scene: PackedScene = load("res://scenes/foods/derived/egg_puddle_3d.tscn") as PackedScene
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var gate_scene: PackedScene = load("res://scenes/upgrade_gate_3d.tscn") as PackedScene
+	var reward_scene: PackedScene = load("res://scenes/upgrade_drop_3d.tscn") as PackedScene
+	var customer_scene: PackedScene = load(
+		"res://scenes/characters/customers/customer_base_3d.tscn"
+	) as PackedScene
+	var run: RunController3D = RunController3D.new()
+	var state: RunState = RunState.new()
+	var field: Playfield = Playfield.new()
+	var cart: Cart3D = cart_scene.instantiate() as Cart3D
+	var projectiles: Node3D = Node3D.new()
+	var gates: Node3D = Node3D.new()
+	var drops: Node3D = Node3D.new()
+	run.state = state
+	run.playfield = field
+	run.cart = cart
+	run.projectiles = projectiles
+	run.gates = gates
+	run.drops = drops
+	run.add_child(field)
+	run.add_child(cart)
+	run.add_child(projectiles)
+	run.add_child(gates)
+	run.add_child(drops)
+	cart.position = Vector3(3.6, 0.0, Playfield.CART_Z)
+	cart.scale = Vector3.ONE * 0.5
+	cart.configure(state, field)
+
+	var egg: FoodData = load("res://data/foods/egg.tres") as FoodData
+	var carrot: FoodData = load("res://data/foods/carrot.tres") as FoodData
+	_check(egg != null and carrot != null, "鸡蛋与胡萝卜回退资源可加载")
+	if egg == null or carrot == null:
+		run.free()
+		return
+	run.egg_data = egg
+	run.carrot_data = carrot
+	run._register_fallback_foods()
+	var puddle_data: FoodData = run.egg_puddle_data
+	_check(
+		puddle_data != null
+		and puddle_data.attack_kind == FoodData.AttackKind.EGG_PUDDLE
+		and is_equal_approx(puddle_data.projectile_radius, egg.projectile_radius)
+		and is_equal_approx(puddle_data.base_lifetime, egg.base_lifetime)
+		and is_equal_approx(puddle_data.wine_upgrade_scale, egg.wine_upgrade_scale),
+		"蛋液使用独立节拍并继承鸡蛋基础属性与强化倍率"
+	)
+	if puddle_data == null:
+		run.free()
+		return
+	state.add_food(&"egg")
+	state.add_food(&"carrot")
+	var basic: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
+	var customer: Customer3D = customer_scene.instantiate() as Customer3D
+	customer.position = Vector3(3.6, 0.0, 8.0)
+	customer.configure(basic, run, 1, 60.0)
+	run.add_child(customer)
+	run.customers.append(customer)
+
+	var puddle: FoodPuddle3D = puddle_scene.instantiate() as FoodPuddle3D
+	projectiles.add_child(puddle)
+	puddle.configure(
+		run,
+		customer.position,
+		egg,
+		puddle_data,
+		state.effective_derived_satisfaction(puddle_data, egg),
+		Playfield.design_to_world(state.effective_projectile_radius(puddle_data)),
+		state.effective_duration(puddle_data),
+		state.effective_derived_interval(puddle_data, egg)
+	)
+	_check(
+		is_equal_approx(puddle.scale.x, FoodPuddle3D.APPEAR_START_SCALE),
+		"蛋液生成时从极小尺寸开始快速放大"
+	)
+	run.apply_puddle_damage(customer, puddle.satisfaction, puddle.food_id)
+	puddle.prime_target(customer)
+	_check(is_equal_approx(customer.remaining_appetite, 50.0), "鸡蛋命中时立即结算一次蛋液满足")
+	puddle._process(0.49)
+	_check(is_equal_approx(customer.remaining_appetite, 50.0), "蛋液未满0.5秒不会提前重复结算")
+	puddle._process(0.02)
+	_check(is_equal_approx(customer.remaining_appetite, 40.0), "蛋液每0.5秒对接触目标周期结算")
+	var stacked_puddle: FoodPuddle3D = puddle_scene.instantiate() as FoodPuddle3D
+	projectiles.add_child(stacked_puddle)
+	stacked_puddle.configure(
+		run,
+		customer.position,
+		egg,
+		puddle_data,
+		state.effective_derived_satisfaction(puddle_data, egg),
+		Playfield.design_to_world(state.effective_projectile_radius(puddle_data)),
+		state.effective_duration(puddle_data),
+		state.effective_derived_interval(puddle_data, egg)
+	)
+	run.apply_puddle_damage(customer, stacked_puddle.satisfaction, stacked_puddle.food_id)
+	stacked_puddle.prime_target(customer)
+	_check(is_equal_approx(customer.remaining_appetite, 30.0), "第二份蛋液首跳独立结算")
+	puddle._process(0.5)
+	stacked_puddle._process(0.5)
+	_check(is_equal_approx(customer.remaining_appetite, 10.0), "多个蛋液的周期伤害独立叠加")
+	customer.position.z = 10.0
+	puddle._process(0.01)
+	stacked_puddle._process(0.01)
+	customer.position = puddle.position
+	puddle._process(0.01)
+	stacked_puddle._process(0.01)
+	_check(not customer.active, "蛋液目标离开后重新进入会立即结算")
+	puddle.free()
+	stacked_puddle.free()
+
+	var left_upgrade: UpgradeData = UpgradeData.new()
+	left_upgrade.configure_value_range(0.05, 0.45, 0.2)
+	var right_upgrade: UpgradeData = UpgradeData.new()
+	right_upgrade.configure_value_range(0.05, 0.45, 0.3)
+	var gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
+	gates.add_child(gate)
+	gate.configure(run, left_upgrade, right_upgrade, false, 20.0, 1)
+	gates.position = Vector3.ZERO
+	gate.position = Vector3(0.0, 0.0, 8.0)
+	var gate_health_before: float = gate.left_base_health
+	var gate_projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	projectiles.add_child(gate_projectile)
+	gate_projectile.configure(
+		run,
+		gate.position + Vector3(2.1, 0.0, 0.0),
+		Vector3.FORWARD,
+		egg,
+		state.effective_satisfaction(egg),
+		Playfield.design_to_world(egg.projectile_speed),
+		Playfield.design_to_world(egg.projectile_radius),
+		Vector3.ZERO,
+		2.0,
+		egg.pierce_count,
+		null,
+		false,
+		0.0,
+		false,
+		0.0,
+		false
+	)
+	var gate_target: Node3D = gate.get_node("LeftTarget") as Node3D
+	var puddle_count_before: int = projectiles.get_child_count()
+	run.resolve_gate_projectile_hit(gate, true, gate_target, gate_projectile)
+	_check(
+		gate.left_base_health < gate_health_before
+		and projectiles.get_child_count() == puddle_count_before + 1,
+		"鸡蛋命中普通门时生成蛋液并由蛋液结算门血"
+	)
+	var reward_gate: UpgradeDrop3D = reward_scene.instantiate() as UpgradeDrop3D
+	drops.add_child(reward_gate)
+	reward_gate.configure(run, right_upgrade, Vector3(5.6, 0.0, 8.0), 20.0, 2, 2)
+	var reward_health_before: float = reward_gate.upgrade_health
+	var reward_puddle_count_before: int = projectiles.get_child_count()
+	run.resolve_reward_projectile_hit(
+		reward_gate,
+		reward_gate.get_node("RewardTarget") as Node3D,
+		gate_projectile
+	)
+	_check(
+		reward_gate.upgrade_health < reward_health_before
+		and projectiles.get_child_count() == reward_puddle_count_before + 1,
+		"鸡蛋命中奖励门时生成蛋液并由蛋液结算门血"
+	)
+	gate_projectile.free()
+
+	var baseline_puddle_damage: float = state.effective_derived_satisfaction(puddle_data, egg)
+	var baseline_puddle_duration: float = state.effective_duration(puddle_data)
+	var baseline_puddle_radius: float = state.effective_projectile_radius(puddle_data)
+	var baseline_puddle_interval: float = state.effective_derived_interval(puddle_data, egg)
+	var sugar: UpgradeData = UpgradeData.new()
+	sugar.id = &"sugar_puddle_test"
+	sugar.kind = UpgradeData.Kind.SUGAR
+	sugar.value = 0.5
+	state.apply_upgrade(sugar)
+	var wine: UpgradeData = UpgradeData.new()
+	wine.id = &"wine_test"
+	wine.kind = UpgradeData.Kind.WINE
+	wine.value = 0.5
+	state.apply_upgrade(wine)
+	var scallion: UpgradeData = UpgradeData.new()
+	scallion.id = &"scallion_test"
+	scallion.kind = UpgradeData.Kind.SCALLION
+	scallion.value = 0.5
+	state.apply_upgrade(scallion)
+	var starch: UpgradeData = UpgradeData.new()
+	starch.id = &"starch_test"
+	starch.kind = UpgradeData.Kind.STARCH
+	starch.value = 0.5
+	state.apply_upgrade(starch)
+	var quick_prep: UpgradeData = UpgradeData.new()
+	quick_prep.id = &"quick_prep_test"
+	quick_prep.kind = UpgradeData.Kind.QUICK_PREP
+	quick_prep.value = 0.2
+	state.apply_upgrade(quick_prep)
+	_check(
+		state.effective_derived_satisfaction(puddle_data, egg) > baseline_puddle_damage
+		and state.effective_duration(puddle_data) > baseline_puddle_duration
+		and state.effective_projectile_radius(puddle_data) > baseline_puddle_radius
+		and state.effective_derived_interval(puddle_data, egg) < baseline_puddle_interval,
+		"蛋液独立响应糖、淀粉、葱、酒和攻速强化倍率"
+	)
+	_check(
+		state.effective_duration(carrot) > carrot.base_lifetime
+		and state.effective_projectile_radius(carrot) > carrot.projectile_radius
+		and state.effective_projectile_speed(carrot) > carrot.projectile_speed
+		and state.effective_interval(carrot) < carrot.base_interval
+		and is_equal_approx(
+			state.effective_projectile_distance(carrot),
+			carrot.sweep_radius
+		),
+		"胡萝卜强化增加往返、接触范围和扫掠速度但不扩大终点"
+	)
+
+	var carrot_projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	projectiles.add_child(carrot_projectile)
+	carrot_projectile.configure(
+		run,
+		cart.position,
+		Vector3.FORWARD,
+		carrot,
+		state.effective_satisfaction(carrot),
+		Playfield.design_to_world(state.effective_projectile_speed(carrot)),
+		Playfield.design_to_world(state.effective_projectile_radius(carrot)),
+		Vector3.ZERO,
+		state.effective_duration(carrot),
+		state.effective_pierce_count(carrot),
+		null,
+		false,
+		0.0,
+		false,
+		0.0,
+		false
+	)
+	var carrot_visual: Node3D = carrot_projectile.get_node("CarrotVisual") as Node3D
+	var carrot_pivot: Vector3 = carrot_projectile._carrot_sweep_pivot_position()
+	_check(
+		carrot_visual != null
+		and is_equal_approx(
+			carrot_projectile._carrot_visual.scale.x,
+			carrot_projectile._carrot_visual.scale.y
+		)
+		and is_equal_approx(
+			carrot_projectile._carrot_visual.scale.y,
+			carrot_projectile._carrot_visual.scale.z
+		)
+		and carrot_visual.global_position.distance_to(
+			carrot_pivot + Vector3(0.0, 0.82, 0.0)
+		) < 0.2,
+		"胡萝卜视觉等比缩放并以餐车前方原点为扫掠轴心"
+	)
+	_check(
+		absf(carrot_projectile._sweep_angle + PI * 0.5) < 0.0001
+		and carrot_projectile._sweep_direction > 0.0,
+		"胡萝卜首次从轴心左侧90度开始顺时针扫掠"
+	)
+	var one_way_seconds: float = (
+		carrot_projectile._sweep_radius
+		* carrot_projectile._sweep_half_angle
+		/ carrot_projectile._sweep_linear_speed
+	)
+	var first_position: Vector3 = carrot_projectile.position
+	carrot_projectile._process_carrot_sweep(one_way_seconds)
+	_check(
+		carrot_projectile._sweep_direction < 0.0
+		and absf(carrot_projectile._sweep_angle - PI * 0.5) < 0.0001,
+		"胡萝卜扫到右侧90度后立即反向"
+	)
+	_check(
+		is_equal_approx(
+			carrot_projectile.position.distance_to(carrot_pivot),
+			carrot_projectile._sweep_radius
+		),
+		"胡萝卜始终围绕餐车前方原点保持扫掠半径"
+	)
+	var target: Node3D = Node3D.new()
+	_check(carrot_projectile.can_hit(target), "胡萝卜单程开始时可命中目标")
+	carrot_projectile.register_hit(target)
+	_check(not carrot_projectile.can_hit(target), "胡萝卜同一单程不会重复命中目标")
+	carrot_projectile._process_carrot_sweep(one_way_seconds)
+	_check(carrot_projectile.can_hit(target), "胡萝卜反向完成一程后允许再次命中")
+	target.free()
+	_check(
+		first_position != carrot_projectile.position,
+		"胡萝卜实际沿弧线移动而非只旋转模型"
+	)
+	carrot_projectile.free()
+	run.free()
+
+
 func _test_run_state() -> void:
 	var state: RunState = RunState.new()
 	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
@@ -1135,7 +1427,7 @@ func _test_start_food_selection() -> void:
 	var run_scene: PackedScene = load("res://scenes/run_3d.tscn") as PackedScene
 	var run: RunController3D = run_scene.instantiate() as RunController3D
 	var unlocked: Array[FoodData] = run._available_start_foods()
-	_check(unlocked.size() == 3, "当前原型默认解锁全部三种食材")
+	_check(unlocked.size() == 5, "当前原型默认解锁全部五种食材")
 	run._upgrade_rng.seed = 20260728
 	var options: Array[UpgradeData] = run._roll_start_food_options()
 	_check(options.size() == 2, "开局食材门生成两个候选")
@@ -1255,7 +1547,7 @@ func _test_customer_reward_randomness() -> void:
 	)
 	for choice_id: StringName in special_choices:
 		_check(run._special_choice_is_valid(choice_id), "未持有进化不会混入有效候选")
-	_check(run._special_choice_pool.size() == 8, "特殊奖励池包含三食材、三进化与两项全局牌")
+	_check(run._special_choice_pool.size() == 10, "特殊奖励池包含五食材、三进化与两项全局牌")
 	_check(run._special_choice_pool.has(&"soy_sauce"), "酱油已进入特殊奖励候选池")
 	_check(not run._special_choice_is_valid(&"mushroom_breath"), "蘑菇进化在取得蘑菇前无效")
 	run.state.add_food(&"mushroom")
@@ -1415,11 +1707,35 @@ func _test_resources() -> void:
 	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
 	var baguette: FoodData = load("res://data/foods/baguette.tres") as FoodData
 	var mushroom: FoodData = load("res://data/foods/mushroom.tres") as FoodData
+	var egg: FoodData = load("res://data/foods/egg.tres") as FoodData
+	var carrot: FoodData = load("res://data/foods/carrot.tres") as FoodData
+	var egg_puddle: FoodData = load("res://data/foods/egg_puddle.tres") as FoodData
 	var basic: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
 	var fast: CustomerData = load("res://data/customers/fast_guest.tres") as CustomerData
 	var ranged: CustomerData = load("res://data/customers/ranged_guest.tres") as CustomerData
 	var elite: CustomerData = load("res://data/customers/elite_guest.tres") as CustomerData
 	var boss: BossPatternData = load("res://data/bosses/prototype_boss.tres") as BossPatternData
+	var food_projectile_scene: PackedScene = load(
+		"res://scenes/foods/projectiles/food_projectile_3d.tscn"
+	) as PackedScene
+	var food_projectile_preview: FoodProjectile3D = food_projectile_scene.instantiate() as FoodProjectile3D
+	_check(
+		food_projectile_preview.get_node_or_null("PotatoVisual/Model") != null
+		and food_projectile_preview.get_node_or_null("BaguetteVisual/Model") != null
+		and food_projectile_preview.get_node_or_null("MushroomVisual/Model") != null
+		and food_projectile_preview.get_node_or_null("EggVisual/Model") != null
+		and food_projectile_preview.get_node_or_null("CarrotVisual/Model") != null,
+		"五件基础食材均通过可调包装场景装配模型"
+	)
+	var puddle_preview: FoodPuddle3D = load(
+		"res://scenes/foods/derived/egg_puddle_3d.tscn"
+	).instantiate() as FoodPuddle3D
+	_check(
+		puddle_preview.get_node_or_null("LiquidVisual/Model") != null,
+		"蛋液也通过包装场景装配模型"
+	)
+	food_projectile_preview.free()
+	puddle_preview.free()
 	_check(potato != null and is_equal_approx(potato.base_satisfaction, 10.0), "土豆基线")
 	_check(potato.initial_aim_mode == FoodData.AimMode.FIXED_FORWARD, "土豆初始固定竖直发射")
 	_check(potato.initial_tracking_mode == FoodData.TrackingMode.NONE, "土豆初始为直线非追踪弹道")
@@ -1432,6 +1748,37 @@ func _test_resources() -> void:
 	)
 	_check(is_equal_approx(mushroom.breathing_period, 1.2), "蘑菇呼吸扩圈固定为1.2秒周期")
 	_check(is_equal_approx(mushroom.breathing_outer_multiplier, 2.0), "蘑菇呼吸扩圈外沿为两倍基础半径")
+	_check(
+		egg != null
+		and egg.display_name == "鸡蛋"
+		and egg.attack_kind == FoodData.AttackKind.EGG_PROJECTILE
+		and is_equal_approx(egg.base_satisfaction, potato.base_satisfaction)
+		and is_equal_approx(egg.projectile_speed, potato.projectile_speed)
+		and is_equal_approx(egg.projectile_radius, potato.projectile_radius)
+		and is_equal_approx(egg.base_lifetime, potato.base_lifetime),
+		"鸡蛋基础资源使用土豆基线"
+	)
+	_check(
+		egg_puddle != null
+		and egg_puddle.display_name == "蛋液"
+		and egg_puddle.attack_kind == FoodData.AttackKind.EGG_PUDDLE
+		and is_equal_approx(egg_puddle.base_satisfaction, egg.base_satisfaction)
+		and is_equal_approx(egg_puddle.base_interval, 0.5)
+		and is_equal_approx(egg_puddle.projectile_radius, egg.projectile_radius)
+		and is_equal_approx(egg_puddle.base_lifetime, egg.base_lifetime)
+		and is_equal_approx(egg_puddle.wine_upgrade_scale, egg.wine_upgrade_scale)
+		and is_equal_approx(egg_puddle.duration_upgrade_scale, egg.duration_upgrade_scale),
+		"蛋液回退资源只覆盖节拍并继承鸡蛋属性"
+	)
+	_check(
+		carrot != null
+		and carrot.display_name == "胡萝卜"
+		and carrot.attack_kind == FoodData.AttackKind.CARROT_SWEEP
+		and carrot.pierce_count == 999
+		and is_equal_approx(carrot.sweep_radius, 458.1, 0.1)
+		and is_equal_approx(carrot.sweep_angle_degrees, 180.0),
+		"胡萝卜资源配置180度、458.1设计像素与999命中目标"
+	)
 	_check(
 		is_equal_approx(potato.projectile_speed, 680.0)
 		and is_equal_approx(potato.base_lifetime, 1.3473684)

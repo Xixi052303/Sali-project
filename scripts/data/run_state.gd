@@ -130,6 +130,17 @@ func has_food(food_id: StringName) -> bool:
 	return foods.has(food_id)
 
 
+# Debug清空当前持有食材与等级；全局强化和历史满足统计继续保留。
+func clear_foods() -> int:
+	var removed_count: int = foods.size()
+	if removed_count == 0 and food_levels.is_empty():
+		return 0
+	foods.clear()
+	food_levels.clear()
+	inventory_changed.emit()
+	return removed_count
+
+
 func food_level(food_id: StringName) -> int:
 	return food_levels.get(food_id, 0)
 
@@ -261,9 +272,42 @@ func effective_satisfaction(food: FoodData) -> float:
 	return food.base_satisfaction * level_multiplier * satisfaction_multiplier
 
 
+# 衍生攻击的满足基数和全局倍率来自来源食材，衍生行只可额外调整满足倍率。
+func effective_derived_satisfaction(derived_attack: FoodData, source_food: FoodData) -> float:
+	if derived_attack == null:
+		return 0.0
+	if source_food != null:
+		var source_base_satisfaction: float = maxf(0.001, source_food.base_satisfaction)
+		var derived_satisfaction_multiplier: float = maxf(
+			0.0,
+			derived_attack.base_satisfaction / source_base_satisfaction
+		)
+		return effective_satisfaction(source_food) * derived_satisfaction_multiplier
+	return derived_attack.base_satisfaction * satisfaction_multiplier
+
+
 func effective_interval(food: FoodData) -> float:
 	var scaled_bonus: float = attack_speed_bonus * maxf(0.0, food.attack_speed_upgrade_scale)
 	return maxf(MINIMUM_INTERVAL, food.base_interval / (1.0 + scaled_bonus))
+
+
+# 蛋液周期沿用来源鸡蛋的攻速与酒转译倍率，只有基础节拍来自衍生攻击行。
+func effective_derived_interval(
+	derived_attack: FoodData,
+	source_food: FoodData = null
+) -> float:
+	if derived_attack == null:
+		return MINIMUM_INTERVAL
+	var inherited_food: FoodData = source_food if source_food != null else derived_attack
+	var attack_speed: float = (
+		1.0 + attack_speed_bonus * maxf(0.0, inherited_food.attack_speed_upgrade_scale)
+	)
+	var wine_speed: float = _log_upgrade_multiplier(
+		projectile_speed_multiplier - 1.0,
+		inherited_food.wine_upgrade_scale,
+		wine_curve_c
+	)
+	return maxf(MINIMUM_INTERVAL, derived_attack.base_interval / attack_speed / wine_speed)
 
 
 func effective_projectile_speed(food: FoodData) -> float:
@@ -310,8 +354,10 @@ func effective_pierce_count(food: FoodData) -> int:
 	return maxi(1, food.pierce_count + pierce_bonus)
 
 
-# 投射物射程由弹速与持续时间共同决定，两类强化会分别放大同一结果。
+# 直线投射物射程由弹速与持续时间决定；胡萝卜返回固定扫掠终点。
 func effective_projectile_distance(food: FoodData) -> float:
+	if food.attack_kind == FoodData.AttackKind.CARROT_SWEEP:
+		return food.sweep_radius
 	return effective_projectile_speed(food) * effective_duration(food)
 
 
