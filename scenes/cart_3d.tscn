@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://ci5w3hhytrenf"]
+[gd_scene format=3 uid="uid://ci5w3hhytrenf"]
 
 [ext_resource type="Script" uid="uid://ctvx2bkbtqptg" path="res://scripts/cart_3d.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://yjttt8tqvyuq" path="res://assets/models/角色/厨师.glb" id="2_chef"]
@@ -51,48 +51,59 @@ material_override = SubResource("MatShadow")
 cast_shadow = 0
 mesh = SubResource("MeshShadow")
 
-[node name="StatusBillboard" type="Node3D" parent="."]
-position = Vector3(0, 2.35, 0.18)
+[node name="StatusBillboard" type="Node3D" parent="." unique_id=853189386]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.35, 0.18)
 
-[node name="ShieldOutline" type="MeshInstance3D" parent="StatusBillboard"]
+[node name="ShieldOutline" type="MeshInstance3D" parent="StatusBillboard" unique_id=803837284]
 unique_name_in_owner = true
 visible = false
-cast_shadow = 0
 material_override = SubResource("MatShieldOutline")
+cast_shadow = 0
 mesh = SubResource("MeshShieldOutline")
 
-[node name="DurabilityBack" type="MeshInstance3D" parent="StatusBillboard"]
-position = Vector3(0, 0, 0.03)
-cast_shadow = 0
+[node name="DurabilityBack" type="MeshInstance3D" parent="StatusBillboard" unique_id=1613493154]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.03)
 material_override = SubResource("MatDurabilityBack")
+cast_shadow = 0
 mesh = SubResource("MeshDurabilityBack")
 
-[node name="DurabilityFill" type="MeshInstance3D" parent="StatusBillboard"]
+[node name="DurabilityFill" type="MeshInstance3D" parent="StatusBillboard" unique_id=190787258]
 unique_name_in_owner = true
-position = Vector3(0, 0, 0.07)
-cast_shadow = 0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.07)
 material_override = SubResource("MatDurabilityFill")
+cast_shadow = 0
 mesh = SubResource("MeshDurabilityFill")
 
-[node name="ShieldBadge" type="Label3D" parent="StatusBillboard"]
+[node name="DurabilityLabel" type="Label3D" parent="StatusBillboard" unique_id=583205986]
 unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.024575472, 0.36000013, 0.120000005)
 visible = false
-position = Vector3(1.28, 0, 0.12)
+pixel_size = 0.007
+outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
+text = "100 / 100"
+font_size = 52
+outline_size = 10
+width = 1.72
+
+[node name="ShieldBadge" type="Label3D" parent="StatusBillboard" unique_id=1715827869]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.54479694, 0, 0.120000005)
+visible = false
 pixel_size = 0.007
 modulate = Color(0.470588, 0.847059, 1, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
-font_size = 42
+text = "护盾 +100"
+font_size = 36
 outline_size = 10
-text = "+100"
 horizontal_alignment = 0
 
-[node name="MaximumFeedbackLabel" type="Label3D" parent="StatusBillboard"]
+[node name="MaximumFeedbackLabel" type="Label3D" parent="StatusBillboard" unique_id=308663202]
 unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.68, 0.12)
 visible = false
-position = Vector3(0, 0.55, 0.12)
 pixel_size = 0.007
 modulate = Color(0.94902, 0.831373, 0.482353, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
+text = "上限 +10"
 font_size = 40
 outline_size = 10
-text = "上限 +10"

@@ -104,16 +104,25 @@ func effect_text(maximum_durability: float = 100.0) -> String:
 	return formatted_value()
 
 
+# 让奖励、食客和餐车状态共享同一套百分比颜色，避免状态层级各自定义颜色。
+static func rarity_color_for_ratio(ratio: float) -> Color:
+	var normalized_ratio: float = clampf(ratio, 0.0, 1.0)
+	if normalized_ratio < 0.25:
+		return Color("#d7c59a")
+	if normalized_ratio < 0.5:
+		return Color("#73b8a6")
+	if normalized_ratio < 0.75:
+		return Color("#c88ad4")
+	return Color("#f0c45f")
+
+
 func _update_rarity() -> void:
 	if value_ratio < 0.25:
 		rarity_name = "寻常"
-		rarity_color = Color("#d7c59a")
 	elif value_ratio < 0.5:
 		rarity_name = "精良"
-		rarity_color = Color("#73b8a6")
 	elif value_ratio < 0.75:
 		rarity_name = "稀罕"
-		rarity_color = Color("#c88ad4")
 	else:
 		rarity_name = "珍奇"
-		rarity_color = Color("#f0c45f")
+	rarity_color = rarity_color_for_ratio(value_ratio)

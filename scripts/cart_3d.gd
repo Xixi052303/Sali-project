@@ -10,6 +10,7 @@ const COLLISION_RECT: Rect2 = Rect2(-0.96, -1.5, 1.92, 2.17)
 const DURABILITY_FILL_WIDTH: float = 1.52
 const MAXIMUM_FEEDBACK_DURATION: float = 1.2
 const DEFAULT_INVINCIBILITY_DURATION_SECONDS: float = 0.5
+const SHIELD_COLOR: Color = Color("#78d8ff")
 
 var state: RunState
 var playfield: Playfield
@@ -32,6 +33,7 @@ var _upgrade_tween: Tween
 var _base_scale: Vector3 = Vector3.ONE
 @onready var _visual_root: Node3D = %PaperCartVisual
 @onready var _durability_fill: MeshInstance3D = %DurabilityFill
+@onready var _durability_label: Label3D = %DurabilityLabel
 @onready var _shield_outline: MeshInstance3D = %ShieldOutline
 @onready var _shield_badge: Label3D = %ShieldBadge
 @onready var _maximum_feedback_label: Label3D = %MaximumFeedbackLabel
@@ -200,12 +202,19 @@ func set_durability_display(current: float, maximum: float, temporary_shield: fl
 	_resolve_status_nodes()
 	var safe_maximum: float = maxf(1.0, maximum)
 	var ratio: float = clampf(current / safe_maximum, 0.0, 1.0)
+	var durability_color: Color = UpgradeData.rarity_color_for_ratio(ratio)
 	_durability_fill.scale.x = ratio
 	_durability_fill.position.x = -DURABILITY_FILL_WIDTH * 0.5 * (1.0 - ratio)
+	_durability_label.text = "%.0f / %.0f" % [maxf(0.0, current), safe_maximum]
+	_durability_label.modulate = durability_color
+	var durability_material: Material = _durability_fill.material_override
+	if durability_material is StandardMaterial3D:
+		(durability_material as StandardMaterial3D).albedo_color = durability_color
 	var has_shield: bool = temporary_shield > 0.0001
 	_shield_outline.visible = has_shield
 	_shield_badge.visible = has_shield
-	_shield_badge.text = "+%.0f" % temporary_shield
+	_shield_badge.text = "护盾 +%.0f" % temporary_shield
+	_shield_badge.modulate = SHIELD_COLOR
 	if _last_maximum_durability > 0.0 and maximum > _last_maximum_durability + 0.0001:
 		_maximum_feedback_label.text = "上限 +%.0f" % (maximum - _last_maximum_durability)
 		_maximum_feedback_label.visible = true
