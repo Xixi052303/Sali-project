@@ -14,9 +14,6 @@ const POTATO_MODEL_SIZE: Vector3 = Vector3(0.849609375, 0.716796875, 0.998046875
 const BAGUETTE_MODEL_SIZE: Vector3 = Vector3(0.400390625, 0.330078125, 0.998046875)
 const MUSHROOM_MODEL_SIZE: Vector3 = Vector3(0.986328125, 0.998046875, 0.912109375)
 const EGG_MODEL_SIZE: Vector3 = Vector3(0.376953125, 0.998046875, 0.806640625)
-const CARROT_MODEL_SIZE: Vector3 = Vector3(0.384765625, 0.376953125, 0.998046875)
-const CARROT_VISUAL_LENGTH_RATIO: float = 1.0
-const CARROT_VISUAL_MIN_LENGTH: float = 0.9
 
 var run: RunController3D
 var velocity: Vector3 = Vector3.ZERO
@@ -70,7 +67,10 @@ var _egg_visual_base_position: Vector3 = Vector3.ZERO
 var _carrot_visual_base_position: Vector3 = Vector3.ZERO
 # 胡萝卜包装根节点的可编辑旋转，以及模型基础缩放；根节点本身就是扫掠轴心。
 var _carrot_visual_base_rotation: Vector3 = Vector3.ZERO
-var _carrot_model_base_scale: Vector3 = Vector3.ONE
+# 胡萝卜模型在包装根节点局部空间中的最低点，用于把场景模型自动贴到道路平面。
+var _carrot_visual_base_bottom_y: float = 0.0
+# 胡萝卜场景中的盒形伤害轮廓；运行时只读取其编辑器变换，不连接物理系统。
+var _carrot_damage_hitbox: CollisionShape3D
 @onready var _potato_visual: Node3D = %PotatoVisual
 @onready var _baguette_visual: Node3D = %BaguetteVisual
 @onready var _giant_baguette_visual: GiantBaguette3D = %GiantBaguetteVisual
@@ -147,17 +147,29 @@ func _process(delta: float) -> void:
 		queue_free()
 		return
 	_lifetime_remaining -= delta
+	var active_delta: float = delta
+	var carrot_expires_after_step: bool = false
 	if _lifetime_remaining <= 0.0:
-		_begin_miss_disappear()
-		return
+		if attack_kind != FoodData.AttackKind.CARROT_SWEEP:
+			_begin_miss_disappear()
+			return
+		# 胡萝卜到期帧仍先走完剩余弧段，保证基础0.5秒包含完整180度单程。
+		active_delta = maxf(0.0, delta + _lifetime_remaining)
+		if active_delta <= 0.0:
+			_begin_miss_disappear()
+			return
+		carrot_expires_after_step = true
 	if attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
-		_process_orbit(delta)
+		_process_orbit(active_delta)
 	elif attack_kind == FoodData.AttackKind.CARROT_SWEEP:
-		_process_carrot_sweep(delta)
+		_process_carrot_sweep(active_delta)
 	else:
-		_process_forward_motion(delta)
+		_process_forward_motion(active_delta)
 	run.resolve_projectile_hits(self)
 	if is_queued_for_deletion():
+		return
+	if carrot_expires_after_step:
+		_begin_miss_disappear()
 		return
 	if (
 		attack_kind not in [
@@ -259,7 +271,7 @@ func _carrot_sweep_pivot_position() -> Vector3:
 	)
 
 
-# 胡萝卜模型作为餐车前方长杆，以扫掠端点方向旋转；实际命中仍由端点本体处理。
+# 胡萝卜模型作为餐车前方长杆，以扫掠端点方向旋转；实际命中读取场景中的整根盒形轮廓。
 func _update_carrot_visual_transform(center: Vector3) -> void:
 	var outward: Vector3 = position - center
 	var yaw: float = atan2(-outward.x, -outward.z)
@@ -267,7 +279,7 @@ func _update_carrot_visual_transform(center: Vector3) -> void:
 	_carrot_visual.rotation.y += yaw
 	var desired_pivot: Vector3 = center + Vector3(
 		0.0,
-		VISUAL_CENTER_Y,
+		_carrot_visual_ground_y(),
 		0.0
 	)
 	# 不补偿Model子节点偏移，保证CarrotVisual根节点的0点就是旋转轴心。
@@ -276,6 +288,10 @@ func _update_carrot_visual_transform(center: Vector3) -> void:
 		- position
 		+ _carrot_visual_base_position
 	)
+
+
+func _carrot_visual_ground_y() -> float:
+	return -_carrot_visual_base_bottom_y * absf(_carrot_visual.scale.y)
 
 
 func _process_orbit(delta: float) -> void:
@@ -362,6 +378,8 @@ func planar_position() -> Vector2:
 
 func overlaps_target(target_position: Vector3, target_radius: float) -> bool:
 	var projectile_position: Vector3 = run.logic_position(self)
+	if attack_kind == FoodData.AttackKind.CARROT_SWEEP:
+		return _carrot_hitbox_overlaps_target(target_position, target_radius)
 	if attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
 		return projectile_position.distance_to(target_position) <= radius + target_radius
 	var movement_overlaps: bool = _segment_overlaps_target(
@@ -383,6 +401,110 @@ func overlaps_target(target_position: Vector3, target_radius: float) -> bool:
 		clampf(target.y, min_z, max_z)
 	)
 	return closest.distance_to(target) <= radius + target_radius
+
+
+# 使用胡萝卜场景中的盒形轮廓判断它是否覆盖一个门板矩形。
+func overlaps_target_rect(target_space: Node3D, target_rect: Rect2) -> bool:
+	if attack_kind != FoodData.AttackKind.CARROT_SWEEP:
+		var local_position_3d: Vector3 = target_space.to_local(global_position)
+		return target_rect.grow(radius).has_point(
+			Vector2(local_position_3d.x, local_position_3d.z)
+		)
+	var corners: PackedVector2Array = _carrot_hitbox_corners_in_space(target_space)
+	if corners.is_empty():
+		var fallback_position: Vector3 = target_space.to_local(global_position)
+		return target_rect.grow(radius).has_point(
+			Vector2(fallback_position.x, fallback_position.z)
+		)
+	return _oriented_box_overlaps_rect(corners, target_rect.grow(radius))
+
+
+# 以整根胡萝卜的编辑器盒形轮廓处理食客与Boss目标，并将目标半径换算到轮廓局部坐标。
+func _carrot_hitbox_overlaps_target(target_position: Vector3, target_radius: float) -> bool:
+	if _carrot_damage_hitbox == null:
+		return _segment_overlaps_target(
+			Vector2(_previous_position.x, _previous_position.z),
+			Vector2(position.x, position.z),
+			Vector2(target_position.x, target_position.z),
+			radius + target_radius
+		)
+	var box_shape: BoxShape3D = _carrot_damage_hitbox.shape as BoxShape3D
+	if box_shape == null:
+		return _segment_overlaps_target(
+			Vector2(_previous_position.x, _previous_position.z),
+			Vector2(position.x, position.z),
+			Vector2(target_position.x, target_position.z),
+			radius + target_radius
+		)
+	var hitbox_to_run: Transform3D = (
+		run.global_transform.affine_inverse()
+		* _carrot_damage_hitbox.global_transform
+	)
+	var target_local: Vector3 = hitbox_to_run.affine_inverse() * target_position
+	var x_scale: float = maxf(0.001, hitbox_to_run.basis.x.length())
+	var z_scale: float = maxf(0.001, hitbox_to_run.basis.z.length())
+	var half_size: Vector3 = box_shape.size * 0.5
+	return (
+		absf(target_local.x) <= half_size.x + target_radius / x_scale
+		and absf(target_local.z) <= half_size.z + target_radius / z_scale
+	)
+
+
+# 将场景盒形轮廓的四个地面角点转换到目标节点局部空间，供门板矩形复用。
+func _carrot_hitbox_corners_in_space(target_space: Node3D) -> PackedVector2Array:
+	if _carrot_damage_hitbox == null:
+		return PackedVector2Array()
+	var box_shape: BoxShape3D = _carrot_damage_hitbox.shape as BoxShape3D
+	if box_shape == null:
+		return PackedVector2Array()
+	var hitbox_to_space: Transform3D = (
+		target_space.global_transform.affine_inverse()
+		* _carrot_damage_hitbox.global_transform
+	)
+	var half_size: Vector3 = box_shape.size * 0.5
+	var local_corners: Array[Vector3] = [
+		Vector3(-half_size.x, 0.0, -half_size.z),
+		Vector3(half_size.x, 0.0, -half_size.z),
+		Vector3(half_size.x, 0.0, half_size.z),
+		Vector3(-half_size.x, 0.0, half_size.z),
+	]
+	var corners: PackedVector2Array = PackedVector2Array()
+	for local_corner: Vector3 in local_corners:
+		var corner: Vector3 = hitbox_to_space * local_corner
+		corners.append(Vector2(corner.x, corner.z))
+	return corners
+
+
+# 用分离轴检测旋转盒与门板矩形，确保整根胡萝卜横跨门板时也能命中。
+func _oriented_box_overlaps_rect(corners: PackedVector2Array, target_rect: Rect2) -> bool:
+	var axes: Array[Vector2] = [Vector2.RIGHT, Vector2.UP]
+	for index: int in range(corners.size()):
+		var next_index: int = (index + 1) % corners.size()
+		var edge: Vector2 = corners[next_index] - corners[index]
+		if edge.length_squared() > 0.000001:
+			axes.append(Vector2(-edge.y, edge.x).normalized())
+	var rect_corners: Array[Vector2] = [
+		target_rect.position,
+		target_rect.position + Vector2(target_rect.size.x, 0.0),
+		target_rect.position + target_rect.size,
+		target_rect.position + Vector2(0.0, target_rect.size.y),
+	]
+	for axis: Vector2 in axes:
+		var box_min: float = INF
+		var box_max: float = -INF
+		for corner: Vector2 in corners:
+			var projection: float = corner.dot(axis)
+			box_min = minf(box_min, projection)
+			box_max = maxf(box_max, projection)
+		var rect_min: float = INF
+		var rect_max: float = -INF
+		for corner: Vector2 in rect_corners:
+			var projection: float = corner.dot(axis)
+			rect_min = minf(rect_min, projection)
+			rect_max = maxf(rect_max, projection)
+		if box_max < rect_min or rect_max < box_min:
+			return false
+	return true
 
 
 func _segment_overlaps_target(
@@ -453,10 +575,34 @@ func _resolve_visual_nodes() -> void:
 	_egg_visual_base_position = _egg_visual.position
 	_carrot_visual_base_position = _carrot_visual.position
 	_carrot_visual_base_rotation = _carrot_visual.rotation
-	var carrot_model: Node3D = _carrot_visual.get_node_or_null("Model") as Node3D
-	if carrot_model != null:
-		_carrot_model_base_scale = carrot_model.scale
+	_cache_carrot_visual_bottom_y()
+	_carrot_damage_hitbox = _carrot_visual.get_node_or_null("DamageHitbox") as CollisionShape3D
 	_visual_nodes_resolved = true
+
+
+# 读取包装场景中所有网格的最低点，避免胡萝卜沿用普通投射物高度后悬空。
+func _cache_carrot_visual_bottom_y() -> void:
+	var bottom_y: float = INF
+	var found_geometry: bool = false
+	for child: Node in _carrot_visual.find_children("*", "VisualInstance3D", true, false):
+		var visual: VisualInstance3D = child as VisualInstance3D
+		if visual == null:
+			continue
+		var visual_to_carrot: Transform3D = (
+			_carrot_visual.global_transform.affine_inverse()
+			* visual.global_transform
+		)
+		var local_aabb: AABB = visual.get_aabb()
+		for corner_index: int in range(8):
+			var local_corner: Vector3 = Vector3(
+				local_aabb.position.x + (local_aabb.size.x if (corner_index & 1) != 0 else 0.0),
+				local_aabb.position.y + (local_aabb.size.y if (corner_index & 2) != 0 else 0.0),
+				local_aabb.position.z + (local_aabb.size.z if (corner_index & 4) != 0 else 0.0)
+			)
+			var corner_in_carrot: Vector3 = visual_to_carrot * local_corner
+			bottom_y = minf(bottom_y, corner_in_carrot.y)
+			found_geometry = true
+	_carrot_visual_base_bottom_y = bottom_y if found_geometry else 0.0
 
 
 # 按食材类型装配模型，并把美术尺寸映射到现有表现与判定尺度。
@@ -538,16 +684,8 @@ func _configure_visual() -> void:
 		if _range_scale > MAXIMUM_VISUAL_RANGE_SCALE:
 			_configure_circle_outline(radius)
 	elif food_id == &"carrot":
-		var carrot_length: float = maxf(
-			CARROT_VISUAL_MIN_LENGTH,
-			_sweep_radius * CARROT_VISUAL_LENGTH_RATIO * visual_range_scale
-		)
-		var carrot_uniform_scale: float = carrot_length / maxf(
-			0.001,
-			CARROT_MODEL_SIZE.z * _carrot_model_base_scale.z
-		)
-		# 使用单一缩放因子，避免范围强化把胡萝卜沿长轴单独拉伸。
-		_carrot_visual.scale = _carrot_visual_base_scale * Vector3.ONE * carrot_uniform_scale
+		# 初始尺寸完全来自 carrot_3d.tscn；范围强化只在此基础上等比放大模型与整根判定形状。
+		_carrot_visual.scale = _carrot_visual_base_scale * Vector3.ONE * visual_range_scale
 		if _range_scale > MAXIMUM_VISUAL_RANGE_SCALE:
 			_configure_circle_outline(radius)
 	else:

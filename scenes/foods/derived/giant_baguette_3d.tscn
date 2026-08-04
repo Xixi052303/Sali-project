@@ -1,17 +1,18 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://dobpue0j1dm20"]
 
-[ext_resource type="Script" path="res://scripts/giant_baguette_3d.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://c06083rev447s" path="res://scripts/giant_baguette_3d.gd" id="1_script"]
 [ext_resource type="PackedScene" path="res://scenes/foods/base/baguette_3d.tscn" id="2_baguette"]
 
-[node name="GiantBaguette3D" type="Node3D"]
-rotation = Vector3(0, 1.5707963, 0)
+[node name="GiantBaguette3D" type="Node3D" unique_id=101781966]
+transform = Transform3D(7.54979e-08, 0, 1, 0, 1, 0, -1, 0, 7.54979e-08, 0, 0, 0)
 script = ExtResource("1_script")
 
-[node name="RollPivot" type="Node3D" parent="."]
+[node name="RollPivot" type="Node3D" parent="." unique_id=1528754007]
 unique_name_in_owner = true
 
-[node name="ModelScale" type="Node3D" parent="RollPivot"]
+[node name="ModelScale" type="Node3D" parent="RollPivot" unique_id=214527372]
 unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1.5, 0, 0, 0)
 
-[node name="BaguetteModel" parent="RollPivot/ModelScale" instance=ExtResource("2_baguette")]
-position = Vector3(0, -0.16503906, 0)
+[node name="BaguetteModel" parent="RollPivot/ModelScale" unique_id=1177992681 instance=ExtResource("2_baguette")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.16503906, 0)

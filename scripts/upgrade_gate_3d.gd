@@ -97,7 +97,12 @@ func try_receive_projectile(projectile: FoodProjectile3D) -> bool:
 	var local_position_xz: Vector2 = Vector2(local_position_3d.x, local_position_3d.z)
 	var hit_left: bool = local_position_xz.x < SIDE_DIVIDER_X
 	var panel: Rect2 = LEFT_PANEL if hit_left else RIGHT_PANEL
-	if not panel.grow(projectile.radius).has_point(local_position_xz):
+	var panel_overlaps: bool = (
+		projectile.overlaps_target_rect(self, panel)
+		if projectile.attack_kind == FoodData.AttackKind.CARROT_SWEEP
+		else panel.grow(projectile.radius).has_point(local_position_xz)
+	)
+	if not panel_overlaps:
 		return false
 	if not side_is_attackable(hit_left):
 		return false

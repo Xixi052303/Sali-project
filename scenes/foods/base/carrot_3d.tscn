@@ -2,7 +2,15 @@
 
 [ext_resource type="PackedScene" uid="uid://c7t3ge37a48jp" path="res://assets/models/投射物模型/萝卜.glb" id="1_model"]
 
+[sub_resource type="BoxShape3D" id="BoxShapeCarrotDamage"]
+size = Vector3(0.8, 0.8, 2.5)
+
 [node name="CarrotFood3D" type="Node3D" unique_id=186898772]
 
 [node name="Model" parent="." unique_id=1750037086 instance=ExtResource("1_model")]
-transform = Transform3D(2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5, 0, -0.634104, -1.2250657)
+transform = Transform3D(2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5, 0, 0.1655792, -1.2250657)
+
+[node name="DamageHitbox" type="CollisionShape3D" parent="." unique_id=1613912588]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.02077508, 0.72056425, -1.2250657)
+shape = SubResource("BoxShapeCarrotDamage")

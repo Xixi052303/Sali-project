@@ -1064,6 +1064,14 @@ func _test_new_food_behaviors() -> void:
 		),
 		"胡萝卜强化增加往返、接触范围和扫掠速度但不扩大终点"
 	)
+	_check(
+		is_equal_approx(
+			PI * carrot.sweep_radius / carrot.projectile_speed,
+			0.5,
+			0.0001
+		),
+		"胡萝卜基础弹速使180度单程历时0.5秒"
+	)
 
 	var carrot_projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
 	projectiles.add_child(carrot_projectile)
@@ -1086,9 +1094,14 @@ func _test_new_food_behaviors() -> void:
 		false
 	)
 	var carrot_visual: Node3D = carrot_projectile.get_node("CarrotVisual") as Node3D
+	var carrot_hitbox: CollisionShape3D = carrot_projectile.get_node(
+		"CarrotVisual/DamageHitbox"
+	) as CollisionShape3D
 	var carrot_pivot: Vector3 = carrot_projectile._carrot_sweep_pivot_position()
 	_check(
 		carrot_visual != null
+		and carrot_hitbox != null
+		and carrot_hitbox.shape is BoxShape3D
 		and is_equal_approx(
 			carrot_projectile._carrot_visual.scale.x,
 			carrot_projectile._carrot_visual.scale.y
@@ -1098,9 +1111,16 @@ func _test_new_food_behaviors() -> void:
 			carrot_projectile._carrot_visual.scale.z
 		)
 		and carrot_visual.global_position.distance_to(
-			carrot_pivot + Vector3(0.0, 0.82, 0.0)
+			carrot_pivot + Vector3(0.0, carrot_projectile._carrot_visual_ground_y(), 0.0)
 		) < 0.2,
-		"胡萝卜视觉等比缩放并以餐车前方原点为扫掠轴心"
+		"胡萝卜视觉等比缩放、以餐车前方原点为轴心并贴地"
+	)
+	_check(
+		carrot_projectile.overlaps_target(
+			carrot_pivot + Vector3(-1.0, 0.0, 0.0),
+			0.05
+		),
+		"胡萝卜整根盒形轮廓可以命中轴心与端点之间的目标"
 	)
 	_check(
 		absf(carrot_projectile._sweep_angle + PI * 0.5) < 0.0001
@@ -1724,7 +1744,8 @@ func _test_resources() -> void:
 		and food_projectile_preview.get_node_or_null("BaguetteVisual/Model") != null
 		and food_projectile_preview.get_node_or_null("MushroomVisual/Model") != null
 		and food_projectile_preview.get_node_or_null("EggVisual/Model") != null
-		and food_projectile_preview.get_node_or_null("CarrotVisual/Model") != null,
+		and food_projectile_preview.get_node_or_null("CarrotVisual/Model") != null
+		and food_projectile_preview.get_node_or_null("CarrotVisual/DamageHitbox") != null,
 		"五件基础食材均通过可调包装场景装配模型"
 	)
 	var puddle_preview: FoodPuddle3D = load(
@@ -1775,9 +1796,11 @@ func _test_resources() -> void:
 		and carrot.display_name == "胡萝卜"
 		and carrot.attack_kind == FoodData.AttackKind.CARROT_SWEEP
 		and carrot.pierce_count == 999
+		and is_equal_approx(carrot.projectile_speed, 2878.36, 0.01)
+		and is_equal_approx(carrot.base_lifetime, 0.5)
 		and is_equal_approx(carrot.sweep_radius, 458.1, 0.1)
 		and is_equal_approx(carrot.sweep_angle_degrees, 180.0),
-		"胡萝卜资源配置180度、458.1设计像素与999命中目标"
+		"胡萝卜资源配置0.5秒单程、2878.36弹速、180度与999命中目标"
 	)
 	_check(
 		is_equal_approx(potato.projectile_speed, 680.0)

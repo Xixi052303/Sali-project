@@ -269,9 +269,11 @@ func _test_weapon_workbook() -> void:
 		_check(
 			carrot.attack_kind == FoodData.AttackKind.CARROT_SWEEP
 			and carrot.pierce_count == 999
+			and is_equal_approx(carrot.projectile_speed, 2878.36, 0.01)
+			and is_equal_approx(carrot.base_lifetime, 0.5)
 			and is_equal_approx(carrot.sweep_radius, 458.1053)
 			and is_equal_approx(carrot.sweep_angle_degrees, 180.0),
-			"胡萝卜从武器表读取999穿透、458.1像素半径和180度扫掠"
+			"胡萝卜从武器表读取2878.36弹速、0.5秒持续、999穿透和180度扫掠"
 		)
 	_check(is_equal_approx(result.baguette_giant_interval_seconds, 3.0), "巨型法棍间隔由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_attack_speed_scale, 0.05), "巨型法棍攻速倍率由武器表读取")

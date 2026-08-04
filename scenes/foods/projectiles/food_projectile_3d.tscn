@@ -4,7 +4,7 @@
 [ext_resource type="PackedScene" path="res://scenes/foods/base/potato_3d.tscn" id="2_potato"]
 [ext_resource type="PackedScene" path="res://scenes/foods/base/baguette_3d.tscn" id="3_baguette"]
 [ext_resource type="PackedScene" path="res://scenes/foods/base/mushroom_3d.tscn" id="4_mushroom"]
-[ext_resource type="PackedScene" path="res://scenes/foods/derived/giant_baguette_3d.tscn" id="5_giant_baguette"]
+[ext_resource type="PackedScene" uid="uid://dobpue0j1dm20" path="res://scenes/foods/derived/giant_baguette_3d.tscn" id="5_giant_baguette"]
 [ext_resource type="PackedScene" uid="uid://bmujuw7gx3hft" path="res://scenes/foods/base/egg_3d.tscn" id="6_egg"]
 [ext_resource type="PackedScene" uid="uid://pubm03ww0hks" path="res://scenes/foods/base/carrot_3d.tscn" id="7_carrot"]
 
@@ -34,7 +34,6 @@ visible = false
 
 [node name="GiantBaguetteVisual" parent="." unique_id=963558960 instance=ExtResource("5_giant_baguette")]
 unique_name_in_owner = true
-transform = Transform3D(7.54979e-08, 0, 1, 0, 1, 0, -1, 0, 7.54979e-08, 0, 0, 0)
 visible = false
 
 [node name="MushroomVisual" parent="." unique_id=2094771665 instance=ExtResource("4_mushroom")]
@@ -47,6 +46,7 @@ visible = false
 
 [node name="CarrotVisual" parent="." unique_id=906923133 instance=ExtResource("7_carrot")]
 unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.8375957)
 
 [node name="RangeCircleOutline" type="MeshInstance3D" parent="." unique_id=1149133773]
 unique_name_in_owner = true
