@@ -50,7 +50,8 @@ func configure(
 	start_food_gate = is_start_gate
 	baseline_appetite = maxf(1.0, gate_baseline_appetite)
 	spawn_index = index
-	position = Vector3.ZERO if start_food_gate else Vector3(0.0, 0.0, Playfield.FORWARD_SPAWN_Z)
+	# 开局门也从远端屏外进入，避免开始出餐后在道路中段突然出现。
+	position = Vector3(0.0, 0.0, Playfield.FORWARD_SPAWN_Z)
 	if not start_food_gate:
 		left_base_health = baseline_appetite * (1.0 + left_upgrade.value_ratio)
 		right_base_health = baseline_appetite * (1.0 + right_upgrade.value_ratio)

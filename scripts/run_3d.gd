@@ -1278,7 +1278,7 @@ func _next_safe_spawn_request_index() -> int:
 
 # 对候选对象与全部活动前进对象做匀速路径预测，追尾风险解除后才生成。
 func _spawn_request_is_safe(request: ForwardSpawnRequest) -> bool:
-	var candidate_z: float = 0.0 if request.start_food_gate else Playfield.FORWARD_SPAWN_Z
+	var candidate_z: float = Playfield.FORWARD_SPAWN_Z
 	var speed_multiplier: float = forward_speed_multiplier()
 	var candidate_speed: float = FORWARD_GATE_SPEED * speed_multiplier
 	var candidate_is_customer: bool = false

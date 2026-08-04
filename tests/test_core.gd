@@ -1480,6 +1480,7 @@ func _test_upgrade_gate() -> void:
 
 	var start_gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
 	start_gate.configure(null, left, right, true, 100.0, 2)
+	_check(is_equal_approx(start_gate.position.z, Playfield.FORWARD_SPAWN_Z), "开局食材门从屏外远端生成")
 	_check(not start_gate.side_is_attackable(true), "开局食材门不可攻击")
 	_check(start_gate.target_for_cart_x(2.0) == null, "开局食材门不进入自动目标池")
 	start_gate.free()
