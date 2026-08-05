@@ -315,7 +315,9 @@ func _ready() -> void:
 	state.inventory_changed.connect(_refresh_hud_inventory)
 	weapon_controller.food_added.connect(_on_weapon_food_added)
 	weapon_controller.food_removed.connect(_on_weapon_food_removed)
-	weapon_controller.cooking_progress_changed.connect(hud.set_cooking_progress)
+	weapon_controller.cooking_progress_changed.connect(
+		_on_player_cooking_progress_changed.bind(1)
+	)
 	hud.special_choice_selected.connect(_on_special_choice_selected)
 	hud.restart_requested.connect(_on_restart_requested)
 	hud.pause_requested.connect(_on_pause_requested)
@@ -429,7 +431,7 @@ func _register_player_context(
 			_on_player_weapon_food_removed.bind(player_slot)
 		)
 		player_weapon_controller.cooking_progress_changed.connect(
-			_on_player_cooking_progress_changed
+			_on_player_cooking_progress_changed.bind(player_slot)
 		)
 	return context
 
@@ -1522,23 +1524,35 @@ func _reload_after_network_disconnect() -> void:
 
 
 func _on_player_weapon_food_added(food: FoodData, player_slot: int) -> void:
-	if _network_session.local_slot == player_slot:
-		hud.add_cooking_food(food, _player_contexts[player_slot].state.food_level(food.id))
+	if not _is_local_hud_player(player_slot):
+		return
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	if context == null:
+		return
+	hud.add_cooking_food(food, context.state.food_level(food.id))
 
 
 func _on_player_weapon_food_removed(food_id: StringName, player_slot: int) -> void:
-	if _network_session.local_slot == player_slot:
+	if _is_local_hud_player(player_slot):
 		hud.remove_cooking_food(food_id)
 
 
 func _on_player_cooking_progress_changed(
 	food_id: StringName,
 	progress: float,
-	remaining_seconds: float
+	remaining_seconds: float,
+	player_slot: int
 ) -> void:
-	if not _network_active or _network_session.local_slot <= 0:
+	if not _is_local_hud_player(player_slot):
 		return
 	hud.set_cooking_progress(food_id, progress, remaining_seconds)
+
+
+# HUD 只接收当前窗口本地玩家的食材状态；远端构筑仍保留在对应上下文中参与网络重放。
+func _is_local_hud_player(player_slot: int) -> bool:
+	if not _network_active:
+		return player_slot == 1
+	return _network_session != null and int(_network_session.local_slot) == player_slot
 
 
 # 从启动菜单进入单局，只有这里把 INTRO 变为正式前进阶段。
@@ -4087,11 +4101,11 @@ func _on_resume_requested() -> void:
 
 
 func _on_weapon_food_added(food: FoodData) -> void:
-	hud.add_cooking_food(food, state.food_level(food.id))
+	_on_player_weapon_food_added(food, 1)
 
 
 func _on_weapon_food_removed(food_id: StringName) -> void:
-	hud.remove_cooking_food(food_id)
+	_on_player_weapon_food_removed(food_id, 1)
 
 
 func _refresh_hud_inventory() -> void:

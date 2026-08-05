@@ -2,24 +2,24 @@
 
 [ext_resource type="Script" uid="uid://dpxqbcqx1h5dj" path="res://scripts/run_3d.gd" id="1_run"]
 [ext_resource type="PackedScene" uid="uid://dnvm7mnyih7j1" path="res://scenes/world_background_3d.tscn" id="2_background"]
-[ext_resource type="PackedScene" path="res://scenes/cart_3d.tscn" id="3_cart"]
+[ext_resource type="PackedScene" uid="uid://ci5w3hhytrenf" path="res://scenes/cart_3d.tscn" id="3_cart"]
 [ext_resource type="Script" uid="uid://cff5044r5e6v1" path="res://scripts/weapon_controller_3d.gd" id="4_weapon"]
 [ext_resource type="Script" uid="uid://b74tmjw3khsq6" path="res://scripts/encounter_director.gd" id="5_director"]
 [ext_resource type="PackedScene" path="res://scenes/hud.tscn" id="6_hud"]
 [ext_resource type="Resource" uid="uid://b8phk8ionkg3w" path="res://data/foods/potato.tres" id="7_potato"]
 [ext_resource type="Resource" uid="uid://ff1agbbjkhr6" path="res://data/foods/baguette.tres" id="8_baguette"]
-[ext_resource type="Resource" path="res://data/customers/basic_guest.tres" id="9_basic"]
-[ext_resource type="Resource" path="res://data/customers/fast_guest.tres" id="10_fast"]
-[ext_resource type="Resource" path="res://data/customers/ranged_guest.tres" id="11_ranged"]
+[ext_resource type="Resource" uid="uid://baadmr2q8gkbg" path="res://data/customers/basic_guest.tres" id="9_basic"]
+[ext_resource type="Resource" uid="uid://bsau67ejglmf2" path="res://data/customers/fast_guest.tres" id="10_fast"]
+[ext_resource type="Resource" uid="uid://mxo1tkedl7w2" path="res://data/customers/ranged_guest.tres" id="11_ranged"]
 [ext_resource type="Resource" uid="uid://cxmke6xw32fsj" path="res://data/customers/elite_guest.tres" id="12_elite"]
 [ext_resource type="Resource" uid="uid://c6u31iw01pg66" path="res://data/bosses/prototype_boss.tres" id="13_boss"]
 [ext_resource type="Resource" uid="uid://88dew4uimxmv" path="res://data/timelines/vertical_slice.tres" id="14_timeline"]
 [ext_resource type="Resource" uid="uid://ct6d28ydagjg2" path="res://data/foods/mushroom.tres" id="15_mushroom"]
 [ext_resource type="PackedScene" path="res://scenes/debug_menu.tscn" id="16_debug"]
-[ext_resource type="PackedScene" path="res://scenes/main_menu.tscn" id="17_main_menu"]
+[ext_resource type="PackedScene" uid="uid://cxf6qnvl8sme1" path="res://scenes/main_menu.tscn" id="17_main_menu"]
 [ext_resource type="Resource" path="res://data/foods/egg.tres" id="18_egg"]
-[ext_resource type="Resource" path="res://data/foods/carrot.tres" id="19_carrot"]
-[ext_resource type="Resource" path="res://data/foods/egg_puddle.tres" id="20_egg_puddle"]
+[ext_resource type="Resource" uid="uid://bowcxk4njy7tl" path="res://data/foods/carrot.tres" id="19_carrot"]
+[ext_resource type="Resource" uid="uid://w72spn4rh17e" path="res://data/foods/egg_puddle.tres" id="20_egg_puddle"]
 
 [node name="Run3D" type="Node3D" unique_id=1265626159]
 script = ExtResource("1_run")
@@ -44,23 +44,23 @@ unique_name_in_owner = true
 [node name="Entities" type="Node3D" parent="." unique_id=1831162849]
 unique_name_in_owner = true
 
-[node name="CustomerSpawner" type="MultiplayerSpawner" parent="."]
+[node name="CustomerSpawner" type="MultiplayerSpawner" parent="." unique_id=260913664]
 unique_name_in_owner = true
 spawn_path = NodePath("../Entities")
 
-[node name="GateSpawner" type="MultiplayerSpawner" parent="."]
+[node name="GateSpawner" type="MultiplayerSpawner" parent="." unique_id=1233629160]
 unique_name_in_owner = true
 spawn_path = NodePath("../Gates")
 
-[node name="DropSpawner" type="MultiplayerSpawner" parent="."]
+[node name="DropSpawner" type="MultiplayerSpawner" parent="." unique_id=1205663492]
 unique_name_in_owner = true
 spawn_path = NodePath("../Drops")
 
-[node name="BossSpawner" type="MultiplayerSpawner" parent="."]
+[node name="BossSpawner" type="MultiplayerSpawner" parent="." unique_id=1565903945]
 unique_name_in_owner = true
 spawn_path = NodePath("../Entities")
 
-[node name="Players" type="Node3D" parent="."]
+[node name="Players" type="Node3D" parent="." unique_id=638577471]
 unique_name_in_owner = true
 
 [node name="Projectiles" type="Node3D" parent="." unique_id=626060993]
@@ -85,8 +85,8 @@ timeline = ExtResource("14_timeline")
 [node name="Hud" parent="." unique_id=2138075045 instance=ExtResource("6_hud")]
 unique_name_in_owner = true
 
-[node name="DebugMenu" parent="." instance=ExtResource("16_debug")]
+[node name="DebugMenu" parent="." unique_id=647232018 instance=ExtResource("16_debug")]
 unique_name_in_owner = true
 
-[node name="MainMenu" parent="." instance=ExtResource("17_main_menu")]
+[node name="MainMenu" parent="." unique_id=1723822996 instance=ExtResource("17_main_menu")]
 unique_name_in_owner = true

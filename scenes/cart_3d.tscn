@@ -4,7 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://yjttt8tqvyuq" path="res://assets/models/角色/厨师.glb" id="2_chef"]
 [ext_resource type="PackedScene" uid="uid://kw0lsivosw25" path="res://assets/models/角色/餐车.glb" id="3_cart"]
 [ext_resource type="Shader" uid="uid://honwlvkw4725" path="res://shader/spatial_cart_ghost.gdshader" id="4_ghost_shader"]
-[ext_resource type="CylinderMesh" path="res://scenes/visuals/peer_indicator_cone.tres" id="5_peer_indicator_mesh"]
+[ext_resource type="CylinderMesh" uid="uid://cimwcvxm4sac6" path="res://scenes/visuals/peer_indicator_cone.tres" id="5_peer_indicator_mesh"]
 
 [sub_resource type="StandardMaterial3D" id="MatShadow"]
 albedo_color = Color(0.168627, 0.141176, 0.113725, 1)
@@ -128,7 +128,7 @@ mesh = ExtResource("5_peer_indicator_mesh")
 
 [node name="PeerIndicatorLabel" type="Label3D" parent="PeerIndicator" unique_id=987931952]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.68, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9803145, 0)
 pixel_size = 0.008
 no_depth_test = true
 render_priority = 111
