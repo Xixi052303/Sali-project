@@ -287,15 +287,21 @@ func receive_damage(hit_left: bool, amount: float) -> void:
 		else:
 			left_upgrade_health = maxf(0.0, left_upgrade_health - amount)
 			left_upgrade.set_value_ratio(1.0 - left_upgrade_health / baseline_appetite)
-		_left_hit_feedback = 0.12
 	else:
 		if right_base_health > 0.0001:
 			right_base_health = maxf(0.0, right_base_health - amount)
 		else:
 			right_upgrade_health = maxf(0.0, right_upgrade_health - amount)
 			right_upgrade.set_value_ratio(1.0 - right_upgrade_health / baseline_appetite)
-		_right_hit_feedback = 0.12
 	_refresh_labels()
+	play_hit_feedback(hit_left)
+
+
+func play_hit_feedback(hit_left: bool) -> void:
+	if hit_left:
+		_left_hit_feedback = 0.12
+	else:
+		_right_hit_feedback = 0.12
 	_refresh_feedback()
 
 

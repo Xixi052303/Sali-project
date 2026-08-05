@@ -50,6 +50,14 @@ var _collision_shape: CollisionShape3D
 @onready var _maximum_durability_label: Label3D = %DurabilityLabel2
 @onready var _effective_durability_label: Label3D = %ShieldDurabilityLabel
 @onready var _maximum_feedback_label: Label3D = %MaximumFeedbackLabel
+@onready var _peer_indicator: Node3D = %PeerIndicator
+@onready var _peer_indicator_mesh: MeshInstance3D = %PeerIndicatorMesh
+@onready var _peer_indicator_label: Label3D = %PeerIndicatorLabel
+
+
+func _ready() -> void:
+	# 场景默认保留指针用于编辑器预览，实际运行先隐藏并等待联机槽位判定。
+	set_peer_indicator_visible(false, player_slot, Color.WHITE)
 
 
 func configure(
@@ -152,6 +160,24 @@ func _set_pointer_target(screen_position: Vector2) -> void:
 
 func set_player_slot(slot: int) -> void:
 	player_slot = maxi(1, slot)
+
+
+# 设置队友餐车的编辑器可调指针；本机餐车传入 false 后只保留餐车本体。
+func set_peer_indicator_visible(should_show: bool, slot: int, color: Color) -> void:
+	_resolve_runtime_nodes()
+	if _peer_indicator == null:
+		return
+	_peer_indicator.visible = should_show
+	if _peer_indicator_label != null:
+		_peer_indicator_label.text = "P%d" % maxi(1, slot)
+		_peer_indicator_label.modulate = color
+		_peer_indicator_label.outline_modulate = color.darkened(0.65)
+	if _peer_indicator_mesh != null:
+		var material: StandardMaterial3D = (
+			_peer_indicator_mesh.material_override as StandardMaterial3D
+		)
+		if material != null:
+			material.albedo_color = color
 
 
 func set_input_enabled(enabled: bool) -> void:
@@ -401,4 +427,14 @@ func _resolve_runtime_nodes() -> void:
 	if _maximum_feedback_label == null:
 		_maximum_feedback_label = get_node_or_null(
 			"StatusBillboard/MaximumFeedbackLabel"
+		) as Label3D
+	if _peer_indicator == null:
+		_peer_indicator = get_node_or_null("PeerIndicator") as Node3D
+	if _peer_indicator_mesh == null:
+		_peer_indicator_mesh = get_node_or_null(
+			"PeerIndicator/PeerIndicatorMesh"
+		) as MeshInstance3D
+	if _peer_indicator_label == null:
+		_peer_indicator_label = get_node_or_null(
+			"PeerIndicator/PeerIndicatorLabel"
 		) as Label3D

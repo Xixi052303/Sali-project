@@ -308,8 +308,6 @@ func _ready() -> void:
 	director.event_triggered.connect(_on_timeline_event)
 	cart.damaged.connect(_on_cart_damaged)
 	cart.destroyed.connect(_on_cart_destroyed)
-	state.durability_changed.connect(hud.set_durability)
-	state.durability_changed.connect(cart.set_durability_display)
 	state.inventory_changed.connect(_refresh_hud_inventory)
 	weapon_controller.food_added.connect(_on_weapon_food_added)
 	weapon_controller.food_removed.connect(_on_weapon_food_removed)
@@ -411,10 +409,10 @@ func _register_player_context(
 	_player_contexts[player_slot] = context
 	player_cart.set_player_slot(player_slot)
 	player_cart.target_changed.connect(_on_player_target_changed.bind(player_slot))
+	player_state.durability_changed.connect(
+		_on_player_context_durability_changed.bind(player_slot)
+	)
 	if player_slot != 1:
-		player_state.durability_changed.connect(
-			_on_player_context_durability_changed.bind(player_slot)
-		)
 		player_state.inventory_changed.connect(
 			_on_player_context_inventory_changed.bind(player_slot)
 		)
@@ -437,7 +435,31 @@ func _on_player_context_durability_changed(
 	shield: float,
 	player_slot: int
 ) -> void:
-	if _network_active and player_slot == _network_session.local_slot:
+	_refresh_player_durability_display(player_slot, current, maximum, shield)
+	if _network_active:
+		_update_party_hud()
+
+
+# 每个窗口都刷新所有餐车头顶状态，但底部精确耐久只属于本机槽位。
+func _refresh_player_durability_display(
+	player_slot: int,
+	current: float,
+	maximum: float,
+	shield: float
+) -> void:
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	if context == null:
+		return
+	if context.cart != null and is_instance_valid(context.cart):
+		context.cart.set_durability_display(current, maximum, shield)
+	var is_local_player: bool = (
+		not _network_active
+		or (
+			_network_session != null
+			and player_slot == int(_network_session.local_slot)
+		)
+	)
+	if is_local_player and hud != null:
 		hud.set_durability(current, maximum, shield)
 
 
@@ -528,6 +550,11 @@ func _on_network_match_started(seed: int, player_count: int, roster: Array[Dicti
 		context.cart.set_input_enabled(is_local)
 		context.cart.set_network_interpolation(
 			_network_session.is_client() and not is_local
+		)
+		context.cart.set_peer_indicator_visible(
+			not is_local,
+			player_slot,
+			_network_session.player_color(player_slot)
 		)
 		context.weapon_controller.set_player_slot(player_slot)
 		# 主机计算所有玩家的攻击；客户端只预测本机，远端由房主发射事件重放。
@@ -973,17 +1000,12 @@ func _apply_network_snapshot(snapshot: Dictionary) -> void:
 			else PlayerRunContext.LifeState.ALIVE
 		)
 		context.cart.set_ghost_visual(ghost)
-		if _network_session.is_client() and player_slot == _network_session.local_slot:
-			hud.set_durability(
-				context.state.current_durability,
-				context.state.maximum_durability,
-				context.state.temporary_shield
-			)
-			context.cart.set_durability_display(
-				context.state.current_durability,
-				context.state.maximum_durability,
-				context.state.temporary_shield
-			)
+		_refresh_player_durability_display(
+			player_slot,
+			context.state.current_durability,
+			context.state.maximum_durability,
+			context.state.temporary_shield
+		)
 	_update_party_hud()
 
 
@@ -1253,7 +1275,7 @@ func _spawn_customer_from_network_payload(payload: Variant) -> Node:
 		customer,
 		[NodePath(":position"), NodePath(":active"), NodePath(":remaining_appetite")]
 	)
-	customers.append(customer)
+	_track_customer(customer)
 	return customer
 
 
@@ -1375,14 +1397,31 @@ func _spawn_boss_from_network_payload(payload: Variant) -> Node:
 	return spawned_boss
 
 
+# 客户端的原生 despawn 可能先释放节点；查找时先剔除遗留引用再做强类型访问。
 func _find_customer_by_spawn_index(spawn_index: int) -> Customer3D:
-	for customer: Customer3D in customers.duplicate():
-		if not is_instance_valid(customer):
-			customers.erase(customer)
+	var index: int = 0
+	while index < customers.size():
+		var candidate: Variant = customers[index]
+		if not is_instance_valid(candidate):
+			customers.remove_at(index)
 			continue
+		var customer: Customer3D = candidate as Customer3D
 		if customer.spawn_index == spawn_index:
 			return customer
+		index += 1
 	return null
+
+
+# 统一维护食客集合生命周期，确保 MultiplayerSpawner 销毁客户端节点时同步注销引用。
+func _track_customer(customer: Customer3D) -> void:
+	if customer == null or customers.has(customer):
+		return
+	customers.append(customer)
+	customer.tree_exiting.connect(_on_customer_tree_exiting.bind(customer), CONNECT_ONE_SHOT)
+
+
+func _on_customer_tree_exiting(customer: Customer3D) -> void:
+	customers.erase(customer)
 
 
 func _find_gate_by_spawn_index(spawn_index: int) -> UpgradeGate3D:
@@ -2097,7 +2136,10 @@ func _get_priority_target(food: FoodData, player_slot: int = 1) -> Node3D:
 		var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
 		if reward_gate.position.z >= source_cart.position.z:
 			continue
-		var reward_target: Node3D = reward_gate.target_for_cart_x(source_cart.position.x)
+		var reward_target: Node3D = reward_gate.target_for_cart_x(
+			source_cart.position.x,
+			player_slot
+		)
 		if reward_target == null:
 			continue
 		if not _target_is_allowed_for_food(food, logic_position(reward_target), source_cart):
@@ -2243,7 +2285,7 @@ func spawn_projectile_burst(
 	})
 
 
-# 客户端重放房主发来的发射批次，不触发本地命中或统计。
+# 客户端重放房主发来的发射批次，并只复现命中表现，不写入权威数值或统计。
 func replay_network_projectile_burst(payload: Dictionary) -> void:
 	if not _network_active or not _network_session.is_client():
 		return
@@ -2334,13 +2376,15 @@ func _projectile_environment_velocity(food: FoodData, giant_baguette: bool) -> V
 func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 	if not is_instance_valid(projectile) or projectile.is_queued_for_deletion():
 		return
-	if _network_active and _network_session.is_client():
-		return
+	# 客户端保留同一套几何与穿透回收，避免远端子弹穿模；数值始终只由房主写入。
+	var client_visual_only: bool = _network_active and _network_session.is_client()
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active or not projectile.can_hit(customer):
 			continue
 		if projectile.overlaps_target(logic_position(customer), customer.hit_radius()):
-			if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
+			if client_visual_only:
+				customer.play_hit_feedback()
+			elif projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
 				_spawn_egg_puddle(projectile, customer)
 			else:
 				_apply_customer_satisfaction(
@@ -2365,7 +2409,9 @@ func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 			return
 	if boss != null and is_instance_valid(boss) and boss.active and projectile.can_hit(boss):
 		if projectile.overlaps_target(logic_position(boss), boss.hit_radius()):
-			if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
+			if client_visual_only:
+				boss.play_hit_feedback()
+			elif projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
 				_spawn_egg_puddle(projectile, boss)
 			else:
 				_apply_boss_satisfaction(
@@ -2471,6 +2517,7 @@ func resolve_gate_projectile_hit(
 	projectile: FoodProjectile3D
 ) -> void:
 	if _network_active and _network_session.is_client():
+		gate.play_hit_feedback(hit_left)
 		return
 	if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
 		_spawn_egg_puddle(projectile, target)
@@ -2484,6 +2531,7 @@ func resolve_reward_projectile_hit(
 	projectile: FoodProjectile3D
 ) -> void:
 	if _network_active and _network_session.is_client():
+		reward_gate.play_hit_feedback()
 		return
 	if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
 		_spawn_egg_puddle(projectile, target)
@@ -3110,7 +3158,7 @@ func _spawn_customer_now(
 	customer.collided_with_cart.connect(_on_customer_collided_with_cart)
 	customer.escaped.connect(_on_customer_escaped)
 	customer.ranged_attack.connect(_on_customer_ranged_attack)
-	customers.append(customer)
+	_track_customer(customer)
 
 
 func _spawn_elite_now() -> void:
@@ -3147,7 +3195,7 @@ func _spawn_elite_now() -> void:
 	elite.collided_with_cart.connect(_on_customer_collided_with_cart)
 	elite.escaped.connect(_on_customer_escaped)
 	elite.ranged_attack.connect(_on_customer_ranged_attack)
-	customers.append(elite)
+	_track_customer(elite)
 	hud.set_phase("精英检查 · 六区无法绕行")
 	hud.show_toast("六席贵客挡住整条路，尽快满足它！", Color("#f0c45f"))
 

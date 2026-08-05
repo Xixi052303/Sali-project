@@ -6,6 +6,10 @@ var _failures: int = 0
 func _init() -> void:
 	_test_playfield()
 	_test_customer_cart_collision()
+	_test_network_customer_lifecycle()
+	_test_network_projectile_presentation()
+	_test_network_durability_synchronization()
+	_test_peer_indicator_scene()
 	_test_progression_store()
 	_test_cart_invincibility_duration()
 	_test_3d_plane_rules()
@@ -99,6 +103,400 @@ func _test_customer_cart_collision() -> void:
 	cart.free()
 	field.free()
 	run.free()
+
+
+# 已被原生联机生成器释放的食客引用必须能安全清理，不能在强类型赋值时中断。
+func _test_network_customer_lifecycle() -> void:
+	var run: RunController3D = RunController3D.new()
+	var customer: Customer3D = Customer3D.new()
+	customer.spawn_index = 17
+	run.customers.append(customer)
+	customer.free()
+	_check(
+		run._find_customer_by_spawn_index(17) == null and run.customers.is_empty(),
+		"联机食客销毁后会安全剔除失效引用"
+	)
+	run.free()
+
+
+# 联机客户端只复现命中几何与反馈，数值结算和随身食材归属仍以房主槽位为准。
+func _test_network_projectile_presentation() -> void:
+	var projectile_scene: PackedScene = load(
+		"res://scenes/foods/projectiles/food_projectile_3d.tscn"
+	) as PackedScene
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var customer_scene: PackedScene = load(
+		"res://scenes/characters/customers/customer_base_3d.tscn"
+	) as PackedScene
+	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
+	var mushroom: FoodData = load("res://data/foods/mushroom.tres") as FoodData
+	var carrot: FoodData = load("res://data/foods/carrot.tres") as FoodData
+	var customer_data: CustomerData = load(
+		"res://data/customers/basic_guest.tres"
+	) as CustomerData
+	_check(
+		projectile_scene != null
+		and cart_scene != null
+		and customer_scene != null
+		and potato != null
+		and mushroom != null
+		and carrot != null
+		and customer_data != null,
+		"联机投射物表现测试资源可加载"
+	)
+	if (
+		projectile_scene == null
+		or cart_scene == null
+		or customer_scene == null
+		or potato == null
+		or mushroom == null
+		or carrot == null
+		or customer_data == null
+	):
+		return
+
+	var run: RunController3D = RunController3D.new()
+	var field: Playfield = Playfield.new()
+	var local_state: RunState = RunState.new()
+	var remote_state: RunState = RunState.new()
+	var local_cart: Cart3D = cart_scene.instantiate() as Cart3D
+	var remote_cart: Cart3D = cart_scene.instantiate() as Cart3D
+	var projectiles: Node3D = Node3D.new()
+	var gates: Node3D = Node3D.new()
+	var drops: Node3D = Node3D.new()
+	var remote_weapon: WeaponController3D = WeaponController3D.new()
+	run.state = local_state
+	run.playfield = field
+	run.cart = local_cart
+	run.projectiles = projectiles
+	run.gates = gates
+	run.drops = drops
+	run.add_child(field)
+	run.add_child(local_cart)
+	run.add_child(remote_cart)
+	run.add_child(projectiles)
+	run.add_child(gates)
+	run.add_child(drops)
+	run.add_child(remote_weapon)
+	local_cart.position = Vector3(2.0, 0.0, Playfield.CART_Z)
+	remote_cart.position = Vector3(5.2, 0.0, Playfield.CART_Z)
+	local_cart.configure(local_state, field)
+	remote_cart.configure(remote_state, field)
+	remote_weapon.configure(run, remote_cart, remote_state, 2)
+	var remote_context: PlayerRunContext = PlayerRunContext.new()
+	remote_context.configure(2, 2, remote_state, remote_cart, remote_weapon)
+	run._player_contexts[2] = remote_context
+
+	var remote_mushroom: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	projectiles.add_child(remote_mushroom)
+	remote_mushroom.configure(
+		run,
+		remote_cart.position,
+		Vector3.FORWARD,
+		mushroom,
+		7.0,
+		mushroom.orbit_angular_speed,
+		Vector3.ZERO,
+		Playfield.design_to_world(mushroom.projectile_radius),
+		mushroom.base_lifetime,
+		1,
+		null,
+		false,
+		0.0,
+		false,
+		0.0,
+		false,
+		2
+	)
+	remote_mushroom._process_orbit(0.0)
+	var mushroom_radius: float = Playfield.design_to_world(mushroom.orbit_radius)
+	_check(
+		is_equal_approx(remote_mushroom.position.distance_to(remote_cart.position), mushroom_radius)
+		and not is_equal_approx(
+			remote_mushroom.position.distance_to(local_cart.position),
+			mushroom_radius
+		),
+		"P2蘑菇在所有窗口都围绕P2餐车显示"
+	)
+
+	var remote_carrot: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	projectiles.add_child(remote_carrot)
+	remote_carrot.configure(
+		run,
+		remote_cart.position,
+		Vector3.FORWARD,
+		carrot,
+		7.0,
+		Playfield.design_to_world(carrot.sweep_radius) * carrot.orbit_angular_speed,
+		Vector3.ZERO,
+		Playfield.design_to_world(carrot.projectile_radius),
+		carrot.base_lifetime,
+		carrot.pierce_count,
+		null,
+		false,
+		0.0,
+		false,
+		0.0,
+		false,
+		2
+	)
+	_check(
+		remote_carrot._carrot_sweep_pivot_position().is_equal_approx(
+			remote_cart.position
+			+ Vector3(0.0, 0.0, FoodProjectile3D.CARROT_SWEEP_PIVOT_Z_OFFSET)
+		),
+		"P2胡萝卜在所有窗口都锚定P2餐车前方"
+	)
+
+	var customer: Customer3D = customer_scene.instantiate() as Customer3D
+	customer.position = Vector3(4.2, 0.0, 8.0)
+	run.add_child(customer)
+	customer.configure(customer_data, run, 42, 60.0)
+	run._track_customer(customer)
+	var session_script: Script = load("res://scripts/network/network_session.gd") as Script
+	var session: Node = session_script.new() as Node
+	run._network_session = session
+	run._network_active = true
+	session.set("mode", 2)
+	var client_projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	projectiles.add_child(client_projectile)
+	client_projectile.configure(
+		run,
+		customer.position,
+		Vector3.FORWARD,
+		potato,
+		10.0,
+		Playfield.design_to_world(potato.projectile_speed),
+		Vector3.ZERO,
+		Playfield.design_to_world(potato.projectile_radius),
+		potato.base_lifetime,
+		1,
+		null,
+		false,
+		0.0,
+		false,
+		0.0,
+		false,
+		2
+	)
+	var appetite_before_client_hit: float = customer.remaining_appetite
+	run.resolve_projectile_hits(client_projectile)
+	_check(
+		is_equal_approx(customer.remaining_appetite, appetite_before_client_hit)
+		and customer._hit_feedback_remaining > 0.0
+		and client_projectile.remaining_hits == 0,
+		"加入者窗口复现队友投射物命中与回收，但不重复扣除权威胃口"
+	)
+
+	customer._hit_feedback_remaining = 0.0
+	session.set("mode", 1)
+	var host_projectile: FoodProjectile3D = projectile_scene.instantiate() as FoodProjectile3D
+	projectiles.add_child(host_projectile)
+	host_projectile.configure(
+		run,
+		customer.position,
+		Vector3.FORWARD,
+		potato,
+		10.0,
+		Playfield.design_to_world(potato.projectile_speed),
+		Vector3.ZERO,
+		Playfield.design_to_world(potato.projectile_radius),
+		potato.base_lifetime,
+		1,
+		null,
+		false,
+		0.0,
+		false,
+		0.0,
+		false,
+		2
+	)
+	run.resolve_projectile_hits(host_projectile)
+	_check(
+		is_equal_approx(customer.remaining_appetite, appetite_before_client_hit - 10.0)
+		and customer._hit_feedback_remaining > 0.0
+		and host_projectile.remaining_hits == 0,
+		"房主权威命中扣除胃口，并与加入者窗口使用相同命中特效"
+	)
+	session.free()
+	run.free()
+
+
+# 玩家快照必须刷新每辆餐车，远端状态信号不得覆盖本机底部耐久。
+func _test_network_durability_synchronization() -> void:
+	var hud_scene: PackedScene = load("res://scenes/hud.tscn") as PackedScene
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var session_script: Script = load("res://scripts/network/network_session.gd") as Script
+	var hud: GameHud = hud_scene.instantiate() as GameHud
+	get_root().add_child(hud)
+	var run: RunController3D = RunController3D.new()
+	var field: Playfield = Playfield.new()
+	var host_state: RunState = RunState.new()
+	var client_state: RunState = RunState.new()
+	var host_cart: Cart3D = cart_scene.instantiate() as Cart3D
+	var client_cart: Cart3D = cart_scene.instantiate() as Cart3D
+	var host_weapon: WeaponController3D = WeaponController3D.new()
+	var client_weapon: WeaponController3D = WeaponController3D.new()
+	var session: Node = session_script.new() as Node
+	session.set("mode", 2)
+	session.set("local_slot", 2)
+	run.state = host_state
+	run.playfield = field
+	run.cart = host_cart
+	run.hud = hud
+	run._network_session = session
+	run._network_active = true
+	run.add_child(field)
+	run.add_child(host_cart)
+	run.add_child(client_cart)
+	run.add_child(host_weapon)
+	run.add_child(client_weapon)
+	host_cart.configure(host_state, field)
+	client_cart.configure(client_state, field)
+	run._register_player_context(1, 1, host_state, host_cart, host_weapon)
+	run._register_player_context(2, 2, client_state, client_cart, client_weapon)
+	run._apply_network_snapshot({
+		"players": [
+			{
+				"slot": 1,
+				"current": 35.0,
+				"maximum": 120.0,
+				"shield": 5.0,
+				"ghost": false,
+			},
+			{
+				"slot": 2,
+				"current": 80.0,
+				"maximum": 150.0,
+				"shield": 10.0,
+				"ghost": false,
+			},
+		]
+	})
+	var host_current_label: Label3D = host_cart.get_node(
+		"StatusBillboard/DurabilityLabel"
+	) as Label3D
+	var host_maximum_label: Label3D = host_cart.get_node(
+		"StatusBillboard/DurabilityLabel/DurabilityLabel2"
+	) as Label3D
+	var client_current_label: Label3D = client_cart.get_node(
+		"StatusBillboard/DurabilityLabel"
+	) as Label3D
+	var client_maximum_label: Label3D = client_cart.get_node(
+		"StatusBillboard/DurabilityLabel/DurabilityLabel2"
+	) as Label3D
+	var hud_durability_label: Label = hud.get_node(
+		"Root/DurabilityPanel/DurabilityStack/DurabilityLabel"
+	) as Label
+	_check(
+		host_current_label.text == "40"
+		and host_maximum_label.text == "/ 120"
+		and client_current_label.text == "90"
+		and client_maximum_label.text == "/ 150",
+		"加入者快照同步刷新双方餐车的耐久、护盾与耐久上限"
+	)
+	_check(
+		hud_durability_label.text.contains("80 / 150")
+		and hud_durability_label.text.contains("临时护盾 +10"),
+		"加入者底部耐久只显示本机P2权威数值"
+	)
+	host_state.add_temporary_shield(7.0)
+	_check(
+		host_current_label.text == "47"
+		and hud_durability_label.text.contains("80 / 150"),
+		"远端P1耐久信号只刷新P1餐车，不覆盖P2底部耐久"
+	)
+	var sturdy_upgrade: UpgradeData = UpgradeData.new()
+	sturdy_upgrade.kind = UpgradeData.Kind.STURDY_CART
+	sturdy_upgrade.value = 0.2
+	client_state.apply_upgrade(sturdy_upgrade)
+	_check(
+		client_current_label.text == "120"
+		and client_maximum_label.text == "/ 180"
+		and hud_durability_label.text.contains("110 / 180"),
+		"本机耐久上限成长同步刷新P2餐车和底部耐久"
+	)
+	session.set("mode", 1)
+	session.set("local_slot", 1)
+	run._apply_network_snapshot({
+		"players": [
+			{
+				"slot": 1,
+				"current": 70.0,
+				"maximum": 130.0,
+				"shield": 0.0,
+				"ghost": false,
+			},
+			{
+				"slot": 2,
+				"current": 55.0,
+				"maximum": 190.0,
+				"shield": 5.0,
+				"ghost": false,
+			},
+		]
+	})
+	_check(
+		host_current_label.text == "70"
+		and host_maximum_label.text == "/ 130"
+		and client_current_label.text == "60"
+		and client_maximum_label.text == "/ 190"
+		and hud_durability_label.text.contains("70 / 130"),
+		"房主窗口同步刷新双方餐车，并只在底部显示本机P1耐久"
+	)
+	session.free()
+	run.free()
+	hud.free()
+
+
+# 队友指针保留在场景中供编辑器调整，运行时只按本机/队友槽位切换显示。
+func _test_peer_indicator_scene() -> void:
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var editor_cart: Cart3D = cart_scene.instantiate() as Cart3D
+	var editor_indicator: Node3D = editor_cart.get_node("PeerIndicator") as Node3D
+	var editor_mesh: MeshInstance3D = editor_cart.get_node(
+		"PeerIndicator/PeerIndicatorMesh"
+	) as MeshInstance3D
+	var editor_label: Label3D = editor_cart.get_node(
+		"PeerIndicator/PeerIndicatorLabel"
+	) as Label3D
+	_check(
+		editor_indicator.visible
+		and editor_mesh.mesh is CylinderMesh
+		and editor_label.text == "P2",
+		"餐车场景保留可编辑的队友圆锥指针与P槽标签"
+	)
+	editor_cart.free()
+
+	var field: Playfield = Playfield.new()
+	var state: RunState = RunState.new()
+	var cart: Cart3D = cart_scene.instantiate() as Cart3D
+	get_root().add_child(field)
+	get_root().add_child(cart)
+	cart.configure(state, field)
+	var runtime_default_indicator: Node3D = cart.get_node("PeerIndicator") as Node3D
+	_check(not runtime_default_indicator.visible, "运行时本机默认隐藏队友指针")
+	var teammate_color: Color = Color("#69b878")
+	cart.set_peer_indicator_visible(true, 3, teammate_color)
+	var runtime_indicator: Node3D = cart.get_node("PeerIndicator") as Node3D
+	var runtime_mesh: MeshInstance3D = cart.get_node(
+		"PeerIndicator/PeerIndicatorMesh"
+	) as MeshInstance3D
+	var runtime_label: Label3D = cart.get_node(
+		"PeerIndicator/PeerIndicatorLabel"
+	) as Label3D
+	var runtime_material: StandardMaterial3D = runtime_mesh.material_override as StandardMaterial3D
+	_check(
+		runtime_indicator.visible
+		and runtime_label.text == "P3"
+		and runtime_label.modulate.is_equal_approx(teammate_color)
+		and runtime_material.albedo_color.is_equal_approx(teammate_color),
+		"队友指针按P槽显示标签并使用对应颜色"
+	)
+	cart.set_peer_indicator_visible(false, 2, Color("#e0b84f"))
+	_check(not runtime_indicator.visible, "本机切换后不显示自己的队友指针")
+	cart.free()
+	field.free()
 
 
 func _test_progression_store() -> void:
@@ -1534,6 +1932,18 @@ func _test_customer_reward_gate() -> void:
 	_check(not reward_gate.contains_cart_x(3.6), "餐车绕开奖励门时不能领取")
 	reward_gate.receive_damage(13.2)
 	_check(is_equal_approx(reward.value_ratio, 0.67), "攻击小份奖励门继续提高原百分位与稀有度")
+	reward_gate.apply_network_snapshot({"resolved": false, "resolved_slots": [2]})
+	_check(
+		reward_gate.visible
+		and reward_gate.target_for_cart_x(1.6, 1) != null
+		and reward_gate.target_for_cart_x(1.6, 2) == null,
+		"队友领取后奖励门仍对本机可见，但退出队友自己的目标池"
+	)
+	reward_gate.apply_network_snapshot({"resolved": false, "resolved_slots": [1]})
+	_check(
+		not reward_gate.visible and reward_gate.target_for_cart_x(1.6, 2) != null,
+		"本机领取后只在本地隐藏，其他未领取玩家仍可选中"
+	)
 	reward_gate.free()
 
 
@@ -1675,8 +2085,21 @@ func _test_timeline() -> void:
 	var start_gate_index: int = timeline.event_ids.find("start_gate")
 	_check(
 		start_gate_index >= 0
-		and is_equal_approx(timeline.event_progresses[start_gate_index], 0.01),
-		"正式开局食材门位于总路程1%进度"
+		and is_zero_approx(timeline.event_progresses[start_gate_index]),
+		"正式开局食材门在前进开始时立即出现"
+	)
+	var minimum_first_wave_progress: float = (
+		1.0 / float(timeline.normal_wave_count + 1)
+		* (1.0 - timeline.normal_wave_interval_jitter_ratio)
+	)
+	var minimum_start_gate_lead_seconds: float = (
+		(minimum_first_wave_progress - timeline.event_progresses[start_gate_index])
+		* timeline.course_distance
+		/ RunController3D.BASE_WORLD_SCROLL_SPEED
+	)
+	_check(
+		minimum_start_gate_lead_seconds >= 2.0,
+		"开局食材门在最短首波间隔下仍至少早于首位食客2秒"
 	)
 	_check(timeline.event_ids.count("elite") == 6, "正式流程包含六次精英检查")
 	_check(timeline.event_ids.count("boss") == 2, "正式流程包含两场Boss")

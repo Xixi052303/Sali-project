@@ -54,8 +54,8 @@ func _test_timeline_workbook() -> void:
 	var start_gate_index: int = timeline.event_ids.find("start_gate")
 	_check(
 		start_gate_index >= 0
-		and is_equal_approx(timeline.event_progresses[start_gate_index], 0.01),
-		"开局食材门从时间轴表读取总路程1%进度"
+		and is_zero_approx(timeline.event_progresses[start_gate_index]),
+		"开局食材门从时间轴表读取为开局立即出现"
 	)
 	_check(
 		is_equal_approx(timeline.course_distance, 1310.763)

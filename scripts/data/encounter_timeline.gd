@@ -2,7 +2,7 @@ class_name EncounterTimeline
 extends Resource
 
 @export var event_progresses: PackedFloat32Array = PackedFloat32Array([
-	0.01, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0,
+	0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0,
 ])
 @export var event_ids: PackedStringArray = PackedStringArray([
 	"start_gate", "elite", "elite", "elite", "boss",

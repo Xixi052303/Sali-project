@@ -73,11 +73,15 @@ func receive_satisfaction(amount: float) -> void:
 	if not active or amount <= 0.0:
 		return
 	remaining_appetite = maxf(0.0, remaining_appetite - amount)
-	_hit_feedback_remaining = 0.12
+	play_hit_feedback()
 	_refresh_label()
 	if remaining_appetite <= 0.0:
 		active = false
 		satisfied.emit(self)
+
+
+func play_hit_feedback() -> void:
+	_hit_feedback_remaining = 0.12
 
 
 func network_snapshot() -> Dictionary:

@@ -20,6 +20,7 @@ const AREA_ATTACK_ANIMATION: StringName = &"area_attack"
 const LINE_ATTACK_WIDTH: float = 1.08
 const AREA_ATTACK_RADIUS: float = 1.1
 const APPETITE_FILL_WIDTH: float = 2.36
+const HIT_FEEDBACK_DURATION: float = 0.12
 
 var data: BossPatternData
 var run: RunController3D
@@ -36,6 +37,8 @@ var host_execution_time: float = 0.0
 var _locked_target_position: Vector3 = Vector3(3.6, 0.0, Playfield.CART_Z)
 var _direction: float = 1.0
 var _combat_z: float = 3.0
+var _hit_feedback_remaining: float = 0.0
+@onready var _body_mesh: MeshInstance3D = %Body
 @onready var _appetite_label: Label3D = %AppetiteLabel
 @onready var _appetite_fill: MeshInstance3D = %AppetiteFill
 @onready var _line_attack_anchor: Node3D = %LineAttackAnchor
@@ -70,6 +73,9 @@ func configure(
 
 
 func _process(delta: float) -> void:
+	if _hit_feedback_remaining > 0.0:
+		_hit_feedback_remaining = maxf(0.0, _hit_feedback_remaining - delta)
+		_refresh_hit_feedback()
 	if not active or data == null or run == null:
 		return
 	_state_time += delta
@@ -115,12 +121,19 @@ func receive_satisfaction(amount: float) -> void:
 	if not active or amount <= 0.0:
 		return
 	remaining_appetite = maxf(0.0, remaining_appetite - amount)
+	play_hit_feedback()
 	_refresh_appetite_display()
 	appetite_changed.emit(remaining_appetite, maximum_appetite)
 	if remaining_appetite <= 0.0:
 		active = false
 		_change_state(State.DONE)
 		satisfied.emit()
+
+
+func play_hit_feedback() -> void:
+	_resolve_visual_nodes()
+	_hit_feedback_remaining = HIT_FEEDBACK_DURATION
+	_refresh_hit_feedback()
 
 
 func network_snapshot() -> Dictionary:
@@ -181,6 +194,7 @@ static func area_attack_hits(cart_position: Vector3, locked_target_position: Vec
 func _resolve_visual_nodes() -> void:
 	if _animation_player != null:
 		return
+	_body_mesh = get_node("Body") as MeshInstance3D
 	_appetite_label = get_node("AppetiteLabel") as Label3D
 	_appetite_fill = get_node("AppetiteFill") as MeshInstance3D
 	_line_attack_anchor = get_node("LineAttackAnchor") as Node3D
@@ -190,6 +204,18 @@ func _resolve_visual_nodes() -> void:
 	_line_impact_marker = get_node("LineAttackAnchor/LineAttackRig/LineImpactMarker") as Marker3D
 	_animation_player = get_node("AnimationPlayer") as AnimationPlayer
 	_line_box = _telegraph_line.mesh as BoxMesh
+
+
+func _refresh_hit_feedback() -> void:
+	if _body_mesh == null:
+		return
+	var material: StandardMaterial3D = _body_mesh.material_override as StandardMaterial3D
+	if material == null:
+		return
+	var enabled: bool = _hit_feedback_remaining > 0.0
+	material.emission_enabled = enabled
+	material.emission = Color.WHITE if enabled else Color.BLACK
+	material.emission_energy_multiplier = 0.8 if enabled else 0.0
 
 
 func _finish_attack() -> void:

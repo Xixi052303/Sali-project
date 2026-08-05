@@ -13,6 +13,18 @@ albedo_color = Color(0.168627, 0.141176, 0.113725, 1)
 resource_local_to_scene = true
 size = Vector3(1.2, 1, 1.7)
 
+[sub_resource type="StandardMaterial3D" id="MatPeerIndicator"]
+resource_local_to_scene = true
+shading_mode = 0
+albedo_color = Color(0.878431, 0.721569, 0.309804, 1)
+roughness = 0.82
+
+[sub_resource type="CylinderMesh" id="MeshPeerIndicator"]
+top_radius = 0.0
+bottom_radius = 0.28
+height = 0.72
+radial_segments = 12
+
 [node name="Cart3D" type="Node3D" unique_id=1284887731]
 script = ExtResource("1_script")
 
@@ -93,3 +105,29 @@ outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 text = "上限 +10"
 font_size = 64
 outline_size = 20
+
+[node name="PeerIndicator" type="Node3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 3.72, 0)
+
+[node name="PeerIndicatorMesh" type="MeshInstance3D" parent="PeerIndicator"]
+unique_name_in_owner = true
+rotation = Vector3(3.1415927, 0, 0)
+material_override = SubResource("MatPeerIndicator")
+cast_shadow = 0
+render_priority = 110
+mesh = SubResource("MeshPeerIndicator")
+
+[node name="PeerIndicatorLabel" type="Label3D" parent="PeerIndicator"]
+unique_name_in_owner = true
+position = Vector3(0, 0.68, 0)
+pixel_size = 0.008
+no_depth_test = true
+render_priority = 111
+outline_render_priority = 110
+outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
+text = "P2"
+font_size = 96
+outline_size = 12
+width = 1.5
+modulate = Color(0.878431, 0.721569, 0.309804, 1)

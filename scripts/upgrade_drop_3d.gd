@@ -48,6 +48,7 @@ func configure(
 	position = start_position
 	_configure_visual()
 	_refresh_label()
+	_refresh_local_visibility()
 
 
 func _process(delta: float) -> void:
@@ -89,15 +90,29 @@ func _process(delta: float) -> void:
 			run.on_customer_reward_gate_collected_for_player(context.slot, upgrade)
 		elif has_passed_cart(cart):
 			_player_resolved[context.slot] = true
+	_refresh_local_visibility()
 	if _all_players_resolved(contexts):
 		resolved = true
 		queue_free()
 
 
-func target_for_cart_x(cart_x: float) -> Node3D:
-	if resolved or upgrade_health <= 0.0001 or not contains_cart_x(cart_x):
+func target_for_cart_x(cart_x: float, player_slot: int = 1) -> Node3D:
+	if not is_available_for_player(player_slot) or upgrade_health <= 0.0001 or not contains_cart_x(cart_x):
 		return null
 	return _target
+
+
+# 奖励门逐玩家结算；一名玩家完成领取或错过后不影响其他玩家的资格。
+func is_available_for_player(player_slot: int) -> bool:
+	return not resolved and not _player_resolved.get(maxi(1, player_slot), false)
+
+
+# 可见性只使用本机槽位，不进入 MultiplayerSynchronizer 的共享属性。
+func _refresh_local_visibility() -> void:
+	var local_slot: int = 1
+	if _network_session != null and _network_session.is_networked():
+		local_slot = maxi(1, int(_network_session.local_slot))
+	visible = is_available_for_player(local_slot)
 
 
 func contains_cart_x(cart_x: float) -> bool:
@@ -159,10 +174,15 @@ func apply_network_snapshot(snapshot: Dictionary) -> void:
 	for slot: int in snapshot.get("resolved_slots", []):
 		_player_resolved[slot] = true
 	_refresh_label()
+	_refresh_local_visibility()
 
 
 func try_receive_projectile(projectile: FoodProjectile3D) -> bool:
-	if resolved or projectile == null or upgrade_health <= 0.0001:
+	if (
+		projectile == null
+		or not is_available_for_player(projectile.owner_slot)
+		or upgrade_health <= 0.0001
+	):
 		return false
 	var local_position_3d: Vector3 = to_local(projectile.global_position)
 	var panel: Rect2 = Rect2(-_panel_width() * 0.5, -PANEL_HEIGHT * 0.5, _panel_width(), PANEL_HEIGHT)
@@ -183,7 +203,11 @@ func try_receive_projectile(projectile: FoodProjectile3D) -> bool:
 
 
 func try_receive_puddle(puddle: FoodPuddle3D) -> void:
-	if resolved or puddle == null or upgrade_health <= 0.0001:
+	if (
+		puddle == null
+		or not is_available_for_player(puddle.owner_slot)
+		or upgrade_health <= 0.0001
+	):
 		return
 	var local_position_3d: Vector3 = to_local(puddle.global_position)
 	var panel: Rect2 = Rect2(-_panel_width() * 0.5, -PANEL_HEIGHT * 0.5, _panel_width(), PANEL_HEIGHT)
@@ -199,8 +223,12 @@ func receive_damage(amount: float) -> void:
 	upgrade_health = maxf(0.0, upgrade_health - amount)
 	var scaled_health_pool: float = baseline_appetite * maxf(0.001, upgrade.source_scale)
 	upgrade.set_value_ratio(1.0 - upgrade_health / scaled_health_pool)
-	_hit_feedback_remaining = 0.12
 	_refresh_label()
+	play_hit_feedback()
+
+
+func play_hit_feedback() -> void:
+	_hit_feedback_remaining = 0.12
 	_refresh_feedback()
 
 

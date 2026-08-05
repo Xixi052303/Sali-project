@@ -289,9 +289,9 @@ func _set_sweep_position() -> void:
 	_update_carrot_visual_transform(center)
 
 
-# 胡萝卜扫掠轴心位于餐车前方的厨师工作点，模型原点围绕此点旋转。
+# 胡萝卜扫掠轴心位于发射者餐车前方的厨师工作点，模型原点围绕此点旋转。
 func _carrot_sweep_pivot_position() -> Vector3:
-	return run.logic_position(run.cart) + Vector3(
+	return _owner_cart_position() + Vector3(
 		0.0,
 		0.0,
 		CARROT_SWEEP_PIVOT_Z_OFFSET
@@ -352,7 +352,7 @@ func _process_orbit(delta: float) -> void:
 		_orbit_travel_angle += angle_step
 		simulated_seconds += step_seconds
 		remaining_delta = maxf(0.0, remaining_delta - step_seconds)
-	var center: Vector3 = run.logic_position(run.cart)
+	var center: Vector3 = _owner_cart_position()
 	var current_radius: float = (
 		_current_orbit_radius() * _breathing_multiplier_at_elapsed(elapsed_end)
 	)
@@ -362,6 +362,12 @@ func _process_orbit(delta: float) -> void:
 		-cos(_orbit_angle) * current_radius
 	)
 	rotation.y = -_orbit_angle
+
+
+# 随身食材始终锚定发射者槽位，不能跟随当前窗口的本地餐车。
+func _owner_cart_position() -> Vector3:
+	return run.logic_position(run.cart_for_slot(owner_slot))
+
 
 # 每档驻留圈数按1、2、4、8翻倍，随后用一圈把半径线性增加0.5倍基础半径。
 func _current_orbit_radius() -> float:

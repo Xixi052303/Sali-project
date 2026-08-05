@@ -56,9 +56,9 @@ var _unreliable_queue: Array[Dictionary] = []
 var _roster: Dictionary[int, Dictionary] = {}
 var _rooms: Dictionary[String, Dictionary] = {}
 var _discovery_socket: PacketPeerUDP
-var _discovery_fallback: bool = false
+# 菜单/客户端使用临时源端口，避免本机多开时抢占房主的固定发现端口。
+var _discovery_uses_ephemeral_port: bool = false
 var _discovery_port: int = DISCOVERY_PORT
-var _discovery_query_elapsed: float = 0.0
 var _discovery_elapsed: float = 0.0
 var _input_sequence: int = 0
 var _pending_input: Vector2 = Vector2.ZERO
@@ -77,7 +77,7 @@ func _ready() -> void:
 	_read_network_test_options()
 	_network_discovery_debug = OS.get_cmdline_user_args().has("--network-discovery-test")
 	protocol_fingerprint = _build_protocol_fingerprint()
-	_start_discovery_socket()
+	_start_discovery_socket(false)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
@@ -103,12 +103,10 @@ func _process(delta: float) -> void:
 	else:
 		_connection_wait_elapsed = 0.0
 	_discovery_elapsed += delta
-	_discovery_query_elapsed += maxf(0.0, delta)
 	if _discovery_elapsed < DISCOVERY_INTERVAL_SECONDS:
 		return
 	_discovery_elapsed = 0.0
-	if _discovery_fallback and _discovery_query_elapsed >= DISCOVERY_INTERVAL_SECONDS:
-		_discovery_query_elapsed = 0.0
+	if not is_host():
 		_send_discovery_query()
 	if mode == Mode.HOST and room_state != RoomState.IDLE:
 		_broadcast_room()
@@ -186,10 +184,12 @@ func consume_reopen_lan_entry() -> bool:
 
 func host_room(requested_name: String = "") -> Error:
 	leave_room()
+	_start_discovery_socket(true)
 	var peer := ENetMultiplayerPeer.new()
 	# 多留一个 ENet 握手位，让第5位玩家收到明确的“房间已满”，而不是在底层只看到连接失败。
 	var error: Error = peer.create_server(GAME_PORT, MAX_PLAYERS)
 	if error != OK:
+		_start_discovery_socket(false)
 		connection_state_changed.emit(&"error", "无法创建房间：端口 %d 不可用" % GAME_PORT)
 		return error
 	multiplayer.multiplayer_peer = peer
@@ -245,6 +245,7 @@ func leave_room() -> void:
 	_connection_wait_elapsed = 0.0
 	_pending_rejected_peers.clear()
 	_unreliable_queue.clear()
+	_start_discovery_socket(false)
 	roster_changed.emit(get_roster())
 	connection_state_changed.emit(&"offline", "已离开房间")
 
@@ -822,13 +823,21 @@ func _deliver_unreliable(kind: StringName, payload: Dictionary) -> void:
 				_broadcast_projectile_burst.rpc(payload)
 
 
-func _start_discovery_socket() -> void:
+# 只有主机争取固定端口；其他实例使用临时源端口，通过查询回包发现房间。
+func _start_discovery_socket(prefer_fixed_port: bool) -> void:
+	if _discovery_socket != null:
+		_discovery_socket.close()
 	_discovery_socket = PacketPeerUDP.new()
-	var error: Error = _discovery_socket.bind(_discovery_port, "*")
+	_discovery_uses_ephemeral_port = not prefer_fixed_port
+	var bind_port: int = _discovery_port if prefer_fixed_port else 0
+	var error: Error = _discovery_socket.bind(bind_port, "*")
 	if error != OK:
 		if _network_discovery_debug:
-			print("NETWORK_DISCOVERY_BIND_ERROR port=%d error=%s" % [_discovery_port, error_string(error)])
-		# 同一台电脑多开编辑器时固定端口只能被房主占用；临时端口通过查询回包继续发现房间。
+			print("NETWORK_DISCOVERY_BIND_ERROR port=%d error=%s" % [bind_port, error_string(error)])
+		if not prefer_fixed_port:
+			_discovery_socket = null
+			return
+		# 固定端口被其他程序占用时仍保留手输 IP；自动发现继续尝试查询回包。
 		_discovery_socket = PacketPeerUDP.new()
 		error = _discovery_socket.bind(0, "*")
 		if error != OK:
@@ -836,10 +845,10 @@ func _start_discovery_socket() -> void:
 				print("NETWORK_DISCOVERY_FALLBACK_ERROR error=%s" % error_string(error))
 			_discovery_socket = null
 			return
-		_discovery_fallback = true
+		_discovery_uses_ephemeral_port = true
 	_discovery_socket.set_broadcast_enabled(true)
 	if _network_discovery_debug:
-		print("NETWORK_DISCOVERY_SOCKET_READY fallback=%s" % _discovery_fallback)
+		print("NETWORK_DISCOVERY_SOCKET_READY ephemeral=%s" % _discovery_uses_ephemeral_port)
 
 
 func _send_discovery_query() -> void:
@@ -857,7 +866,7 @@ func _send_discovery_query() -> void:
 	_discovery_socket.set_dest_address("127.0.0.1", _discovery_port)
 	_discovery_socket.put_packet(packet)
 	if _network_discovery_debug:
-		print("NETWORK_DISCOVERY_QUERY_SENT fallback=%s" % _discovery_fallback)
+		print("NETWORK_DISCOVERY_QUERY_SENT ephemeral=%s" % _discovery_uses_ephemeral_port)
 
 
 func _poll_discovery() -> void:
@@ -921,8 +930,12 @@ func _broadcast_room() -> void:
 	if _discovery_socket == null or room_id.is_empty():
 		return
 	var payload: Dictionary = _room_broadcast_payload()
+	var packet: PackedByteArray = JSON.stringify(payload).to_utf8_buffer()
 	_discovery_socket.set_dest_address("255.255.255.255", _discovery_port)
-	_discovery_socket.put_packet(JSON.stringify(payload).to_utf8_buffer())
+	_discovery_socket.put_packet(packet)
+	# 同机多开时补发回环包，避免本机广播被系统或防火墙过滤。
+	_discovery_socket.set_dest_address("127.0.0.1", _discovery_port)
+	_discovery_socket.put_packet(packet)
 
 
 func _send_room_response(address: String, port: int) -> void:
