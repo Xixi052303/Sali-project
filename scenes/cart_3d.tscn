@@ -70,14 +70,14 @@ width = 1.72
 
 [node name="DurabilityLabel2" type="Label3D" parent="StatusBillboard/DurabilityLabel" unique_id=378692602]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1653848, -0.6598382, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1653848, -0.49423742, 0)
 pixel_size = 0.007
 no_depth_test = true
 render_priority = 100
 outline_render_priority = 99
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 text = "/ 100"
-font_size = 50
+font_size = 64
 outline_size = 3
 width = 1.72
 
