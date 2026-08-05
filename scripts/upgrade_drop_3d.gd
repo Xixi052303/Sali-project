@@ -13,12 +13,15 @@ var spawn_index: int = 0
 var upgrade_health: float = 0.0
 var move_speed: float = 2.5
 var resolved: bool = false
+var _player_resolved: Dictionary[int, bool] = {}
 @onready var _target: Node3D = %RewardTarget
 var _hit_feedback_remaining: float = 0.0
 @onready var _panel_mesh: MeshInstance3D = %Panel
 @onready var _panel_box: BoxMesh = _panel_mesh.mesh as BoxMesh
 @onready var _label: Label3D = %DropLabel
 @onready var _health_label: Label3D = %HealthLabel
+# 掉落门同样不直接依赖 Autoload 全局符号，保持单独脚本解析可用。
+@onready var _network_session: Variant = get_node_or_null("/root/NetworkSession")
 
 
 func configure(
@@ -35,6 +38,8 @@ func configure(
 	baseline_appetite = maxf(1.0, gate_baseline_appetite)
 	occupied_regions = clampi(gate_occupied_regions, 1, Playfield.REGION_COUNT)
 	spawn_index = index
+	_player_resolved.clear()
+	resolved = false
 	upgrade_health = (
 		baseline_appetite
 		* (1.0 - upgrade.value_ratio)
@@ -48,7 +53,14 @@ func configure(
 func _process(delta: float) -> void:
 	if run == null:
 		return
+	var network_client: bool = (
+		_network_session != null
+		and _network_session.is_networked()
+		and not _network_session.is_host()
+	)
 	if resolved:
+		if network_client:
+			return
 		if not run.is_world_scrolling():
 			queue_free()
 			return
@@ -63,15 +75,23 @@ func _process(delta: float) -> void:
 		_refresh_feedback()
 	if run.is_world_scrolling():
 		position.z += travel_speed() * delta
-	var cart: Cart3D = run.cart
-	if cart == null:
+	if _network_session != null and _network_session.is_networked() and not _network_session.is_host():
 		return
-	if overlaps_cart(cart):
+	var contexts: Array[PlayerRunContext] = run.get_player_contexts()
+	for context: PlayerRunContext in contexts:
+		if _player_resolved.get(context.slot, false):
+			continue
+		var cart: Cart3D = context.cart
+		if cart == null:
+			continue
+		if overlaps_cart(cart):
+			_player_resolved[context.slot] = true
+			run.on_customer_reward_gate_collected_for_player(context.slot, upgrade)
+		elif has_passed_cart(cart):
+			_player_resolved[context.slot] = true
+	if _all_players_resolved(contexts):
 		resolved = true
-		run.on_customer_reward_gate_collected(upgrade)
 		queue_free()
-	elif has_passed_cart(cart):
-		resolved = true
 
 
 func target_for_cart_x(cart_x: float) -> Node3D:
@@ -106,6 +126,39 @@ func has_passed_cart(cart: Cart3D) -> bool:
 	var gate_rect: Rect2 = collision_rect_xz()
 	var cart_rect: Rect2 = cart.collision_rect_xz()
 	return gate_rect.position.y >= cart_rect.position.y + cart_rect.size.y
+
+
+func _all_players_resolved(contexts: Array[PlayerRunContext]) -> bool:
+	for context: PlayerRunContext in contexts:
+		if not _player_resolved.get(context.slot, false):
+			return false
+	return true
+
+
+func network_snapshot() -> Dictionary:
+	var resolved_slots: Array[int] = []
+	for slot: int in _player_resolved:
+		if _player_resolved[slot]:
+			resolved_slots.append(slot)
+	return {
+		"spawn_index": spawn_index,
+		"x": position.x,
+		"z": position.z,
+		"health": upgrade_health,
+		"resolved": resolved,
+		"resolved_slots": resolved_slots,
+	}
+
+
+func apply_network_snapshot(snapshot: Dictionary) -> void:
+	position.x = float(snapshot.get("x", position.x))
+	position.z = float(snapshot.get("z", position.z))
+	upgrade_health = float(snapshot.get("health", upgrade_health))
+	resolved = bool(snapshot.get("resolved", resolved))
+	_player_resolved.clear()
+	for slot: int in snapshot.get("resolved_slots", []):
+		_player_resolved[slot] = true
+	_refresh_label()
 
 
 func try_receive_projectile(projectile: FoodProjectile3D) -> bool:

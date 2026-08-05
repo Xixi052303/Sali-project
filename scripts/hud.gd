@@ -36,6 +36,8 @@ const COOKING_INDICATOR_SCENE: PackedScene = preload(
 
 var _toast_tween: Tween
 var _cooking_indicators: Dictionary[StringName, CookingIndicator] = {}
+var _party_health_root: VBoxContainer
+var _party_rows: Dictionary[int, Dictionary] = {}
 
 
 func _ready() -> void:
@@ -44,10 +46,14 @@ func _ready() -> void:
 	_pause_button.pressed.connect(_on_pause_pressed)
 	_resume_button.pressed.connect(_on_resume_pressed)
 	_restart_button.pressed.connect(_on_restart_pressed)
+	_build_party_health_hud()
 	_apply_safe_area()
 
 
 func set_durability(current: float, maximum: float, temporary_shield: float) -> void:
+	_resolve_runtime_nodes()
+	if _durability_bar == null or _durability_label == null:
+		return
 	_durability_bar.max_value = maximum
 	_durability_bar.value = current
 	if temporary_shield > 0.0:
@@ -60,16 +66,65 @@ func set_durability(current: float, maximum: float, temporary_shield: float) -> 
 		_durability_label.text = "餐车耐久  %.0f / %.0f" % [current, maximum]
 
 
+func set_party_health(players: Array[Dictionary], local_slot: int = 1) -> void:
+	if _party_health_root == null:
+		return
+	var visible_slots: Dictionary[int, bool] = {}
+	for record: Dictionary in players:
+		var slot: int = int(record.get("slot", 0))
+		if slot < 1 or slot > 4:
+			continue
+		visible_slots[slot] = true
+		var row: Dictionary = _party_rows.get(slot, {})
+		var row_root: HBoxContainer = row.get("root") as HBoxContainer
+		var slot_badge: PanelContainer = row.get("badge") as PanelContainer
+		var slot_label: Label = row.get("slot_label") as Label
+		var health_label: Label = row.get("health") as Label
+		var extra_label: Label = row.get("extra") as Label
+		if row_root == null:
+			continue
+		var color_text: String = str(record.get("color", "#ffffff"))
+		if not color_text.begins_with("#"):
+			color_text = "#" + color_text
+		var color: Color = Color(color_text)
+		slot_label.text = "P%d" % slot
+		health_label.text = "0" if bool(record.get("ghost", false)) else "%.0f" % float(record.get("current", 0.0))
+		health_label.modulate = color if not bool(record.get("ghost", false)) else color.darkened(0.35)
+		extra_label.text = (
+			"复活 %.0fs" % ceilf(float(record.get("respawn", 0.0)))
+			if bool(record.get("ghost", false))
+			else ("+%.0f" % float(record.get("shield", 0.0)) if float(record.get("shield", 0.0)) > 0.0 else "")
+		)
+		extra_label.modulate = Color("#9babb7") if bool(record.get("ghost", false)) else Color("#78d8ff")
+		slot_badge.add_theme_stylebox_override(&"panel", _make_party_badge_style(color, slot == local_slot))
+		row_root.visible = true
+	for slot: int in _party_rows:
+		var row_root: HBoxContainer = (_party_rows[slot].get("root") as HBoxContainer)
+		if row_root != null:
+			row_root.visible = visible_slots.has(slot)
+	_apply_party_toast_layout(visible_slots.size())
+
+
 func set_phase(text: String) -> void:
+	_resolve_runtime_nodes()
+	if _phase_label == null:
+		return
 	_phase_label.text = text
 
 
 func set_time(seconds: float) -> void:
+	_resolve_runtime_nodes()
+	if _time_label == null:
+		return
 	var total: int = maxi(0, floori(seconds))
 	_time_label.text = "%02d:%02d" % [floori(float(total) / 60.0), total % 60]
 
 
 func add_cooking_food(food: FoodData, level: int) -> void:
+	if _cooking_row == null:
+		_cooking_row = get_node_or_null("Root/CookingArea/CookingRow") as HFlowContainer
+	if _cooking_row == null:
+		return
 	var existing: CookingIndicator = _cooking_indicators.get(food.id)
 	if existing != null:
 		existing.set_level(level)
@@ -109,26 +164,37 @@ func set_cooking_level(food_id: StringName, level: int) -> void:
 
 
 func set_pause_available(available: bool) -> void:
+	_resolve_runtime_nodes()
+	if _pause_button == null:
+		return
 	_pause_button.visible = (
 		available
-		and not _pause_overlay.visible
-		and not _choice_overlay.visible
-		and not _results_overlay.visible
+		and (_pause_overlay == null or not _pause_overlay.visible)
+		and (_choice_overlay == null or not _choice_overlay.visible)
+		and (_results_overlay == null or not _results_overlay.visible)
 	)
 
 
 func show_pause(details: String) -> void:
+	_resolve_runtime_nodes()
+	if _pause_details == null or _pause_overlay == null:
+		return
 	_pause_details.text = details
 	_pause_overlay.visible = true
-	_pause_button.visible = false
+	if _pause_button != null:
+		_pause_button.visible = false
 
 
 func hide_pause() -> void:
+	_resolve_runtime_nodes()
+	if _pause_overlay == null:
+		return
 	_pause_overlay.visible = false
 
 
 func is_pause_visible() -> bool:
-	return _pause_overlay.visible
+	_resolve_runtime_nodes()
+	return _pause_overlay != null and _pause_overlay.visible
 
 
 func set_debug_text(text: String) -> void:
@@ -159,7 +225,7 @@ func show_special_choices(
 		_add_choice_button(
 			_choice_buttons,
 			choice_id,
-			choice_texts.get(choice_id, String(choice_id))
+			choice_texts.get(choice_id, str(choice_id))
 		)
 	_choice_overlay.visible = true
 	_pause_button.visible = false
@@ -181,6 +247,67 @@ func _refresh_cooking_indicator_sizes() -> void:
 	for indicator: CookingIndicator in _cooking_indicators.values():
 		indicator.custom_minimum_size = Vector2(60.0, 76.0) if compact else Vector2(76.0, 94.0)
 		indicator.scale = Vector2.ONE * (0.79 if compact else 1.0)
+
+
+func _build_party_health_hud() -> void:
+	_party_health_root = VBoxContainer.new()
+	_party_health_root.name = "PartyHealth"
+	_party_health_root.position = Vector2(24.0, 104.0)
+	_party_health_root.custom_minimum_size = Vector2(290.0, 0.0)
+	_party_health_root.add_theme_constant_override(&"separation", 4)
+	_root.add_child(_party_health_root)
+	for slot: int in range(1, 5):
+		var row_root := HBoxContainer.new()
+		row_root.name = "P%dRow" % slot
+		row_root.custom_minimum_size = Vector2(270.0, 46.0)
+		row_root.add_theme_constant_override(&"separation", 8)
+		var badge := PanelContainer.new()
+		badge.custom_minimum_size = Vector2(46.0, 46.0)
+		var badge_label := Label.new()
+		badge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		badge_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		badge_label.add_theme_font_size_override(&"font_size", 15)
+		badge.add_child(badge_label)
+		row_root.add_child(badge)
+		var health := Label.new()
+		health.custom_minimum_size = Vector2(130.0, 46.0)
+		health.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		health.add_theme_font_size_override(&"font_size", 24)
+		row_root.add_child(health)
+		var extra := Label.new()
+		extra.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		extra.add_theme_font_size_override(&"font_size", 15)
+		row_root.add_child(extra)
+		_party_health_root.add_child(row_root)
+		_party_rows[slot] = {
+			"root": row_root,
+			"badge": badge,
+			"slot_label": badge_label,
+			"health": health,
+			"extra": extra,
+		}
+		row_root.visible = false
+	_apply_party_toast_layout(0)
+
+
+# 多人队伍占用顶部四行时，把临时提示移到队伍下方，避免遮住耐久数字。
+func _apply_party_toast_layout(visible_slot_count: int) -> void:
+	if _toast_label == null:
+		return
+	var safe_count: int = clampi(visible_slot_count, 0, 4)
+	var party_height: float = float(safe_count) * 46.0 + maxf(0.0, float(safe_count - 1)) * 4.0
+	var party_top: float = _party_health_root.position.y if _party_health_root != null else 104.0
+	var toast_top: float = 190.0 if safe_count == 0 else party_top + party_height + 16.0
+	_toast_label.position.y = toast_top
+
+
+func _make_party_badge_style(color: Color, local_player: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color.darkened(0.55)
+	style.border_color = Color.WHITE if local_player else color
+	style.set_border_width_all(3 if local_player else 2)
+	style.set_corner_radius_all(23)
+	return style
 
 
 func _add_choice_button(parent: VBoxContainer, choice_id: StringName, text: String) -> void:
@@ -214,6 +341,9 @@ func _make_panel_style(background: Color, border: Color, border_width: int) -> S
 
 # 节点保留编辑器中的设计位置，运行时仅叠加设备安全区边距。
 func _apply_safe_area() -> void:
+	_resolve_runtime_nodes()
+	if _safe_margin == null or _durability_panel == null or _cooking_area == null or _debug_label == null:
+		return
 	var top_margin: int = 24
 	var bottom_margin: int = 24
 	var screen_size: Vector2i = DisplayServer.screen_get_size()
@@ -227,6 +357,7 @@ func _apply_safe_area() -> void:
 	_safe_margin.add_theme_constant_override(&"margin_bottom", bottom_margin)
 	_safe_margin.add_theme_constant_override(&"margin_left", 24)
 	_safe_margin.add_theme_constant_override(&"margin_right", 24)
+	_party_health_root.position = Vector2(24.0, float(top_margin) + 70.0)
 	_durability_panel.offset_left = 24.0
 	_durability_panel.offset_right = -24.0
 	_durability_panel.offset_top = -float(bottom_margin) - 82.0
@@ -237,6 +368,34 @@ func _apply_safe_area() -> void:
 	_debug_label.offset_right = -30.0
 	_debug_label.offset_top = -float(bottom_margin) - 150.0
 	_debug_label.offset_bottom = -float(bottom_margin) - 92.0
+
+
+# 测试脚本可能在 CanvasLayer 的 ready 回调前调用显示接口，按固定路径补齐控件。
+func _resolve_runtime_nodes() -> void:
+	if _safe_margin == null:
+		_safe_margin = get_node_or_null("Root/SafeMargin") as MarginContainer
+	if _durability_panel == null:
+		_durability_panel = get_node_or_null("Root/DurabilityPanel") as PanelContainer
+	if _durability_bar == null:
+		_durability_bar = get_node_or_null("Root/DurabilityPanel/DurabilityStack/DurabilityBar") as ProgressBar
+	if _durability_label == null:
+		_durability_label = get_node_or_null("Root/DurabilityPanel/DurabilityStack/DurabilityLabel") as Label
+	if _phase_label == null:
+		_phase_label = get_node_or_null("Root/SafeMargin/TopLayout/Header/PhaseLabel") as Label
+	if _time_label == null:
+		_time_label = get_node_or_null("Root/SafeMargin/TopLayout/Header/TimeLabel") as Label
+	if _cooking_area == null:
+		_cooking_area = get_node_or_null("Root/CookingArea") as MarginContainer
+	if _cooking_row == null:
+		_cooking_row = get_node_or_null("Root/CookingArea/CookingRow") as HFlowContainer
+	if _debug_label == null:
+		_debug_label = get_node_or_null("Root/DebugLabel") as Label
+	if _pause_overlay == null:
+		_pause_overlay = get_node_or_null("Root/PauseOverlay") as ColorRect
+	if _pause_details == null:
+		_pause_details = get_node_or_null(
+			"Root/PauseOverlay/PausePanel/PauseStack/PauseScroll/PauseDetails"
+		) as Label
 
 
 func _on_choice_pressed(choice_id: StringName) -> void:

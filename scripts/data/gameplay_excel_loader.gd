@@ -3,6 +3,7 @@ extends RefCounted
 
 const CONFIG_SHEET: String = "配置"
 const EXPECTED_SCHEMA_VERSION: int = 1
+const COMBAT_RULES_SCHEMA_VERSION: int = 2
 const WEAPON_SCHEMA_VERSION: int = 5
 const NORMAL_UPGRADE_SCHEMA_VERSION: int = 2
 const REQUIRED_CUSTOMER_IDS: Array[StringName] = [
@@ -79,6 +80,12 @@ class CombatRulesLoadResult:
 	var cart_invincibility_duration_seconds: float = (
 		Cart3D.DEFAULT_INVINCIBILITY_DURATION_SECONDS
 	)
+	var respawn_base_seconds: float = RunState.DEFAULT_RESPAWN_BASE_SECONDS
+	var respawn_increment_seconds: float = RunState.DEFAULT_RESPAWN_INCREMENT_SECONDS
+	var respawn_max_seconds: float = RunState.DEFAULT_RESPAWN_MAX_SECONDS
+	var ghost_damage_multiplier: float = RunState.DEFAULT_GHOST_DAMAGE_MULTIPLIER
+	var respawn_durability_ratio: float = RunState.DEFAULT_RESPAWN_DURABILITY_RATIO
+	var respawn_invincibility_seconds: float = RunState.DEFAULT_RESPAWN_INVINCIBILITY_SECONDS
 	var loaded_from_excel: bool = false
 	var error_message: String = ""
 	var source_path: String = ""
@@ -97,7 +104,9 @@ static func load_combat_rules(path: String) -> CombatRulesLoadResult:
 	result.source_path = path
 	var read_result: WorkbookReadResult = _read_valid_workbook(
 		path,
-		"xiaochuxi.combat_rules"
+		"xiaochuxi.combat_rules",
+		CONFIG_SHEET,
+		COMBAT_RULES_SCHEMA_VERSION
 	)
 	if read_result.workbook == null:
 		result.error_message = read_result.error_message
@@ -106,7 +115,8 @@ static func load_combat_rules(path: String) -> CombatRulesLoadResult:
 	if sheet == null:
 		result.error_message = "战斗规则 Excel 必须包含“战斗规则”工作表"
 		return result
-	return _parse_combat_rule_values(_records_to_values(sheet), result)
+	# 战斗规则工作簿保留标题与说明行，运行数据表头固定在第3行。
+	return _parse_combat_rule_values(_records_to_values(sheet, 3, 4), result)
 
 
 # 单独解析键值，保证缺失、非数字或非正时不会把部分配置带入本局。
@@ -120,7 +130,35 @@ static func _parse_combat_rule_values(
 	if not _is_number(value) or float(value) <= 0.0:
 		result.error_message = "战斗规则参数 cart_invincibility_duration_seconds 必须是正数"
 		return result
-	result.cart_invincibility_duration_seconds = float(value)
+	# 先用局部变量收集整表结果；只有全部规则通过校验后才提交，避免失败结果残留半套配置。
+	var cart_invincibility_duration_seconds: float = float(value)
+	var required_values: Dictionary[String, float] = {
+		"respawn_base_seconds": RunState.DEFAULT_RESPAWN_BASE_SECONDS,
+		"respawn_increment_seconds": RunState.DEFAULT_RESPAWN_INCREMENT_SECONDS,
+		"respawn_max_seconds": RunState.DEFAULT_RESPAWN_MAX_SECONDS,
+		"ghost_damage_multiplier": RunState.DEFAULT_GHOST_DAMAGE_MULTIPLIER,
+		"respawn_durability_ratio": RunState.DEFAULT_RESPAWN_DURABILITY_RATIO,
+		"respawn_invincibility_seconds": RunState.DEFAULT_RESPAWN_INVINCIBILITY_SECONDS,
+	}
+	for key: String in required_values:
+		var rule_value: Variant = values.get(key)
+		if not _is_number(rule_value) or float(rule_value) <= 0.0:
+			result.error_message = "战斗规则参数 %s 必须是正数" % key
+			return result
+		if key in ["ghost_damage_multiplier", "respawn_durability_ratio"] and float(rule_value) > 1.0:
+			result.error_message = "战斗规则参数 %s 必须不大于1" % key
+			return result
+		required_values[key] = float(rule_value)
+	if required_values["respawn_max_seconds"] < required_values["respawn_base_seconds"]:
+		result.error_message = "战斗规则参数 respawn_max_seconds 不能小于 respawn_base_seconds"
+		return result
+	result.cart_invincibility_duration_seconds = cart_invincibility_duration_seconds
+	result.respawn_base_seconds = required_values["respawn_base_seconds"]
+	result.respawn_increment_seconds = required_values["respawn_increment_seconds"]
+	result.respawn_max_seconds = required_values["respawn_max_seconds"]
+	result.ghost_damage_multiplier = required_values["ghost_damage_multiplier"]
+	result.respawn_durability_ratio = required_values["respawn_durability_ratio"]
+	result.respawn_invincibility_seconds = required_values["respawn_invincibility_seconds"]
 	result.loaded_from_excel = true
 	return result
 
@@ -158,7 +196,7 @@ static func _parse_customer_records(
 			errors.append("食客表第 %d 行食客ID不能为空" % row_number)
 			continue
 		if seen_ids.has(customer_id):
-			errors.append("食客表第 %d 行食客ID重复: %s" % [row_number, String(customer_id)])
+			errors.append("食客表第 %d 行食客ID重复: %s" % [row_number, str(customer_id)])
 			continue
 		seen_ids[customer_id] = true
 		var customer: CustomerData = CustomerData.new()
@@ -234,7 +272,7 @@ static func _parse_customer_records(
 		result.customers.append(customer)
 	for required_id: StringName in REQUIRED_CUSTOMER_IDS:
 		if not seen_ids.has(required_id):
-			errors.append("食客表缺少已启用的必需食客ID: %s" % String(required_id))
+			errors.append("食客表缺少已启用的必需食客ID: %s" % str(required_id))
 	if not errors.is_empty():
 		return _customer_failure(result, "；".join(errors))
 	result.loaded_from_excel = true
@@ -269,7 +307,7 @@ static func load_weapons(path: String) -> WeaponLoadResult:
 			errors.append("武器表第 %d 行食材ID不能为空" % row_number)
 			continue
 		if seen_ids.has(food_id):
-			errors.append("武器表第 %d 行食材ID重复: %s" % [row_number, String(food_id)])
+			errors.append("武器表第 %d 行食材ID重复: %s" % [row_number, str(food_id)])
 			continue
 		seen_ids[food_id] = true
 		var food: FoodData = FoodData.new()
@@ -364,7 +402,7 @@ static func _parse_derived_attack_records(
 			_parse_egg_puddle_record(record, row_number, result, errors)
 			continue
 		if config_id != &"baguette_giant":
-			errors.append("衍生攻击表第 %d 行配置ID不受支持: %s" % [row_number, String(config_id)])
+			errors.append("衍生攻击表第 %d 行配置ID不受支持: %s" % [row_number, str(config_id)])
 			continue
 		if found_giant_baguette:
 			errors.append("衍生攻击表第 %d 行重复配置: baguette_giant" % row_number)
@@ -565,7 +603,7 @@ static func load_special_upgrades(path: String) -> SpecialUpgradeLoadResult:
 			errors.append("特殊强化表第 %d 行强化ID不能为空" % row_number)
 			continue
 		if seen_ids.has(upgrade_id):
-			errors.append("特殊强化表第 %d 行强化ID重复: %s" % [row_number, String(upgrade_id)])
+			errors.append("特殊强化表第 %d 行强化ID重复: %s" % [row_number, str(upgrade_id)])
 			continue
 		seen_ids[upgrade_id] = true
 		var upgrade: SpecialUpgradeData = SpecialUpgradeData.new()
@@ -633,9 +671,13 @@ static func _read_valid_workbook(
 	return result
 
 
-static func _records_to_values(sheet: ExcelReader47.ExcelSheet) -> Dictionary:
+static func _records_to_values(
+	sheet: ExcelReader47.ExcelSheet,
+	header_row: int = 1,
+	first_data_row: int = 2
+) -> Dictionary:
 	var values: Dictionary = {}
-	for record: Dictionary in sheet.to_records():
+	for record: Dictionary in sheet.to_records(header_row, first_data_row):
 		var parameter_id: String = str(record.get("参数ID", "")).strip_edges()
 		if not parameter_id.is_empty():
 			values[parameter_id] = record.get("数值")
@@ -659,7 +701,7 @@ static func _parse_upgrade_sheet(
 			errors.append("%s表第 %d 行强化ID不能为空" % [sheet_name, row_number])
 			continue
 		if seen_ids.has(upgrade_id):
-			errors.append("%s表第 %d 行强化ID重复: %s" % [sheet_name, row_number, String(upgrade_id)])
+			errors.append("%s表第 %d 行强化ID重复: %s" % [sheet_name, row_number, str(upgrade_id)])
 			continue
 		seen_ids[upgrade_id] = true
 		var minimum_value: float = _required_number(record, "最小值", row_number, errors, sheet_name)

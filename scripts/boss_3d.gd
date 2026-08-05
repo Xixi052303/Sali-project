@@ -30,6 +30,8 @@ var active: bool = false
 var _state: State = State.ENTER
 var _state_time: float = 0.0
 var _attack_index: int = 0
+# 客户端只用于对齐预警表现；命中仍由房主在其执行时刻裁决。
+var host_execution_time: float = 0.0
 # 每次攻击开始时锁定完整道路坐标，动画锚点与代码命中共享同一目标快照。
 var _locked_target_position: Vector3 = Vector3(3.6, 0.0, Playfield.CART_Z)
 var _direction: float = 1.0
@@ -46,11 +48,16 @@ var _combat_z: float = 3.0
 
 
 # Boss 登场时把当前基准胃口与资源倍率结算为本场固定胃口。
-func configure(source_data: BossPatternData, run_controller: RunController3D, baseline_appetite: float) -> void:
+func configure(
+	source_data: BossPatternData,
+	run_controller: RunController3D,
+	baseline_appetite: float,
+	player_count: int = 1
+) -> void:
 	_resolve_visual_nodes()
 	data = source_data
 	run = run_controller
-	maximum_appetite = data.appetite_at(baseline_appetite)
+	maximum_appetite = data.appetite_at(baseline_appetite) * float(maxi(1, player_count))
 	remaining_appetite = maximum_appetite
 	# 战位跟随编辑器中的餐车纵坐标，确保当前土豆与法棍基础射程都能参与满足。
 	_combat_z = run.cart_destination_z() - COMBAT_DISTANCE_FROM_CART
@@ -77,17 +84,25 @@ func _process(delta: float) -> void:
 				_direction *= -1.0
 				position.x = clampf(position.x, 1.8, 5.4)
 			if _state_time >= 2.2:
-				_locked_target_position = run.cart.position
+				_locked_target_position = run.select_boss_target_position(position)
 				_change_state(State.TELEGRAPH_LINE if _attack_index % 2 == 0 else State.TELEGRAPH_AREA)
 		State.TELEGRAPH_LINE:
 			if _state_time >= data.telegraph_duration:
-				if line_attack_hits(run.cart.position, position, _locked_target_position):
-					run.damage_cart(remaining_appetite * data.line_attack_ratio, "Boss直线投掷")
+				run.resolve_boss_attack(
+					remaining_appetite * data.line_attack_ratio,
+					_locked_target_position,
+					false,
+					"Boss直线投掷"
+				)
 				_finish_attack()
 		State.TELEGRAPH_AREA:
 			if _state_time >= data.telegraph_duration:
-				if area_attack_hits(run.cart.position, _locked_target_position):
-					run.damage_cart(remaining_appetite * data.area_attack_ratio, "Boss范围攻击")
+				run.resolve_boss_attack(
+					remaining_appetite * data.area_attack_ratio,
+					_locked_target_position,
+					true,
+					"Boss范围攻击"
+				)
 				_finish_attack()
 		State.RECOVER:
 			if _state_time >= data.recovery_duration:
@@ -106,6 +121,35 @@ func receive_satisfaction(amount: float) -> void:
 		active = false
 		_change_state(State.DONE)
 		satisfied.emit()
+
+
+func network_snapshot() -> Dictionary:
+	return {
+		"x": position.x,
+		"z": position.z,
+		"appetite": remaining_appetite,
+		"maximum": maximum_appetite,
+		"active": active,
+		"state": int(_state),
+		"state_time": _state_time,
+		"host_execution_time": run.state.elapsed_seconds if run != null and run.state != null else 0.0,
+		"locked_target_x": _locked_target_position.x,
+		"locked_target_z": _locked_target_position.z,
+	}
+
+
+func apply_network_snapshot(snapshot: Dictionary) -> void:
+	position.x = float(snapshot.get("x", position.x))
+	position.z = float(snapshot.get("z", position.z))
+	remaining_appetite = float(snapshot.get("appetite", remaining_appetite))
+	maximum_appetite = float(snapshot.get("maximum", maximum_appetite))
+	active = bool(snapshot.get("active", active))
+	_state = int(snapshot.get("state", int(_state)))
+	_state_time = float(snapshot.get("state_time", _state_time))
+	host_execution_time = float(snapshot.get("host_execution_time", host_execution_time))
+	_locked_target_position.x = float(snapshot.get("locked_target_x", _locked_target_position.x))
+	_locked_target_position.z = float(snapshot.get("locked_target_z", _locked_target_position.z))
+	_refresh_appetite_display()
 
 
 func hit_radius() -> float:

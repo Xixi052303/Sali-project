@@ -12,16 +12,27 @@ signal cooking_progress_changed(
 var run: RunController3D
 var cart: Cart3D
 var state: RunState
+var player_slot: int = 1
 var foods: Array[FoodRuntime] = []
 # 巨型法棍使用独立固定节拍，不受普通法棍攻速和加量影响。
 var _giant_baguette_enabled: bool = false
 var _giant_baguette_cooldown: float = 0.0
 
 
-func configure(run_controller: RunController3D, source_cart: Cart3D, run_state: RunState) -> void:
+func configure(
+	run_controller: RunController3D,
+	source_cart: Cart3D,
+	run_state: RunState,
+	owner_slot: int = 1
+) -> void:
 	run = run_controller
 	cart = source_cart
 	state = run_state
+	player_slot = maxi(1, owner_slot)
+
+
+func set_player_slot(owner_slot: int) -> void:
+	player_slot = maxi(1, owner_slot)
 
 
 func add_food(food: FoodData) -> void:
@@ -66,7 +77,7 @@ func _tick_food(runtime: FoodRuntime, delta: float) -> void:
 	if not runtime.ready:
 		_emit_cooking_progress(runtime)
 		return
-	var target: Node3D = run.get_priority_target_for_food(runtime.data)
+	var target: Node3D = run.get_priority_target_for_food(runtime.data, player_slot)
 	runtime.ready = false
 	runtime.cooldown_duration = state.effective_interval(runtime.data)
 	runtime.cooldown_remaining = runtime.cooldown_duration
@@ -82,7 +93,10 @@ func _emit_cooking_progress(runtime: FoodRuntime) -> void:
 
 
 func _fire(food: FoodData, target: Node3D) -> void:
-	var amount: float = state.effective_satisfaction(food)
+	var amount: float = MultiplayerRules.ghost_output(
+		state.effective_satisfaction(food),
+		run.output_multiplier_for_slot(player_slot)
+	)
 	var speed: float = Playfield.design_to_world(state.effective_projectile_speed(food))
 	if food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
 		speed = state.effective_orbit_angular_speed(food)
@@ -104,22 +118,28 @@ func _fire(food: FoodData, target: Node3D) -> void:
 		base_direction = target_position - cart_position
 		base_direction.y = 0.0
 		base_direction = base_direction.normalized()
+	var burst: Array[Dictionary] = []
 	for index: int in range(count):
 		var direction: Vector3 = base_direction
 		var spread: float = (float(index) - float(count - 1) * 0.5) * 0.075
 		direction = direction.rotated(Vector3.UP, spread)
 		# 蘑菇使用角度相位，胡萝卜复用同一相位在往返周期内错峰。
 		var orbit_phase: float = TAU * float(index) / float(count)
-		run.spawn_projectile(
-			cart_position + Vector3(0.0, 0.0, -1.35),
-			direction,
-			food,
-			amount,
-			speed,
-			radius,
-			target,
-			orbit_phase
-		)
+		burst.append({
+			"direction": _vector_payload(direction),
+			"orbit_phase": orbit_phase,
+		})
+	run.spawn_projectile_burst(
+		cart_position + Vector3(0.0, 0.0, -1.35),
+		burst,
+		food,
+		amount,
+		speed,
+		radius,
+		target,
+		false,
+		player_slot
+	)
 
 
 # 进化取得后等待完整间隔，再额外发射一根固定份数的巨型法棍。
@@ -143,14 +163,24 @@ func _tick_giant_baguette(food: FoodData, delta: float) -> void:
 # 巨型法棍继承法棍当前基础成长，再应用表格中的专属伤害倍率。
 func _fire_giant_baguette(food: FoodData) -> void:
 	var cart_position: Vector3 = run.logic_position(cart)
-	run.spawn_projectile(
+	run.spawn_projectile_burst(
 		cart_position + Vector3(0.0, 0.0, -1.35),
-		Vector3.FORWARD,
+		[{
+			"direction": _vector_payload(Vector3.FORWARD),
+			"orbit_phase": 0.0,
+		}],
 		food,
-		state.effective_satisfaction(food) * state.baguette_giant_satisfaction_multiplier,
+		MultiplayerRules.ghost_output(
+			state.effective_satisfaction(food) * state.baguette_giant_satisfaction_multiplier,
+			run.output_multiplier_for_slot(player_slot)
+		),
 		Playfield.design_to_world(state.effective_projectile_speed(food)),
 		Playfield.design_to_world(state.effective_projectile_radius(food)),
 		null,
-		0.0,
-		true
+		true,
+		player_slot
 	)
+
+
+func _vector_payload(value: Vector3) -> Dictionary:
+	return {"x": value.x, "y": value.y, "z": value.z}

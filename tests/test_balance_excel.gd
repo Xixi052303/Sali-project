@@ -12,6 +12,10 @@ func _init() -> void:
 	_test_special_upgrade_workbook()
 	_test_invalid_customer_records()
 	_test_missing_workbook_fallback_signal()
+	call_deferred("_finish_test")
+
+
+func _finish_test() -> void:
 	if _failures == 0:
 		print("BALANCE_EXCEL_TEST_OK")
 		quit(0)
@@ -35,9 +39,9 @@ func _test_timeline_workbook() -> void:
 	_check(
 		is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(0.0), 15.0)
 		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(135.0), 350.0)
-		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(300.0), 2825.0)
-		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(480.0), 12000.0),
-		"胃口按有效时间读取三段终点15、350、2825、12000"
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(300.0), 2000.0)
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(480.0), 10000.0),
+		"胃口按有效时间读取三段终点15、350、2000、10000"
 	)
 	_check(
 		timeline.event_ids.count("elite") == 6
@@ -82,6 +86,18 @@ func _test_combat_rules_workbook() -> void:
 		is_equal_approx(result.cart_invincibility_duration_seconds, 0.5),
 		"餐车受击无敌时间由战斗规则表读取为0.5秒"
 	)
+	_check(
+		is_equal_approx(result.respawn_base_seconds, 15.0)
+		and is_equal_approx(result.respawn_increment_seconds, 15.0)
+		and is_equal_approx(result.respawn_max_seconds, 180.0),
+		"多人复活倒计时读取15秒起步、每次增加15秒、封顶180秒"
+	)
+	_check(
+		is_equal_approx(result.ghost_damage_multiplier, 0.01)
+		and is_equal_approx(result.respawn_durability_ratio, 0.5)
+		and is_equal_approx(result.respawn_invincibility_seconds, 2.0),
+		"幽灵输出、复活耐久比例和复活保护读取正式值"
+	)
 	var invalid_result: GameplayExcelLoader.CombatRulesLoadResult = (
 		GameplayExcelLoader._parse_combat_rule_values(
 			{"cart_invincibility_duration_seconds": 0.0}
@@ -94,6 +110,24 @@ func _test_combat_rules_workbook() -> void:
 			Cart3D.DEFAULT_INVINCIBILITY_DURATION_SECONDS
 		),
 		"战斗规则回退保持0.5秒安全值"
+	)
+	var invalid_ratio_result: GameplayExcelLoader.CombatRulesLoadResult = (
+		GameplayExcelLoader._parse_combat_rule_values({
+			"cart_invincibility_duration_seconds": 0.9,
+			"respawn_base_seconds": 15.0,
+			"respawn_increment_seconds": 15.0,
+			"respawn_max_seconds": 180.0,
+			"ghost_damage_multiplier": 0.01,
+			"respawn_durability_ratio": 1.1,
+			"respawn_invincibility_seconds": 2.0,
+		})
+	)
+	_check(not invalid_ratio_result.loaded_from_excel, "复活耐久比例超过100%触发战斗规则回退")
+	_check(
+		is_equal_approx(invalid_ratio_result.cart_invincibility_duration_seconds, 0.5)
+		and is_equal_approx(invalid_ratio_result.respawn_base_seconds, 15.0)
+		and is_equal_approx(invalid_ratio_result.respawn_max_seconds, 180.0),
+		"战斗规则整表失败时不带入前面已解析的部分值"
 	)
 
 
@@ -112,7 +146,7 @@ func _test_customer_workbook() -> void:
 		&"ranged_guest",
 		&"elite_guest",
 	]:
-		_check(customers.has(required_id), "食客 Excel 必需ID齐全: %s" % String(required_id))
+		_check(customers.has(required_id), "食客 Excel 必需ID齐全: %s" % str(required_id))
 	if customers.size() != 4:
 		return
 	var basic: CustomerData = customers[&"basic_guest"]
@@ -208,11 +242,11 @@ func _test_weapon_workbook() -> void:
 			"土豆从武器表读取当前基础输出与约0.72屏射程参数"
 		)
 		_check(
-			is_equal_approx(baguette.base_satisfaction, 10.0)
-			and is_equal_approx(baguette.base_interval, 1.0)
-			and is_equal_approx(baguette.projectile_speed, 2000.0)
-			and is_equal_approx(baguette.base_lifetime, 0.5),
-			"法棍从武器表读取当前10点DPS与约0.78屏射程参数"
+			is_equal_approx(baguette.base_satisfaction, 12.0)
+			and is_equal_approx(baguette.base_interval, 1.5)
+			and is_equal_approx(baguette.projectile_speed, 1500.0)
+			and is_equal_approx(baguette.base_lifetime, 1.0),
+			"法棍从武器表读取当前12点满足、1.5秒间隔与射程参数"
 		)
 		_check(
 			is_equal_approx(potato.wine_upgrade_scale, 0.35)
@@ -238,22 +272,23 @@ func _test_weapon_workbook() -> void:
 		_check(
 			is_equal_approx(mushroom.wine_upgrade_scale, 1.0)
 			and is_equal_approx(mushroom.range_upgrade_scale, 0.5)
-			and is_equal_approx(mushroom.duration_upgrade_scale, 0.15),
-			"蘑菇按1/1/0.5/0.15转译四项输出强化"
+			and is_equal_approx(mushroom.duration_upgrade_scale, 0.2),
+			"蘑菇按1/1/0.5/0.2转译四项输出强化"
 		)
 		_check(is_equal_approx(mushroom.orbit_angular_speed, 4.0), "蘑菇初始一圈按π/2秒读取4rad/s")
 		_check(
 			egg.attack_kind == FoodData.AttackKind.EGG_PROJECTILE
-			and is_equal_approx(egg.base_interval, potato.base_interval)
-			and is_equal_approx(egg.projectile_speed, potato.projectile_speed),
-			"鸡蛋主行使用土豆基础值"
+			and is_equal_approx(egg.base_satisfaction, 3.0)
+			and is_equal_approx(egg.base_interval, 1.8)
+			and is_equal_approx(egg.projectile_speed, 680.0),
+			"鸡蛋主行读取当前基础满足、间隔和弹速"
 		)
 		_check(
 			result.egg_puddle_data != null
 			and is_equal_approx(result.egg_puddle_data.base_satisfaction, egg.base_satisfaction)
-			and is_equal_approx(result.egg_puddle_data.base_interval, 0.5)
+			and is_equal_approx(result.egg_puddle_data.base_interval, 0.4)
 			and is_equal_approx(result.egg_puddle_data.projectile_radius, egg.projectile_radius)
-			and is_equal_approx(result.egg_puddle_data.base_lifetime, egg.base_lifetime)
+			and is_equal_approx(result.egg_puddle_data.base_lifetime, egg.base_lifetime * 1.5)
 			and is_equal_approx(
 				result.egg_puddle_data.attack_speed_upgrade_scale,
 				egg.attack_speed_upgrade_scale
@@ -264,17 +299,17 @@ func _test_weapon_workbook() -> void:
 				result.egg_puddle_data.duration_upgrade_scale,
 				egg.duration_upgrade_scale
 			),
-			"蛋液衍生行只覆盖节拍与输出倍率，其余属性和强化倍率继承鸡蛋"
+			"蛋液衍生行按工作簿覆盖节拍与持续倍率，其余属性和强化倍率继承鸡蛋"
 		)
 		_check(
 			carrot.attack_kind == FoodData.AttackKind.CARROT_SWEEP
 			and carrot.pierce_count == 999
 			and is_equal_approx(carrot.projectile_speed, 680.0)
-			and is_equal_approx(carrot.base_lifetime, 0.5)
-			and is_equal_approx(carrot.orbit_angular_speed, 6.2831853, 0.000001)
+			and is_equal_approx(carrot.base_lifetime, 0.25)
+			and is_equal_approx(carrot.orbit_angular_speed, 12.56636)
 			and is_equal_approx(carrot.sweep_radius, 458.1053)
 			and is_equal_approx(carrot.sweep_angle_degrees, 180.0),
-			"胡萝卜从武器表读取环绕角速度、0.5秒持续、999穿透和180度扫掠"
+			"胡萝卜从武器表读取环绕角速度、0.25秒持续、999穿透和180度扫掠"
 		)
 	_check(is_equal_approx(result.baguette_giant_interval_seconds, 3.0), "巨型法棍间隔由武器表读取")
 	_check(is_equal_approx(result.baguette_giant_attack_speed_scale, 0.05), "巨型法棍攻速倍率由武器表读取")
@@ -292,7 +327,7 @@ func _test_normal_upgrade_workbook() -> void:
 	_check(result.loaded_from_excel, "普通强化 Excel 可读取")
 	_check(result.upgrades.size() == 8, "普通门与食客奖励共用八项候选池")
 	_check(
-		is_equal_approx(result.reward_effect_scale, 0.4)
+		is_equal_approx(result.reward_effect_scale, 0.7)
 		and is_equal_approx(result.wine_curve_c, 1.0)
 		and is_equal_approx(result.range_curve_c, 4.0)
 		and is_equal_approx(result.duration_curve_c, 1.0)
@@ -306,8 +341,8 @@ func _test_normal_upgrade_workbook() -> void:
 		UpgradeData.Kind.SCALLION: Vector2(0.10, 0.60),
 		UpgradeData.Kind.STARCH: Vector2(0.15, 0.75),
 		UpgradeData.Kind.LIGHT_CART: Vector2(50.0, 300.0),
-		UpgradeData.Kind.STURDY_CART: Vector2(0.02, 0.11),
-		UpgradeData.Kind.REPAIR: Vector2(0.12, 0.55),
+		UpgradeData.Kind.STURDY_CART: Vector2(0.02, 0.30),
+		UpgradeData.Kind.REPAIR: Vector2(0.08, 0.50),
 	}
 	for upgrade: UpgradeData in result.upgrades:
 		_check(upgrade.uses_value_range, "共用候选使用可成长区间")

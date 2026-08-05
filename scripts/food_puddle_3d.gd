@@ -10,6 +10,7 @@ const RANGE_OUTLINE_WIDTH: float = 0.035
 const LIQUID_MODEL_SIZE: Vector3 = Vector3(0.998046875, 0.146484375, 0.990234375)
 
 var run: RunController3D
+var owner_slot: int = 1
 var food_id: StringName = &"egg"
 var derived_attack_id: StringName = &"egg_puddle"
 var satisfaction: float = 0.0
@@ -127,12 +128,11 @@ func overlaps_target(target_position: Vector3, target_radius: float) -> bool:
 
 # 蛋液命中后立即以极小尺寸出现，在短时间内放大到完整范围，保留首跳即时结算。
 func _play_appear_animation() -> void:
+	scale = Vector3.ONE * APPEAR_START_SCALE
 	if not is_inside_tree():
-		scale = Vector3.ONE
 		return
 	if _appearance_tween != null:
 		_appearance_tween.kill()
-	scale = Vector3.ONE * APPEAR_START_SCALE
 	_appearance_tween = create_tween()
 	_appearance_tween.set_trans(Tween.TRANS_QUAD)
 	_appearance_tween.set_ease(Tween.EASE_OUT)

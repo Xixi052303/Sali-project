@@ -5,6 +5,12 @@ signal durability_changed(current: float, maximum: float, temporary_shield: floa
 signal inventory_changed
 
 const MINIMUM_INTERVAL: float = 1.0 / 60.0
+const DEFAULT_RESPAWN_BASE_SECONDS: float = 15.0
+const DEFAULT_RESPAWN_INCREMENT_SECONDS: float = 15.0
+const DEFAULT_RESPAWN_MAX_SECONDS: float = 180.0
+const DEFAULT_GHOST_DAMAGE_MULTIPLIER: float = 0.01
+const DEFAULT_RESPAWN_DURABILITY_RATIO: float = 0.5
+const DEFAULT_RESPAWN_INVINCIBILITY_SECONDS: float = 2.0
 const FOOD_MAX_LEVEL: int = 3
 const FOOD_LEVEL_SATISFACTION_MULTIPLIER: float = 2.25
 const BAGUETTE_GIANT_INTERVAL_SECONDS: float = 3.0
@@ -41,12 +47,12 @@ class SpecialChoiceRecord:
 	func to_dictionary() -> Dictionary:
 		var candidate_texts: Array[String] = []
 		for candidate: StringName in candidates:
-			candidate_texts.append(String(candidate))
+			candidate_texts.append(str(candidate))
 		return {
-			"source": String(source),
+			"source": str(source),
 			"elapsed_seconds": elapsed_seconds,
 			"candidates": candidate_texts,
-			"selected": String(selected),
+			"selected": str(selected),
 		}
 
 var maximum_durability: float = 100.0
@@ -201,7 +207,11 @@ func is_food_homing(food_id: StringName) -> bool:
 	return homing_foods.has(food_id)
 
 
-func apply_upgrade(upgrade: UpgradeData, count_as_gate: bool = true) -> void:
+func apply_upgrade(
+	upgrade: UpgradeData,
+	count_as_gate: bool = true,
+	allow_health_effects: bool = true
+) -> void:
 	if upgrade == null:
 		return
 	if count_as_gate:
@@ -226,11 +236,13 @@ func apply_upgrade(upgrade: UpgradeData, count_as_gate: bool = true) -> void:
 			var durability_gain: float = maximum_durability * maxf(0.0, upgrade.value)
 			contribution = durability_gain
 			maximum_durability += durability_gain
-			current_durability += durability_gain
+			if allow_health_effects:
+				current_durability += durability_gain
 			durability_changed.emit(current_durability, maximum_durability, temporary_shield)
 		UpgradeData.Kind.REPAIR:
 			contribution = maximum_durability * upgrade.value
-			repair(contribution)
+			if allow_health_effects:
+				repair(contribution)
 	_record_normal_upgrade_choice(upgrade, contribution)
 	inventory_changed.emit()
 

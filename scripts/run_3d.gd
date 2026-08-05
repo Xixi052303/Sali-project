@@ -1,4 +1,4 @@
-﻿class_name RunController3D
+class_name RunController3D
 extends Node3D
 
 enum Phase {
@@ -69,6 +69,7 @@ const SPECIAL_UPGRADE_WORKBOOK_PATH: String = "res://balance_tables/特殊强化
 const DEFAULT_CUSTOMER_SCENE: PackedScene = preload(
 	"res://scenes/characters/customers/customer_base_3d.tscn"
 )
+const CART_SCENE: PackedScene = preload("res://scenes/cart_3d.tscn")
 const BOSS_SCENE: PackedScene = preload(
 	"res://scenes/characters/bosses/prototype_boss_3d.tscn"
 )
@@ -119,9 +120,14 @@ const SPAWN_SEED_SALT: int = 0x5EED5EED
 
 @onready var background: WorldBackground3D = %Background
 @onready var entities: Node3D = %Entities
+@onready var players_root: Node3D = %Players
 @onready var projectiles: Node3D = %Projectiles
 @onready var drops: Node3D = %Drops
 @onready var gates: Node3D = %Gates
+@onready var customer_spawner: MultiplayerSpawner = %CustomerSpawner
+@onready var gate_spawner: MultiplayerSpawner = %GateSpawner
+@onready var drop_spawner: MultiplayerSpawner = %DropSpawner
+@onready var boss_spawner: MultiplayerSpawner = %BossSpawner
 @onready var cart: Cart3D = %Cart3D
 @onready var weapon_controller: WeaponController3D = %WeaponController3D
 @onready var director: EncounterDirector = %EncounterDirector
@@ -165,12 +171,17 @@ var _post_boss_satisfaction_start: Dictionary[StringName, float] = {}
 var _post_boss_durability_lost_start: float = 0.0
 var _post_boss_gate_choices_start: int = 0
 var _upgrade_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+# 开局食材与特殊候选按玩家槽位分流，避免一名玩家的选择改变队友候选序列。
+var _player_choice_rngs: Dictionary[int, RandomNumberGenerator] = {}
 # 波次间隔与食客路线共用独立随机流，避免改变强化奖励序列。
 var _spawn_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _target_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _run_seed: int = 0
 var _normal_wave_progresses: PackedFloat32Array = PackedFloat32Array()
 var _active_special_choices: Array[StringName] = []
 var _special_choice_source: StringName = &""
+var _active_special_choices_by_slot: Dictionary[int, Array] = {}
+var _selected_special_choices_by_slot: Dictionary[int, StringName] = {}
 var _smoke_minimum_gate_customer_gap: float = INF
 var _smoke_minimum_required_gap: float = SMOKE_MINIMUM_GEOMETRY_GAP
 var _smoke_minimum_gap_kind: String = ""
@@ -197,6 +208,30 @@ var _range_multiplier_cap: float = RunState.RANGE_MULTIPLIER_CAP
 var _cart_invincibility_duration_seconds: float = (
 	Cart3D.DEFAULT_INVINCIBILITY_DURATION_SECONDS
 )
+var _respawn_base_seconds: float = RunState.DEFAULT_RESPAWN_BASE_SECONDS
+var _respawn_increment_seconds: float = RunState.DEFAULT_RESPAWN_INCREMENT_SECONDS
+var _respawn_max_seconds: float = RunState.DEFAULT_RESPAWN_MAX_SECONDS
+var _ghost_damage_multiplier: float = RunState.DEFAULT_GHOST_DAMAGE_MULTIPLIER
+var _respawn_durability_ratio: float = RunState.DEFAULT_RESPAWN_DURABILITY_RATIO
+var _respawn_invincibility_seconds: float = RunState.DEFAULT_RESPAWN_INVINCIBILITY_SECONDS
+# 多人模式按槽位持有独立强化与餐车，敌人、门和时间轴仍由本控制器共享。
+var _player_contexts: Dictionary[int, PlayerRunContext] = {}
+var _network_active: bool = false
+# 通过根节点获取 Autoload，保证编辑器主场景与 --script 专项测试都能解析同一会话。
+var _network_session: Variant
+var _network_player_count: int = 1
+var _network_snapshot_accumulator: float = 0.0
+var _network_stats_accumulator: float = 0.0
+var _network_customer_snapshot_cycle: int = 0
+var _network_customer_fragment_cycle: int = -1
+var _network_customer_fragment_seen: Dictionary[int, bool] = {}
+var _team_death_count: int = 0
+var _network_run_finished: bool = false
+# 主机只为新出现的世界对象发送一次可靠配置，避免每帧重复传输资源字段。
+var _network_announced_customer_ids: Dictionary[int, bool] = {}
+var _network_announced_gate_ids: Dictionary[int, bool] = {}
+var _network_announced_drop_ids: Dictionary[int, bool] = {}
+var _network_announced_boss: bool = false
 var _debug_invincible: bool = false
 # 食材卡取得后转为等级卡；进化按持有状态进入池，全局效果可以重复取得。
 var _special_choice_pool: Array[StringName] = [
@@ -214,6 +249,8 @@ var _special_choice_pool: Array[StringName] = [
 
 
 func _ready() -> void:
+	_network_session = get_node_or_null("/root/NetworkSession")
+	_configure_network_spawners()
 	_load_timeline_balance()
 	_load_combat_rules_balance()
 	_load_customer_balance()
@@ -233,6 +270,7 @@ func _ready() -> void:
 			_upgrade_rng.randomize()
 			_run_seed = _upgrade_rng.seed
 	_spawn_rng.seed = _run_seed ^ SPAWN_SEED_SALT
+	_target_rng.seed = _run_seed ^ 0x7A26BEEF
 	_normal_wave_progresses = _build_normal_wave_progresses(director.timeline)
 	_crosswind_sign = -1.0 if (_run_seed & 1) == 0 else 1.0
 	state = RunState.new()
@@ -260,10 +298,12 @@ func _ready() -> void:
 	playfield = Playfield.new()
 	add_child(playfield)
 	cart.configure(state, playfield, _cart_invincibility_duration_seconds)
+	cart.set_player_slot(1)
 	background.set_cart(cart)
 	# 主菜单展示期间冻结道路滚动，保持启动画面可读且不改变开局距离。
 	background.scrolling = false
 	weapon_controller.configure(self, cart, state)
+	_register_player_context(1, 1, state, cart, weapon_controller)
 	_build_prototype_upgrades()
 	director.event_triggered.connect(_on_timeline_event)
 	cart.damaged.connect(_on_cart_damaged)
@@ -279,6 +319,14 @@ func _ready() -> void:
 	hud.pause_requested.connect(_on_pause_requested)
 	hud.resume_requested.connect(_on_resume_requested)
 	main_menu.start_requested.connect(_on_main_menu_start_requested)
+	_network_session.match_started.connect(_on_network_match_started)
+	_network_session.remote_input_received.connect(_on_network_input_received)
+	_network_session.pause_changed.connect(_on_network_pause_changed)
+	_network_session.network_event_received.connect(_on_network_event_received)
+	_network_session.choice_received.connect(_on_network_choice_received)
+	_network_session.match_returned_to_lobby.connect(_on_network_match_returned_to_lobby)
+	_network_session.connection_state_changed.connect(_on_network_connection_state_changed)
+	_network_session.roster_changed.connect(_on_network_roster_changed)
 	debug_menu.action_requested.connect(_on_debug_action_requested)
 	debug_menu.menu_opened.connect(_on_debug_menu_opened)
 	debug_menu.menu_closed.connect(_on_debug_menu_closed)
@@ -296,8 +344,1145 @@ func _ready() -> void:
 		_start_run()
 
 
+# 使用 Godot 原生生成器复制动态对象；稳定 ID 快照仍负责状态、MTU 拆包和丢包后的校正。
+func _configure_network_spawners() -> void:
+	if customer_spawner != null:
+		customer_spawner.spawn_path = NodePath("../Entities")
+		customer_spawner.spawn_function = _spawn_customer_from_network_payload
+	if gate_spawner != null:
+		gate_spawner.spawn_path = NodePath("../Gates")
+		gate_spawner.spawn_function = _spawn_gate_from_network_payload
+	if drop_spawner != null:
+		drop_spawner.spawn_path = NodePath("../Drops")
+		drop_spawner.spawn_function = _spawn_drop_from_network_payload
+	if boss_spawner != null:
+		boss_spawner.spawn_path = NodePath("../Entities")
+		boss_spawner.spawn_function = _spawn_boss_from_network_payload
+
+
+func _native_network_spawning_enabled() -> bool:
+	return (
+		_network_active
+		and _network_session != null
+		and _network_session.is_networked()
+		and customer_spawner != null
+		and gate_spawner != null
+		and drop_spawner != null
+		and boss_spawner != null
+	)
+
+
+# 给动态对象配置只包含基础类型的同步器；Resource、随机结果和统计仍走显式快照。
+func _attach_network_synchronizer(node: Node, properties: Array[NodePath]) -> void:
+	if node == null or node.get_node_or_null("NetworkSynchronizer") != null:
+		return
+	var synchronizer: MultiplayerSynchronizer = MultiplayerSynchronizer.new()
+	synchronizer.name = "NetworkSynchronizer"
+	synchronizer.root_path = NodePath("..")
+	var replication_config: SceneReplicationConfig = SceneReplicationConfig.new()
+	for property_path: NodePath in properties:
+		replication_config.add_property(property_path)
+	synchronizer.replication_config = replication_config
+	synchronizer.replication_interval = 0.05
+	synchronizer.delta_interval = 0.0
+	node.add_child(synchronizer)
+	node.set_multiplayer_authority(1, true)
+
+
 func _on_main_menu_start_requested() -> void:
 	_start_run()
+
+
+func _register_player_context(
+	player_slot: int,
+	player_peer_id: int,
+	player_state: RunState,
+	player_cart: Cart3D,
+	player_weapon_controller: WeaponController3D
+) -> PlayerRunContext:
+	var context: PlayerRunContext = PlayerRunContext.new()
+	context.configure(
+		player_slot,
+		player_peer_id,
+		player_state,
+		player_cart,
+		player_weapon_controller
+	)
+	_player_contexts[player_slot] = context
+	player_cart.set_player_slot(player_slot)
+	player_cart.target_changed.connect(_on_player_target_changed.bind(player_slot))
+	if player_slot != 1:
+		player_state.durability_changed.connect(
+			_on_player_context_durability_changed.bind(player_slot)
+		)
+		player_state.inventory_changed.connect(
+			_on_player_context_inventory_changed.bind(player_slot)
+		)
+	if player_slot != 1:
+		player_weapon_controller.food_added.connect(
+			_on_player_weapon_food_added.bind(player_slot)
+		)
+		player_weapon_controller.food_removed.connect(
+			_on_player_weapon_food_removed.bind(player_slot)
+		)
+		player_weapon_controller.cooking_progress_changed.connect(
+			_on_player_cooking_progress_changed
+		)
+	return context
+
+
+func _on_player_context_durability_changed(
+	current: float,
+	maximum: float,
+	shield: float,
+	player_slot: int
+) -> void:
+	if _network_active and player_slot == _network_session.local_slot:
+		hud.set_durability(current, maximum, shield)
+
+
+func _on_player_context_inventory_changed(player_slot: int) -> void:
+	if not _network_active or player_slot != _network_session.local_slot:
+		return
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	if context == null:
+		return
+	for runtime: FoodRuntime in context.weapon_controller.foods:
+		hud.set_cooking_level(runtime.data.id, context.state.food_level(runtime.data.id))
+
+
+func _configure_player_state(player_state: RunState, seed: int) -> void:
+	player_state.run_seed = seed
+	player_state.food_max_level = _special_food_max_level
+	player_state.food_level_satisfaction_multiplier = _special_food_level_multiplier
+	player_state.baguette_giant_interval_seconds = _baguette_giant_interval_seconds
+	player_state.baguette_giant_attack_speed_scale = _baguette_giant_attack_speed_scale
+	player_state.baguette_giant_minimum_interval_seconds = _baguette_giant_minimum_interval_seconds
+	player_state.baguette_giant_width_regions = _baguette_giant_width_regions
+	player_state.baguette_giant_pierce_count = _baguette_giant_pierce_count
+	player_state.baguette_giant_duration_multiplier = _baguette_giant_duration_multiplier
+	player_state.baguette_giant_satisfaction_multiplier = _baguette_giant_satisfaction_multiplier
+	player_state.wine_curve_c = _wine_curve_c
+	player_state.range_curve_c = _range_curve_c
+	player_state.duration_curve_c = _duration_curve_c
+	player_state.cart_speed_curve_c = _cart_speed_curve_c
+	player_state.range_multiplier_cap = _range_multiplier_cap
+
+
+# 联机开局沿用当前场景，主机先锁定人数和种子，再为每个槽位建立独立 RunState。
+func _on_network_match_started(seed: int, player_count: int, roster: Array[Dictionary]) -> void:
+	if phase != Phase.INTRO:
+		return
+	_network_active = true
+	_network_player_count = clampi(player_count, 1, _network_session.MAX_PLAYERS)
+	_network_announced_customer_ids.clear()
+	_network_announced_gate_ids.clear()
+	_network_announced_drop_ids.clear()
+	_network_announced_boss = false
+	_run_seed = seed
+	_upgrade_rng.seed = seed
+	_spawn_rng.seed = seed ^ SPAWN_SEED_SALT
+	_target_rng.seed = seed ^ 0x7A26BEEF
+	_player_choice_rngs.clear()
+	_normal_wave_progresses = _build_normal_wave_progresses(director.timeline)
+	_crosswind_sign = -1.0 if (seed & 1) == 0 else 1.0
+	_configure_player_state(state, seed)
+	for record: Dictionary in roster:
+		var player_slot: int = int(record.get("slot", 0))
+		if player_slot <= 1 or player_slot > _network_session.MAX_PLAYERS:
+			continue
+		var player_state: RunState = RunState.new()
+		_configure_player_state(player_state, seed + player_slot * 7919)
+		var player_cart: Cart3D = CART_SCENE.instantiate() as Cart3D
+		if player_cart == null:
+			continue
+		players_root.add_child(player_cart)
+		player_cart.position = cart.position
+		player_cart.position.x = playfield.clamp_cart_x(
+			cart.position.x + float(player_slot - 1) * 0.35
+		)
+		player_cart.position.z = cart.position.z
+		player_cart.scale = cart.scale
+		player_cart.configure(player_state, playfield, _cart_invincibility_duration_seconds)
+		var player_weapon_controller: WeaponController3D = WeaponController3D.new()
+		players_root.add_child(player_weapon_controller)
+		player_weapon_controller.configure(
+			self,
+			player_cart,
+			player_state,
+			player_slot
+		)
+		_register_player_context(
+			player_slot,
+			int(record.get("peer_id", 0)),
+			player_state,
+			player_cart,
+			player_weapon_controller
+		)
+	for player_slot: int in _player_contexts:
+		var context: PlayerRunContext = _player_contexts[player_slot]
+		var is_local: bool = (
+			(not _network_session.is_networked() and player_slot == 1)
+			or (_network_session.is_networked() and player_slot == _network_session.local_slot)
+		)
+		context.cart.set_input_enabled(is_local)
+		context.cart.set_network_interpolation(
+			_network_session.is_client() and not is_local
+		)
+		context.weapon_controller.set_player_slot(player_slot)
+		# 主机计算所有玩家的攻击；客户端只预测本机，远端由房主发射事件重放。
+		context.weapon_controller.set_process(
+			not _network_session.is_client() or is_local
+		)
+	if _network_session.is_client() and _player_contexts.has(_network_session.local_slot):
+		var local_context: PlayerRunContext = _player_contexts[_network_session.local_slot]
+		state = local_context.state
+		cart = local_context.cart
+		weapon_controller = local_context.weapon_controller
+	background.set_cart(cart)
+	_start_run()
+
+
+func _on_network_input_received(
+	player_slot: int,
+	target_x: float,
+	target_z: float,
+	sequence: int
+) -> void:
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	if context == null or sequence <= context.last_input_sequence:
+		return
+	context.last_input_sequence = sequence
+	context.cart.apply_network_target(target_x, target_z)
+
+
+func _on_player_target_changed(target_x: float, target_z: float, player_slot: int) -> void:
+	if not _network_active or _network_session.local_slot != player_slot:
+		return
+	_network_session.queue_input(target_x, target_z)
+
+
+func _on_network_pause_changed(paused: bool, owner_slot: int) -> void:
+	if not _network_active:
+		return
+	# 特殊三选一必须等剩余成员全部提交，任何旧的恢复请求都不能解除它的冻结。
+	if not paused and phase == Phase.CHOICE and (
+		(_network_session.is_host() and not _active_special_choices_by_slot.is_empty())
+		or (_network_session.is_client() and not _active_special_choices.is_empty())
+	):
+		get_tree().paused = true
+		hud.set_pause_available(false)
+		return
+	_manual_pause_active = paused
+	if paused:
+		hud.show_pause("P%d 暂停了出餐\n暂停者或房主可以继续" % owner_slot)
+		get_tree().paused = true
+	else:
+		hud.hide_pause()
+		get_tree().paused = false
+		hud.set_pause_available(phase == Phase.FORWARD or phase == Phase.BOSS)
+
+
+func _on_network_event_received(event: Dictionary) -> void:
+	if event.get("type", "") == "snapshot":
+		_apply_network_snapshot(event.get("data", {}))
+		return
+	if event.get("type", "") == "world_snapshot":
+		_apply_network_world_snapshot(event.get("data", {}))
+		return
+	if event.get("type", "") == "world_customers_fragment":
+		_apply_network_customer_fragment(event.get("data", {}))
+		return
+	if event.get("type", "") == "world_structures":
+		_apply_network_world_snapshot(event.get("data", {}))
+		return
+	if event.get("type", "") == "world_drops":
+		_apply_network_world_snapshot(event.get("data", {}))
+		return
+	if event.get("type", "") == "world_config":
+		_apply_network_world_config(event.get("data", {}))
+		return
+	if event.get("type", "") == "projectile_burst":
+		var burst_data: Dictionary = event.get("data", {}) as Dictionary
+		if int(burst_data.get("slot", 0)) != _network_session.local_slot:
+			replay_network_projectile_burst(burst_data)
+		return
+	if event.get("type", "") == "player_stats":
+		_apply_network_player_stats(
+			int(event.get("slot", 0)),
+			event.get("stats", {})
+		)
+		return
+	if event.get("type", "") == "player_stats_final":
+		_apply_network_player_stats(
+			int(event.get("slot", 0)),
+			event.get("stats", {})
+		)
+		return
+	if event.get("type", "") == "player_stats_final_upgrades":
+		_apply_network_player_stats(
+			int(event.get("slot", 0)),
+			event.get("stats", {})
+		)
+		return
+	if event.get("type", "") == "player_food_added":
+		var food_slot: int = int(event.get("slot", 0))
+		var food_id: StringName = StringName(str(event.get("food_id", "")))
+		var food_data: FoodData = _food_data_for_id(food_id)
+		var food_context: PlayerRunContext = _player_contexts.get(food_slot)
+		if food_context != null and food_data != null and not food_context.state.has_food(food_id):
+			food_context.weapon_controller.add_food(food_data)
+			if food_slot == _network_session.local_slot:
+				hud.show_toast("%s装车！自动寻找最近的食客" % food_data.display_name)
+		return
+	if event.get("type", "") == "upgrade_applied":
+		var upgrade_slot: int = int(event.get("slot", 0))
+		var network_upgrade: UpgradeData = _deserialize_network_upgrade(event.get("upgrade", {}))
+		if network_upgrade != null:
+			_apply_upgrade_for_player(
+				upgrade_slot,
+				network_upgrade,
+				bool(event.get("count_as_gate", true)),
+				bool(event.get("was_ghost", false)),
+				upgrade_slot == _network_session.local_slot
+			)
+		return
+	if event.get("type", "") == "special_choices":
+		var choices_by_slot: Dictionary = event.get("choices", {})
+		var local_choices: Array[StringName] = []
+		for choice_text: String in choices_by_slot.get(str(_network_session.local_slot), []):
+			local_choices.append(StringName(choice_text))
+		_active_special_choices = local_choices
+		_special_choice_source = StringName(event.get("source", "special"))
+		_boss_reward_pending = bool(event.get("boss_reward", false))
+		state.record_special_offer(_special_choice_source, local_choices)
+		hud.show_special_choices(
+			local_choices,
+			_special_choice_texts(local_choices),
+			str(event.get("title", "选择特别强化"))
+		)
+		get_tree().paused = true
+		return
+	if event.get("type", "") == "special_choice_applied":
+		var applied_slot: int = int(event.get("slot", 0))
+		_apply_special_choice_for_player(
+			applied_slot,
+			StringName(str(event.get("choice", "")))
+		)
+		return
+	if event.get("type", "") == "special_choices_complete":
+		_finish_special_choice_phase()
+		return
+	if event.get("type", "") == "match_failed":
+		if not _network_session.is_host():
+			phase = Phase.FAILED
+			_save_playtest_record(&"failed")
+			hud.set_phase("全员幽灵 · 本局结束")
+			hud.show_results("服务失败", "所有玩家同时失去行动资格。")
+			get_tree().paused = true
+		return
+	if event.get("type", "") == "match_completed":
+		if not _network_session.is_host():
+			phase = Phase.RESULTS
+			_record_final_boss_unlock()
+			_save_playtest_record(&"completed")
+			hud.set_phase("构筑验证完成")
+			hud.show_results("最终Boss满意离场，八分钟服务完成！", "房主已完成本局结算。")
+			get_tree().paused = true
+		return
+	if event.get("type", "") == "player_left":
+		var player_slot: int = int(event.get("slot", 0))
+		var context: PlayerRunContext = _player_contexts.get(player_slot)
+		if context != null:
+			context.cart.visible = false
+
+
+func _broadcast_player_snapshot() -> void:
+	if not _network_active or not _network_session.is_host():
+		return
+	var players: Array[Dictionary] = []
+	for player_slot: int in _player_contexts:
+		var context: PlayerRunContext = _player_contexts[player_slot]
+		players.append({
+			"slot": player_slot,
+			"x": context.cart.position.x,
+			"z": context.cart.position.z,
+			"current": context.state.current_durability,
+			"maximum": context.state.maximum_durability,
+			"shield": context.state.temporary_shield,
+			"ghost": context.is_ghost(),
+			"respawn": context.respawn_remaining,
+			"deaths": context.death_count,
+			"ghost_seconds": context.ghost_elapsed_seconds,
+			"team_death_count": _team_death_count,
+		})
+	var snapshot: Dictionary = {
+		"phase": int(phase),
+		"elapsed": state.elapsed_seconds,
+		"forward_distance": state.forward_distance,
+		"players": players,
+	}
+	var customer_snapshot: Dictionary = {
+		"customers": _network_customer_snapshots(),
+	}
+	var world_structures_snapshot: Dictionary = {
+		"gates": _network_gate_snapshots(),
+	}
+	var world_drops_snapshot: Dictionary = {
+		"drops": _network_drop_snapshots(),
+		"boss": boss.network_snapshot() if boss != null and is_instance_valid(boss) else {},
+	}
+	_apply_network_snapshot(snapshot)
+	_apply_network_world_snapshot(customer_snapshot)
+	_apply_network_world_snapshot(world_structures_snapshot)
+	_apply_network_world_snapshot(world_drops_snapshot)
+	var world_config: Dictionary = _network_world_config_for_new_objects()
+	if not world_config.is_empty():
+		_send_network_world_config(world_config)
+	_network_session.send_snapshot(snapshot)
+	_network_customer_snapshot_cycle += 1
+	_network_session.send_world_customers_snapshot(
+		_network_customer_snapshot_cycle,
+		customer_snapshot.get("customers", [])
+	)
+	_network_session.send_world_structures_snapshot(world_structures_snapshot)
+	_network_session.send_world_drops_snapshot(world_drops_snapshot)
+
+
+# 可靠配置按对象拆分，长局中同时生成多个对象时仍保持每个事件低于MTU。
+func _send_network_world_config(config: Dictionary) -> void:
+	for key: String in ["customers", "gates", "drops"]:
+		for record: Dictionary in config.get(key, []):
+			_network_session.send_game_event({
+				"type": "world_config",
+				"data": {key: [record]},
+			})
+	if config.has("boss"):
+		_network_session.send_game_event({
+			"type": "world_config",
+			"data": {"boss": config.get("boss", {})},
+		})
+
+
+# 每位玩家的统计单独发送，客户端用于个人战绩，核心位置包只保留高频状态。
+func _broadcast_player_stats_snapshot() -> void:
+	if not _network_active or not _network_session.is_host():
+		return
+	for player_slot: int in _player_contexts:
+		var context: PlayerRunContext = _player_contexts[player_slot]
+		_network_session.send_player_stats(player_slot, _network_live_player_stats_payload(context))
+
+
+func _network_live_player_stats_payload(context: PlayerRunContext) -> Dictionary:
+	return {
+		"hits_taken": context.state.hits_taken,
+		"durability_lost": context.state.durability_lost,
+		"customers_satisfied": context.state.customers_satisfied,
+		"normal_defeats": context.state.normal_defeats,
+		"normal_customers_spawned": context.state.normal_customers_spawned,
+		"collided_defeats": context.state.collided_defeats,
+		"upgrade_drops_spawned": context.state.upgrade_drops_spawned,
+		"gate_choices": context.state.gate_choices,
+		"dropped_upgrades": context.state.dropped_upgrades,
+		"satisfaction_by_food": _serialize_float_dictionary(
+			context.state.satisfaction_by_food
+		),
+	}
+
+
+func _network_upgrade_stats_payload(context: PlayerRunContext) -> Dictionary:
+	return {
+		"normal_upgrade_offer_counts": _serialize_int_dictionary(
+			context.state.normal_upgrade_offer_counts
+		),
+		"normal_upgrade_choice_counts": _serialize_int_dictionary(
+			context.state.normal_upgrade_choice_counts
+		),
+		"normal_upgrade_value_totals": _serialize_float_dictionary(
+			context.state.normal_upgrade_value_totals
+		),
+		"normal_upgrade_contribution_totals": _serialize_float_dictionary(
+			context.state.normal_upgrade_contribution_totals
+		),
+	}
+
+
+# 结算事件前可靠补发最终统计，保证客户端记录不会落后最后一次不可靠快照。
+func _broadcast_final_player_stats() -> void:
+	if not _network_active or not _network_session.is_host():
+		return
+	for player_slot: int in _player_contexts:
+		var context: PlayerRunContext = _player_contexts[player_slot]
+		_network_session.send_game_event({
+			"type": "player_stats_final",
+			"slot": player_slot,
+			"stats": _network_live_player_stats_payload(context),
+		})
+		_network_session.send_game_event({
+			"type": "player_stats_final_upgrades",
+			"slot": player_slot,
+			"stats": _network_upgrade_stats_payload(context),
+		})
+
+
+func _apply_network_player_stats(player_slot: int, stats_variant: Variant) -> void:
+	if not stats_variant is Dictionary:
+		return
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	if context == null:
+		return
+	var stats: Dictionary = stats_variant as Dictionary
+	context.state.hits_taken = int(stats.get("hits_taken", context.state.hits_taken))
+	context.state.durability_lost = float(
+		stats.get("durability_lost", context.state.durability_lost)
+	)
+	context.state.customers_satisfied = int(
+		stats.get("customers_satisfied", context.state.customers_satisfied)
+	)
+	context.state.normal_defeats = int(stats.get("normal_defeats", context.state.normal_defeats))
+	context.state.normal_customers_spawned = int(
+		stats.get("normal_customers_spawned", context.state.normal_customers_spawned)
+	)
+	context.state.collided_defeats = int(
+		stats.get("collided_defeats", context.state.collided_defeats)
+	)
+	context.state.upgrade_drops_spawned = int(
+		stats.get("upgrade_drops_spawned", context.state.upgrade_drops_spawned)
+	)
+	context.state.gate_choices = int(stats.get("gate_choices", context.state.gate_choices))
+	context.state.dropped_upgrades = int(
+		stats.get("dropped_upgrades", context.state.dropped_upgrades)
+	)
+	var satisfaction: Variant = stats.get("satisfaction_by_food", null)
+	if satisfaction is Dictionary:
+		context.state.satisfaction_by_food = _deserialize_float_dictionary(satisfaction)
+	var offers: Variant = stats.get("normal_upgrade_offer_counts", null)
+	if offers is Dictionary:
+		context.state.normal_upgrade_offer_counts = _deserialize_int_dictionary(offers)
+	var choices: Variant = stats.get("normal_upgrade_choice_counts", null)
+	if choices is Dictionary:
+		context.state.normal_upgrade_choice_counts = _deserialize_int_dictionary(choices)
+	var values: Variant = stats.get("normal_upgrade_value_totals", null)
+	if values is Dictionary:
+		context.state.normal_upgrade_value_totals = _deserialize_float_dictionary(values)
+	var contributions: Variant = stats.get("normal_upgrade_contribution_totals", null)
+	if contributions is Dictionary:
+		context.state.normal_upgrade_contribution_totals = _deserialize_float_dictionary(
+			contributions
+		)
+
+
+func _serialize_int_dictionary(source: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+	for key: Variant in source:
+		result[str(key)] = int(source[key])
+	return result
+
+
+func _serialize_float_dictionary(source: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+	for key: Variant in source:
+		result[str(key)] = float(source[key])
+	return result
+
+
+func _deserialize_int_dictionary(source: Dictionary) -> Dictionary[StringName, int]:
+	var result: Dictionary[StringName, int] = {}
+	for key: Variant in source:
+		result[StringName(str(key))] = int(source[key])
+	return result
+
+
+func _deserialize_float_dictionary(source: Dictionary) -> Dictionary[StringName, float]:
+	var result: Dictionary[StringName, float] = {}
+	for key: Variant in source:
+		result[StringName(str(key))] = float(source[key])
+	return result
+
+
+func _apply_network_snapshot(snapshot: Dictionary) -> void:
+	if not _network_active:
+		return
+	if snapshot.has("phase"):
+		phase = int(snapshot.get("phase", int(phase)))
+	if snapshot.has("elapsed") and state != null:
+		state.elapsed_seconds = float(snapshot.get("elapsed", state.elapsed_seconds))
+		state.forward_distance = float(snapshot.get("forward_distance", state.forward_distance))
+		hud.set_time(state.elapsed_seconds)
+	for record: Dictionary in snapshot.get("players", []):
+		var player_slot: int = int(record.get("slot", 0))
+		var context: PlayerRunContext = _player_contexts.get(player_slot)
+		if context == null:
+			continue
+		var authoritative_position: Vector3 = Vector3(
+			float(record.get("x", context.cart.position.x)),
+			context.cart.position.y,
+			float(record.get("z", context.cart.position.z))
+		)
+		var is_local_player: bool = player_slot == _network_session.local_slot
+		context.cart.apply_network_position(
+			authoritative_position,
+			_network_session.is_client() and is_local_player,
+			_network_session.is_client() and not is_local_player
+		)
+		context.state.current_durability = float(
+			record.get("current", context.state.current_durability)
+		)
+		context.state.maximum_durability = float(
+			record.get("maximum", context.state.maximum_durability)
+		)
+		context.state.temporary_shield = float(
+			record.get("shield", context.state.temporary_shield)
+		)
+		context.respawn_remaining = float(record.get("respawn", context.respawn_remaining))
+		context.death_count = int(record.get("deaths", context.death_count))
+		context.ghost_elapsed_seconds = float(
+			record.get("ghost_seconds", context.ghost_elapsed_seconds)
+		)
+		_team_death_count = int(record.get("team_death_count", _team_death_count))
+		context.state.hits_taken = int(record.get("hits_taken", context.state.hits_taken))
+		context.state.durability_lost = float(
+			record.get("durability_lost", context.state.durability_lost)
+		)
+		context.state.customers_satisfied = int(
+			record.get("customers_satisfied", context.state.customers_satisfied)
+		)
+		context.state.normal_defeats = int(record.get("normal_defeats", context.state.normal_defeats))
+		context.state.normal_customers_spawned = int(
+			record.get("normal_customers_spawned", context.state.normal_customers_spawned)
+		)
+		context.state.collided_defeats = int(
+			record.get("collided_defeats", context.state.collided_defeats)
+		)
+		context.state.gate_choices = int(record.get("gate_choices", context.state.gate_choices))
+		context.state.dropped_upgrades = int(
+			record.get("dropped_upgrades", context.state.dropped_upgrades)
+		)
+		var satisfaction_by_food: Variant = record.get("satisfaction_by_food", null)
+		if satisfaction_by_food is Dictionary:
+			var normalized_satisfaction: Dictionary[StringName, float] = {}
+			for food_id: Variant in satisfaction_by_food:
+				normalized_satisfaction[StringName(str(food_id))] = float(
+					satisfaction_by_food[food_id]
+				)
+			context.state.satisfaction_by_food = normalized_satisfaction
+		var ghost: bool = bool(record.get("ghost", context.is_ghost()))
+		context.life_state = (
+			PlayerRunContext.LifeState.GHOST
+			if ghost
+			else PlayerRunContext.LifeState.ALIVE
+		)
+		context.cart.set_ghost_visual(ghost)
+		if _network_session.is_client() and player_slot == _network_session.local_slot:
+			hud.set_durability(
+				context.state.current_durability,
+				context.state.maximum_durability,
+				context.state.temporary_shield
+			)
+			context.cart.set_durability_display(
+				context.state.current_durability,
+				context.state.maximum_durability,
+				context.state.temporary_shield
+			)
+	_update_party_hud()
+
+
+func _network_customer_snapshots() -> Array[Dictionary]:
+	var snapshots: Array[Dictionary] = []
+	for customer: Customer3D in customers:
+		if is_instance_valid(customer):
+			snapshots.append(customer.network_snapshot())
+	return snapshots
+
+
+func _network_gate_snapshots() -> Array[Dictionary]:
+	var snapshots: Array[Dictionary] = []
+	for child: Node in gates.get_children():
+		if child is UpgradeGate3D and not child.is_queued_for_deletion():
+			snapshots.append((child as UpgradeGate3D).network_snapshot())
+	return snapshots
+
+
+func _network_drop_snapshots() -> Array[Dictionary]:
+	var snapshots: Array[Dictionary] = []
+	for child: Node in drops.get_children():
+		if child is UpgradeDrop3D and not child.is_queued_for_deletion():
+			snapshots.append((child as UpgradeDrop3D).network_snapshot())
+	return snapshots
+
+
+# 收集本次快照中首次出现的对象配置，并通过可靠事件发送给客户端。
+func _network_world_config_for_new_objects() -> Dictionary:
+	var config: Dictionary = {}
+	var customer_config: Array[Dictionary] = []
+	for customer: Customer3D in customers:
+		if not is_instance_valid(customer) or _network_announced_customer_ids.has(customer.spawn_index):
+			continue
+		var customer_snapshot: Dictionary = customer.network_snapshot()
+		customer_snapshot["data_id"] = str(customer.data.id) if customer.data != null else ""
+		customer_snapshot["baseline_appetite"] = customer.reward_baseline_appetite
+		customer_snapshot["reward_upgrade_ref"] = _serialize_network_upgrade_ref(customer.reward_upgrade)
+		customer_config.append(customer_snapshot)
+		_network_announced_customer_ids[customer.spawn_index] = true
+	if not customer_config.is_empty():
+		config["customers"] = customer_config
+	var gate_config: Array[Dictionary] = []
+	for child: Node in gates.get_children():
+		if not child is UpgradeGate3D or child.is_queued_for_deletion():
+			continue
+		var gate: UpgradeGate3D = child as UpgradeGate3D
+		if _network_announced_gate_ids.has(gate.spawn_index):
+			continue
+		var gate_snapshot: Dictionary = gate.network_snapshot()
+		gate_snapshot["start_food_gate"] = gate.start_food_gate
+		gate_snapshot["baseline_appetite"] = gate.baseline_appetite
+		gate_snapshot["left_upgrade_ref"] = _serialize_network_upgrade_ref(gate.left_upgrade)
+		gate_snapshot["right_upgrade_ref"] = _serialize_network_upgrade_ref(gate.right_upgrade)
+		var options_by_slot: Dictionary = {}
+		for player_slot: int in gate.start_options_by_slot:
+			var options: Array = []
+			for option: Variant in gate.start_options_by_slot[player_slot]:
+				if option is UpgradeData:
+					options.append(_serialize_network_upgrade_ref(option as UpgradeData))
+			options_by_slot[str(player_slot)] = options
+		gate_snapshot["start_options_by_slot"] = options_by_slot
+		gate_config.append(gate_snapshot)
+		_network_announced_gate_ids[gate.spawn_index] = true
+	if not gate_config.is_empty():
+		config["gates"] = gate_config
+	var drop_config: Array[Dictionary] = []
+	for child: Node in drops.get_children():
+		if not child is UpgradeDrop3D or child.is_queued_for_deletion():
+			continue
+		var drop: UpgradeDrop3D = child as UpgradeDrop3D
+		if _network_announced_drop_ids.has(drop.spawn_index):
+			continue
+		var drop_snapshot: Dictionary = drop.network_snapshot()
+		drop_snapshot["baseline_appetite"] = drop.baseline_appetite
+		drop_snapshot["occupied_regions"] = drop.occupied_regions
+		drop_snapshot["upgrade_ref"] = _serialize_network_upgrade_ref(drop.upgrade)
+		drop_config.append(drop_snapshot)
+		_network_announced_drop_ids[drop.spawn_index] = true
+	if not drop_config.is_empty():
+		config["drops"] = drop_config
+	if boss != null and is_instance_valid(boss) and not _network_announced_boss:
+		config["boss"] = boss.network_snapshot()
+		_network_announced_boss = true
+	return config
+
+
+func _apply_network_world_snapshot(snapshot: Dictionary) -> void:
+	if _network_session.is_host():
+		return
+	if snapshot.has("customers"):
+		var seen_customers: Dictionary[int, bool] = {}
+		for record: Dictionary in snapshot.get("customers", []):
+			var customer_index: int = int(record.get("spawn_index", 0))
+			seen_customers[customer_index] = true
+			var target_customer: Customer3D = _find_customer_by_spawn_index(customer_index)
+			if target_customer == null:
+				if _native_network_spawning_enabled():
+					continue
+				target_customer = _instantiate_network_customer(record)
+			if target_customer != null:
+				target_customer.apply_network_snapshot(record)
+		if not _native_network_spawning_enabled():
+			for customer: Customer3D in customers.duplicate():
+				if is_instance_valid(customer) and not seen_customers.has(customer.spawn_index):
+					customers.erase(customer)
+					customer.queue_free()
+	if snapshot.has("gates"):
+		var seen_gates: Dictionary[int, bool] = {}
+		for record: Dictionary in snapshot.get("gates", []):
+			var gate_index: int = int(record.get("spawn_index", 0))
+			seen_gates[gate_index] = true
+			var target_gate: UpgradeGate3D = _find_gate_by_spawn_index(gate_index)
+			if target_gate == null:
+				if _native_network_spawning_enabled():
+					continue
+				target_gate = _instantiate_network_gate(record)
+			if target_gate != null:
+				target_gate.apply_network_snapshot(record)
+		if not _native_network_spawning_enabled():
+			for child: Node in gates.get_children().duplicate():
+				if child is UpgradeGate3D:
+					var gate: UpgradeGate3D = child as UpgradeGate3D
+					if not seen_gates.has(gate.spawn_index):
+						gate.queue_free()
+	if snapshot.has("drops"):
+		var seen_drops: Dictionary[int, bool] = {}
+		for record: Dictionary in snapshot.get("drops", []):
+			var drop_index: int = int(record.get("spawn_index", 0))
+			seen_drops[drop_index] = true
+			var target_drop: UpgradeDrop3D = _find_drop_by_spawn_index(drop_index)
+			if target_drop == null:
+				if _native_network_spawning_enabled():
+					continue
+				target_drop = _instantiate_network_drop(record)
+			if target_drop != null:
+				target_drop.apply_network_snapshot(record)
+		if not _native_network_spawning_enabled():
+			for child: Node in drops.get_children().duplicate():
+				if child is UpgradeDrop3D:
+					var drop: UpgradeDrop3D = child as UpgradeDrop3D
+					if not seen_drops.has(drop.spawn_index):
+						drop.queue_free()
+	if snapshot.has("boss"):
+		var boss_snapshot: Dictionary = snapshot.get("boss", {})
+		if boss_snapshot.is_empty():
+			if not _native_network_spawning_enabled() and boss != null and is_instance_valid(boss):
+				boss.queue_free()
+			boss = null
+		elif boss == null or not is_instance_valid(boss):
+			if _native_network_spawning_enabled():
+				return
+			boss = _spawn_boss_from_network_payload(boss_snapshot) as PrototypeBoss3D
+			if boss != null and not boss.is_inside_tree():
+				entities.add_child(boss)
+		if boss != null and is_instance_valid(boss):
+			boss.apply_network_snapshot(boss_snapshot)
+
+
+# 应用食客动态小分片；只有收到本周期末片才清理上一周期不存在的食客。
+func _apply_network_customer_fragment(fragment_variant: Variant) -> void:
+	if _network_session.is_host() or not fragment_variant is Dictionary:
+		return
+	var fragment: Dictionary = fragment_variant as Dictionary
+	var cycle: int = int(fragment.get("cycle", -1))
+	if cycle < 0:
+		return
+	if cycle != _network_customer_fragment_cycle:
+		_network_customer_fragment_cycle = cycle
+		_network_customer_fragment_seen.clear()
+	for record: Dictionary in fragment.get("records", []):
+		var customer_index: int = int(record.get("spawn_index", 0))
+		_network_customer_fragment_seen[customer_index] = true
+		var target_customer: Customer3D = _find_customer_by_spawn_index(customer_index)
+		if target_customer != null:
+			target_customer.apply_network_snapshot(record)
+	if not bool(fragment.get("complete", false)):
+		return
+	if not _native_network_spawning_enabled():
+		for customer: Customer3D in customers.duplicate():
+			if is_instance_valid(customer) and not _network_customer_fragment_seen.has(customer.spawn_index):
+				customers.erase(customer)
+				customer.queue_free()
+
+
+# 应用可靠对象配置；动态快照只负责更新位置、血量和活动状态。
+func _apply_network_world_config(config: Dictionary) -> void:
+	if _network_session.is_host():
+		return
+	for record: Dictionary in config.get("customers", []):
+		var customer: Customer3D = _find_customer_by_spawn_index(int(record.get("spawn_index", 0)))
+		if customer == null:
+			if _native_network_spawning_enabled():
+				continue
+			customer = _instantiate_network_customer(record)
+		if customer != null:
+			customer.apply_network_snapshot(record)
+	for record: Dictionary in config.get("gates", []):
+		var gate: UpgradeGate3D = _find_gate_by_spawn_index(int(record.get("spawn_index", 0)))
+		if gate == null:
+			if _native_network_spawning_enabled():
+				continue
+			gate = _instantiate_network_gate(record)
+		if gate != null:
+			gate.apply_network_snapshot(record)
+	for record: Dictionary in config.get("drops", []):
+		var drop: UpgradeDrop3D = _find_drop_by_spawn_index(int(record.get("spawn_index", 0)))
+		if drop == null:
+			if _native_network_spawning_enabled():
+				continue
+			drop = _instantiate_network_drop(record)
+		if drop != null:
+			drop.apply_network_snapshot(record)
+	var boss_config: Dictionary = config.get("boss", {})
+	if not boss_config.is_empty():
+		if boss == null or not is_instance_valid(boss):
+			if _native_network_spawning_enabled():
+				return
+			boss = _spawn_boss_from_network_payload(boss_config) as PrototypeBoss3D
+			if boss != null and not boss.is_inside_tree():
+				entities.add_child(boss)
+		if boss != null and is_instance_valid(boss):
+			boss.apply_network_snapshot(boss_config)
+
+
+# 按稳定食客 ID 创建客户端视觉对象，不在客户端增加运行统计。
+func _instantiate_network_customer(record: Dictionary) -> Customer3D:
+	var customer: Customer3D = _spawn_customer_from_network_payload(record) as Customer3D
+	if customer != null and not customer.is_inside_tree():
+		entities.add_child(customer)
+	return customer
+
+
+# MultiplayerSpawner 的统一食客构造回调；主机和客户端都只从稳定字段恢复对象。
+func _spawn_customer_from_network_payload(payload: Variant) -> Node:
+	if not payload is Dictionary:
+		return null
+	var record: Dictionary = payload as Dictionary
+	var customer_data: CustomerData = _customer_data_by_id.get(
+		StringName(str(record.get("data_id", "")))
+	)
+	if customer_data == null:
+		return null
+	var customer: Customer3D = _instantiate_customer(customer_data)
+	if customer == null:
+		return null
+	customer.position = Vector3(
+		float(record.get("x", 0.0)),
+		0.0,
+		float(record.get("z", Playfield.FORWARD_SPAWN_Z))
+	)
+	customer.configure(
+		customer_data,
+		self,
+		int(record.get("spawn_index", 0)),
+		float(record.get("appetite", 1.0)),
+		_deserialize_network_upgrade_ref(
+			record.get("reward_upgrade_ref", record.get("reward_upgrade", {}))
+		),
+		float(record.get("baseline_appetite", 1.0))
+	)
+	customer.satisfied.connect(_on_customer_satisfied)
+	customer.collided_with_cart.connect(_on_customer_collided_with_cart)
+	customer.escaped.connect(_on_customer_escaped)
+	customer.ranged_attack.connect(_on_customer_ranged_attack)
+	_attach_network_synchronizer(
+		customer,
+		[NodePath(":position"), NodePath(":active"), NodePath(":remaining_appetite")]
+	)
+	customers.append(customer)
+	return customer
+
+
+# 按稳定强化引用创建普通门，并保留每个槽位的开局候选。
+func _instantiate_network_gate(record: Dictionary) -> UpgradeGate3D:
+	var gate: UpgradeGate3D = _spawn_gate_from_network_payload(record) as UpgradeGate3D
+	if gate != null and not gate.is_inside_tree():
+		gates.add_child(gate)
+	return gate
+
+
+# MultiplayerSpawner 的统一普通门构造回调；候选和门血量仍由稳定快照字段恢复。
+func _spawn_gate_from_network_payload(payload: Variant) -> Node:
+	if not payload is Dictionary:
+		return null
+	var record: Dictionary = payload as Dictionary
+	var left_upgrade: UpgradeData = _deserialize_network_upgrade_ref(
+		record.get("left_upgrade_ref", record.get("left_upgrade", {}))
+	)
+	var right_upgrade: UpgradeData = _deserialize_network_upgrade_ref(
+		record.get("right_upgrade_ref", record.get("right_upgrade", {}))
+	)
+	if left_upgrade == null or right_upgrade == null:
+		return null
+	var gate: UpgradeGate3D = GATE_SCENE.instantiate() as UpgradeGate3D
+	if gate == null:
+		return null
+	var options_by_slot: Dictionary[int, Array] = {}
+	var options_payload: Dictionary = record.get("start_options_by_slot", {}) as Dictionary
+	for slot_text: String in options_payload:
+		var options: Array = []
+		for upgrade_payload: Variant in options_payload[slot_text]:
+			var option: UpgradeData = _deserialize_network_upgrade_ref(upgrade_payload)
+			if option != null:
+				options.append(option)
+		options_by_slot[int(slot_text)] = options
+	gate.configure(
+		self,
+		left_upgrade,
+		right_upgrade,
+		bool(record.get("start_food_gate", false)),
+		float(record.get("baseline_appetite", 1.0)),
+		int(record.get("spawn_index", 0)),
+		options_by_slot
+	)
+	_attach_network_synchronizer(
+		gate,
+		[
+			NodePath(":position"),
+			NodePath(":resolved"),
+			NodePath(":left_base_health"),
+			NodePath(":right_base_health"),
+		]
+	)
+	return gate
+
+
+# 按稳定强化引用创建奖励门视觉对象。
+func _instantiate_network_drop(record: Dictionary) -> UpgradeDrop3D:
+	var drop: UpgradeDrop3D = _spawn_drop_from_network_payload(record) as UpgradeDrop3D
+	if drop != null and not drop.is_inside_tree():
+		drops.add_child(drop)
+	return drop
+
+
+# MultiplayerSpawner 的统一奖励门构造回调；领取资格由稳定槽位快照继续维护。
+func _spawn_drop_from_network_payload(payload: Variant) -> Node:
+	if not payload is Dictionary:
+		return null
+	var record: Dictionary = payload as Dictionary
+	var upgrade: UpgradeData = _deserialize_network_upgrade_ref(
+		record.get("upgrade_ref", record.get("upgrade", {}))
+	)
+	if upgrade == null:
+		return null
+	var drop: UpgradeDrop3D = REWARD_GATE_SCENE.instantiate() as UpgradeDrop3D
+	if drop == null:
+		return null
+	drop.configure(
+		self,
+		upgrade,
+		Vector3(float(record.get("x", 0.0)), 0.0, float(record.get("z", 0.0))),
+		float(record.get("baseline_appetite", 1.0)),
+		int(record.get("occupied_regions", 2)),
+		int(record.get("spawn_index", 0))
+	)
+	_attach_network_synchronizer(
+		drop,
+		[NodePath(":position"), NodePath(":resolved"), NodePath(":upgrade_health")]
+	)
+	return drop
+
+
+# Boss 也通过原生生成器复制；攻击锁定和命中时刻仍由主机权威裁决。
+func _spawn_boss_from_network_payload(payload: Variant) -> Node:
+	if not payload is Dictionary:
+		return null
+	var record: Dictionary = payload as Dictionary
+	var spawned_boss: PrototypeBoss3D = BOSS_SCENE.instantiate() as PrototypeBoss3D
+	if spawned_boss == null:
+		return null
+	spawned_boss.configure(
+		boss_data,
+		self,
+		float(record.get("baseline_appetite", _current_baseline_appetite())),
+		int(record.get("player_count", _network_player_count))
+	)
+	spawned_boss.satisfied.connect(_on_boss_satisfied)
+	_attach_network_synchronizer(
+		spawned_boss,
+		[
+			NodePath(":position"),
+			NodePath(":active"),
+			NodePath(":remaining_appetite"),
+			NodePath(":host_execution_time"),
+		]
+	)
+	boss = spawned_boss
+	return spawned_boss
+
+
+func _find_customer_by_spawn_index(spawn_index: int) -> Customer3D:
+	for customer: Customer3D in customers.duplicate():
+		if not is_instance_valid(customer):
+			customers.erase(customer)
+			continue
+		if customer.spawn_index == spawn_index:
+			return customer
+	return null
+
+
+func _find_gate_by_spawn_index(spawn_index: int) -> UpgradeGate3D:
+	for child: Node in gates.get_children():
+		if child is UpgradeGate3D and (child as UpgradeGate3D).spawn_index == spawn_index:
+			return child as UpgradeGate3D
+	return null
+
+
+func _find_drop_by_spawn_index(spawn_index: int) -> UpgradeDrop3D:
+	for child: Node in drops.get_children():
+		if child is UpgradeDrop3D and (child as UpgradeDrop3D).spawn_index == spawn_index:
+			return child as UpgradeDrop3D
+	return null
+
+
+func _update_party_hud() -> void:
+	if not _network_active:
+		return
+	var records: Array[Dictionary] = []
+	for player_slot: int in _player_contexts:
+		var context: PlayerRunContext = _player_contexts[player_slot]
+		var record: Dictionary = {
+			"slot": player_slot,
+			"color": _network_session.player_color(player_slot).to_html(false),
+		}
+		for roster_record: Dictionary in _network_session.get_roster():
+			if int(roster_record.get("slot", 0)) == player_slot:
+				record = roster_record.duplicate(true)
+				break
+		record["current"] = context.state.current_durability
+		record["maximum"] = context.state.maximum_durability
+		record["shield"] = context.state.temporary_shield
+		record["ghost"] = context.is_ghost()
+		record["respawn"] = context.respawn_remaining
+		records.append(record)
+	hud.set_party_health(records, _network_session.local_slot if _network_session.local_slot > 0 else 1)
+
+
+func _on_network_match_returned_to_lobby() -> void:
+	call_deferred("_reload_after_network_match")
+
+
+func _on_network_connection_state_changed(connection_state: StringName, _message: String) -> void:
+	if connection_state != &"server_disconnected" or not _network_active:
+		return
+	_network_active = false
+	get_tree().paused = false
+	call_deferred("_reload_after_network_disconnect")
+
+
+func _on_network_roster_changed(roster: Array[Dictionary]) -> void:
+	if not _network_active:
+		return
+	var connected_slots: Dictionary[int, bool] = {}
+	for record: Dictionary in roster:
+		connected_slots[int(record.get("slot", 0))] = true
+	for player_slot: int in _player_contexts.keys().duplicate():
+		if connected_slots.has(player_slot):
+			continue
+		var context: PlayerRunContext = _player_contexts[player_slot]
+		_player_contexts.erase(player_slot)
+		if context.cart != null and is_instance_valid(context.cart):
+			context.cart.queue_free()
+		if context.weapon_controller != null and is_instance_valid(context.weapon_controller):
+			context.weapon_controller.queue_free()
+	if phase == Phase.CHOICE and not _active_special_choices_by_slot.is_empty():
+		if _selected_special_choices_by_slot.size() >= _player_contexts.size():
+			_finish_special_choice_phase()
+	_update_party_hud()
+
+
+func _reload_after_network_match() -> void:
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+
+func _reload_after_network_disconnect() -> void:
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+
+func _on_player_weapon_food_added(food: FoodData, player_slot: int) -> void:
+	if _network_session.local_slot == player_slot:
+		hud.add_cooking_food(food, _player_contexts[player_slot].state.food_level(food.id))
+
+
+func _on_player_weapon_food_removed(food_id: StringName, player_slot: int) -> void:
+	if _network_session.local_slot == player_slot:
+		hud.remove_cooking_food(food_id)
+
+
+func _on_player_cooking_progress_changed(
+	food_id: StringName,
+	progress: float,
+	remaining_seconds: float
+) -> void:
+	if not _network_active or _network_session.local_slot <= 0:
+		return
+	hud.set_cooking_progress(food_id, progress, remaining_seconds)
 
 
 # 从启动菜单进入单局，只有这里把 INTRO 变为正式前进阶段。
@@ -311,6 +1496,7 @@ func _start_run() -> void:
 	hud.set_phase("准备出餐 · 横向拖动餐车")
 	hud.show_toast("按住并横向拖动，松手后餐车留在原位")
 	hud.set_pause_available(true)
+	_update_party_hud()
 
 
 # 每次进入单局读取已保存的 Excel；非法表只回退场景装配的 .tres。
@@ -344,12 +1530,23 @@ func _load_combat_rules_balance() -> void:
 	var load_result: GameplayExcelLoader.CombatRulesLoadResult = (
 		GameplayExcelLoader.load_combat_rules(COMBAT_RULES_WORKBOOK_PATH)
 	)
-	_cart_invincibility_duration_seconds = load_result.cart_invincibility_duration_seconds
 	if load_result.loaded_from_excel:
+		# 只有整表通过严格校验才应用，避免坏表把前面已解析的部分值带入本局。
+		_cart_invincibility_duration_seconds = load_result.cart_invincibility_duration_seconds
+		_respawn_base_seconds = load_result.respawn_base_seconds
+		_respawn_increment_seconds = load_result.respawn_increment_seconds
+		_respawn_max_seconds = load_result.respawn_max_seconds
+		_ghost_damage_multiplier = load_result.ghost_damage_multiplier
+		_respawn_durability_ratio = load_result.respawn_durability_ratio
+		_respawn_invincibility_seconds = load_result.respawn_invincibility_seconds
 		print(
-			"BALANCE_COMBAT_RULES_LOADED path=%s cart_invincibility=%.3f" % [
+			"BALANCE_COMBAT_RULES_LOADED path=%s cart_invincibility=%.3f respawn=%.1f/%.1f/%.1f ghost=%.3f" % [
 				COMBAT_RULES_WORKBOOK_PATH,
 				_cart_invincibility_duration_seconds,
+				_respawn_base_seconds,
+				_respawn_increment_seconds,
+				_respawn_max_seconds,
+				_ghost_damage_multiplier,
 			]
 		)
 	else:
@@ -547,15 +1744,28 @@ func _special_upgrade_target_error(upgrades: Array[SpecialUpgradeData]) -> Strin
 			continue
 		if _food_data_for_id(upgrade.target_id) == null:
 			return "特殊强化 %s 的目标ID不存在于武器表: %s" % [
-				String(upgrade.id),
-				String(upgrade.target_id),
+				str(upgrade.id),
+				str(upgrade.target_id),
 			]
 	return ""
 
 
 func _process(delta: float) -> void:
+	if _network_active and _network_session.is_host():
+		_tick_network_lives(delta)
+		_network_snapshot_accumulator += delta
+		_network_stats_accumulator += delta
+		if _network_snapshot_accumulator >= 0.05:
+			_network_snapshot_accumulator = 0.0
+			_broadcast_player_snapshot()
+		if _network_stats_accumulator >= 0.5:
+			_network_stats_accumulator = 0.0
+			_broadcast_player_stats_snapshot()
 	hud.set_pause_available(phase == Phase.FORWARD or phase == Phase.BOSS)
-	if phase == Phase.FORWARD:
+	var network_client_visual_only: bool = (
+		_network_active and _network_session.is_client()
+	)
+	if not network_client_visual_only and phase == Phase.FORWARD:
 		state.elapsed_seconds += delta
 		# Boss请求到达后只让已排队对象完成接近，不再越过后续路程事件。
 		if not _boss_pending:
@@ -569,7 +1779,7 @@ func _process(delta: float) -> void:
 		if _smoke_test:
 			_track_smoke_gate_customer_gap()
 		hud.set_time(state.elapsed_seconds)
-	elif phase == Phase.BOSS:
+	elif not network_client_visual_only and phase == Phase.BOSS:
 		state.elapsed_seconds += delta
 		hud.set_time(state.elapsed_seconds)
 	if _smoke_test:
@@ -734,6 +1944,33 @@ func can_weapons_fire() -> bool:
 	return phase == Phase.FORWARD or phase == Phase.BOSS
 
 
+func state_for_slot(player_slot: int) -> RunState:
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	return context.state if context != null and context.state != null else state
+
+
+func cart_for_slot(player_slot: int) -> Cart3D:
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	return context.cart if context != null and context.cart != null else cart
+
+
+func get_player_contexts() -> Array[PlayerRunContext]:
+	var contexts: Array[PlayerRunContext] = []
+	for player_slot: int in _player_contexts:
+		contexts.append(_player_contexts[player_slot])
+	contexts.sort_custom(func(a: PlayerRunContext, b: PlayerRunContext) -> bool:
+		return a.slot < b.slot
+	)
+	return contexts
+
+
+func output_multiplier_for_slot(player_slot: int) -> float:
+	if not _network_active:
+		return 1.0
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	return context.output_multiplier(_ghost_damage_multiplier) if context != null else 1.0
+
+
 func _check_smoke_timeout() -> void:
 	if state.elapsed_seconds <= SMOKE_TEST_TIMEOUT:
 		return
@@ -774,41 +2011,63 @@ func logic_position(node: Node3D) -> Vector3:
 
 
 func customer_collides_with_cart(customer: Customer3D) -> bool:
-	if customer == null or cart == null:
+	if customer == null:
 		return false
-	return customer.collision_rect_xz().intersects(cart.collision_rect_xz())
+	if _network_active and _network_session.is_client():
+		return false
+	if not _network_active:
+		return cart != null and customer.collision_rect_xz().intersects(cart.collision_rect_xz())
+	for context: PlayerRunContext in get_player_contexts():
+		if context.is_ghost() or context.cart == null:
+			continue
+		if customer.collision_rect_xz().intersects(context.cart.collision_rect_xz()):
+			return true
+	return false
 
 
 # 高压档或低帧率下一帧可能跨过餐车，使用前后包围矩形补足连续接触判定。
 func customer_swept_collides_with_cart(customer: Customer3D, previous_z: float) -> bool:
-	if customer == null or cart == null:
+	if customer == null:
+		return false
+	if _network_active and _network_session.is_client():
 		return false
 	var current_rect: Rect2 = customer.collision_rect_xz()
 	var previous_rect: Rect2 = current_rect
 	previous_rect.position.y += previous_z - customer.position.z
-	return previous_rect.merge(current_rect).intersects(cart.collision_rect_xz())
+	if not _network_active:
+		return cart != null and previous_rect.merge(current_rect).intersects(cart.collision_rect_xz())
+	var swept_rect: Rect2 = previous_rect.merge(current_rect)
+	for context: PlayerRunContext in get_player_contexts():
+		if context.is_ghost() or context.cart == null:
+			continue
+		if swept_rect.intersects(context.cart.collision_rect_xz()):
+			return true
+	return false
 
 
 func get_priority_target() -> Node3D:
 	return _get_priority_target(null)
 
 
-func get_priority_target_for_food(food: FoodData) -> Node3D:
-	return _get_priority_target(food)
+func get_priority_target_for_food(food: FoodData, player_slot: int = 1) -> Node3D:
+	return _get_priority_target(food, player_slot)
 
 
-func _get_priority_target(food: FoodData) -> Node3D:
+func _get_priority_target(food: FoodData, player_slot: int = 1) -> Node3D:
+	var source_cart: Cart3D = cart_for_slot(player_slot)
+	if source_cart == null:
+		return null
 	var best_target: Node3D = null
 	var best_forward: float = INF
 	var best_horizontal: float = INF
 	var best_spawn_index: int = 2147483647
 	for customer: Customer3D in customers:
-		if not is_instance_valid(customer) or not customer.active or customer.position.z >= cart.position.z:
+		if not is_instance_valid(customer) or not customer.active or customer.position.z >= source_cart.position.z:
 			continue
-		if not _target_is_allowed_for_food(food, logic_position(customer)):
+		if not _target_is_allowed_for_food(food, logic_position(customer), source_cart):
 			continue
-		var forward: float = cart.position.z - customer.position.z
-		var horizontal: float = absf(customer.position.x - cart.position.x)
+		var forward: float = source_cart.position.z - customer.position.z
+		var horizontal: float = absf(customer.position.x - source_cart.position.x)
 		if _target_is_better(forward, horizontal, customer.spawn_index, best_forward, best_horizontal, best_spawn_index):
 			best_target = customer
 			best_forward = forward
@@ -818,15 +2077,15 @@ func _get_priority_target(food: FoodData) -> Node3D:
 		if not child is UpgradeGate3D or child.is_queued_for_deletion():
 			continue
 		var gate: UpgradeGate3D = child as UpgradeGate3D
-		if gate.position.z >= cart.position.z:
+		if gate.position.z >= source_cart.position.z:
 			continue
-		var gate_target: Node3D = gate.target_for_cart_x(cart.position.x)
+		var gate_target: Node3D = gate.target_for_cart_x(source_cart.position.x)
 		if gate_target == null:
 			continue
-		if not _target_is_allowed_for_food(food, logic_position(gate_target)):
+		if not _target_is_allowed_for_food(food, logic_position(gate_target), source_cart):
 			continue
-		var gate_forward: float = cart.position.z - gate.position.z
-		var gate_horizontal: float = absf(logic_position(gate_target).x - logic_position(cart).x)
+		var gate_forward: float = source_cart.position.z - gate.position.z
+		var gate_horizontal: float = absf(logic_position(gate_target).x - logic_position(source_cart).x)
 		if _target_is_better(gate_forward, gate_horizontal, gate.spawn_index, best_forward, best_horizontal, best_spawn_index):
 			best_target = gate_target
 			best_forward = gate_forward
@@ -836,35 +2095,40 @@ func _get_priority_target(food: FoodData) -> Node3D:
 		if not child is UpgradeDrop3D or child.is_queued_for_deletion():
 			continue
 		var reward_gate: UpgradeDrop3D = child as UpgradeDrop3D
-		if reward_gate.position.z >= cart.position.z:
+		if reward_gate.position.z >= source_cart.position.z:
 			continue
-		var reward_target: Node3D = reward_gate.target_for_cart_x(cart.position.x)
+		var reward_target: Node3D = reward_gate.target_for_cart_x(source_cart.position.x)
 		if reward_target == null:
 			continue
-		if not _target_is_allowed_for_food(food, logic_position(reward_target)):
+		if not _target_is_allowed_for_food(food, logic_position(reward_target), source_cart):
 			continue
-		var reward_forward: float = cart.position.z - reward_gate.position.z
-		var reward_horizontal: float = absf(logic_position(reward_target).x - logic_position(cart).x)
+		var reward_forward: float = source_cart.position.z - reward_gate.position.z
+		var reward_horizontal: float = absf(logic_position(reward_target).x - logic_position(source_cart).x)
 		if _target_is_better(reward_forward, reward_horizontal, reward_gate.spawn_index, best_forward, best_horizontal, best_spawn_index):
 			best_target = reward_target
 			best_forward = reward_forward
 			best_horizontal = reward_horizontal
 			best_spawn_index = reward_gate.spawn_index
 	if boss != null and is_instance_valid(boss) and boss.active:
-		if not _target_is_allowed_for_food(food, logic_position(boss)):
+		if not _target_is_allowed_for_food(food, logic_position(boss), source_cart):
 			return best_target
-		var boss_forward: float = cart.position.z - boss.position.z
-		var boss_horizontal: float = absf(boss.position.x - cart.position.x)
+		var boss_forward: float = source_cart.position.z - boss.position.z
+		var boss_horizontal: float = absf(boss.position.x - source_cart.position.x)
 		if _target_is_better(boss_forward, boss_horizontal, 2000000000, best_forward, best_horizontal, best_spawn_index):
 			best_target = boss
 	return best_target
 
 
 # 食材可用武器表半角收窄前方寻敌扇区；边界目标计入候选。
-func _target_is_allowed_for_food(food: FoodData, target_position: Vector3) -> bool:
+func _target_is_allowed_for_food(
+	food: FoodData,
+	target_position: Vector3,
+	source_cart: Cart3D = null
+) -> bool:
 	if food == null or food.targeting_half_angle_degrees >= 90.0:
 		return true
-	var offset: Vector3 = target_position - logic_position(cart)
+	var aim_cart: Cart3D = source_cart if source_cart != null else cart
+	var offset: Vector3 = target_position - logic_position(aim_cart)
 	return (
 		offset.z < -TARGET_FORWARD_EPSILON
 		and absf(rad_to_deg(atan2(offset.x, -offset.z)))
@@ -881,33 +2145,35 @@ func spawn_projectile(
 	radius: float,
 	target: Node3D,
 	orbit_phase: float = 0.0,
-	giant_baguette: bool = false
+	giant_baguette: bool = false,
+	player_slot: int = 1
 ) -> void:
 	var projectile: FoodProjectile3D = PROJECTILE_SCENE.instantiate() as FoodProjectile3D
 	projectiles.add_child(projectile)
+	var source_state: RunState = state_for_slot(player_slot)
 	var should_home: bool = (
 		not giant_baguette
 		and (
 			food.initial_tracking_mode == FoodData.TrackingMode.HOMING
-			or state.is_food_homing(food.id)
+			or source_state.is_food_homing(food.id)
 		)
 	)
 	var lifetime: float = (
-		state.effective_duration(food) * state.baguette_giant_duration_multiplier
+		source_state.effective_duration(food) * source_state.baguette_giant_duration_multiplier
 		if giant_baguette
-		else state.effective_duration(food)
+		else source_state.effective_duration(food)
 	)
 	var hit_count: int = (
-		state.baguette_giant_pierce_count
+		source_state.baguette_giant_pierce_count
 		if giant_baguette
-		else state.effective_pierce_count(food)
+		else source_state.effective_pierce_count(food)
 	)
 	var breathing_enabled: bool = (
 		food.id == &"mushroom"
-		and state.has_food_evolution(&"mushroom_breath")
+		and source_state.has_food_evolution(&"mushroom_breath")
 	)
 	var giant_range_scale: float = (
-		state.effective_projectile_radius(food) / maxf(0.001, food.projectile_radius)
+		source_state.effective_projectile_radius(food) / maxf(0.001, food.projectile_radius)
 	)
 	projectile.configure(
 		self,
@@ -924,11 +2190,130 @@ func spawn_projectile(
 		should_home,
 		orbit_phase,
 		giant_baguette,
-		Playfield.REGION_WIDTH * state.baguette_giant_width_regions * giant_range_scale if giant_baguette else 0.0,
-		breathing_enabled
+		Playfield.REGION_WIDTH * source_state.baguette_giant_width_regions * giant_range_scale if giant_baguette else 0.0,
+		breathing_enabled,
+		player_slot
 	)
 	if giant_baguette and is_instance_valid(background):
 		background.shake_camera()
+
+
+# 主机生成真实投射物并发送一次批量发射事件；客户端调用同一入口只重放视觉。
+func spawn_projectile_burst(
+	start_position: Vector3,
+	burst: Array[Dictionary],
+	food: FoodData,
+	amount: float,
+	speed: float,
+	radius: float,
+	target: Node3D,
+	giant_baguette: bool,
+	player_slot: int
+) -> void:
+	if food == null or burst.is_empty():
+		return
+	for record: Dictionary in burst:
+		spawn_projectile(
+			start_position,
+			_vector_from_payload(record.get("direction", {}), Vector3.FORWARD),
+			food,
+			amount,
+			speed,
+			radius,
+			target,
+			float(record.get("orbit_phase", 0.0)),
+			giant_baguette,
+			player_slot
+		)
+	if not _network_active or not _network_session.is_host():
+		return
+	var descriptors: Array[Dictionary] = []
+	for record: Dictionary in burst:
+		descriptors.append(record.duplicate(true))
+	_network_session.send_projectile_burst({
+		"slot": player_slot,
+		"food_id": str(food.id),
+		"start": _vector_payload(start_position),
+		"amount": amount,
+		"speed": speed,
+		"radius": radius,
+		"giant": giant_baguette,
+		"bursts": descriptors,
+		"target": _network_target_reference(target),
+	})
+
+
+# 客户端重放房主发来的发射批次，不触发本地命中或统计。
+func replay_network_projectile_burst(payload: Dictionary) -> void:
+	if not _network_active or not _network_session.is_client():
+		return
+	var source_slot: int = int(payload.get("slot", 0))
+	if _player_contexts.get(source_slot) == null:
+		return
+	var food: FoodData = _food_data_for_id(StringName(str(payload.get("food_id", ""))))
+	if food == null:
+		return
+	var target: Node3D = _resolve_network_target(payload.get("target", {}))
+	var burst: Array[Dictionary] = []
+	for record: Variant in payload.get("bursts", []):
+		if record is Dictionary:
+			burst.append(record as Dictionary)
+	spawn_projectile_burst(
+		_vector_from_payload(payload.get("start", {}), Vector3.ZERO),
+		burst,
+		food,
+		float(payload.get("amount", 0.0)),
+		float(payload.get("speed", 0.0)),
+		float(payload.get("radius", 0.0)),
+		target,
+		bool(payload.get("giant", false)),
+		source_slot
+	)
+
+
+func _network_target_reference(target: Node3D) -> Dictionary:
+	if target is Customer3D:
+		return {"kind": "customer", "index": (target as Customer3D).spawn_index}
+	if target is UpgradeGate3D:
+		return {"kind": "gate", "index": (target as UpgradeGate3D).spawn_index}
+	if target is UpgradeDrop3D:
+		return {"kind": "drop", "index": (target as UpgradeDrop3D).spawn_index}
+	if target is PrototypeBoss3D:
+		return {"kind": "boss"}
+	return {}
+
+
+func _resolve_network_target(reference_variant: Variant) -> Node3D:
+	if not reference_variant is Dictionary:
+		return null
+	var reference: Dictionary = reference_variant as Dictionary
+	match str(reference.get("kind", "")):
+		"customer":
+			return _find_customer_by_spawn_index(int(reference.get("index", 0)))
+		"gate":
+			return _find_gate_by_spawn_index(int(reference.get("index", 0)))
+		"drop":
+			return _find_drop_by_spawn_index(int(reference.get("index", 0)))
+		"boss":
+			return boss if boss != null and is_instance_valid(boss) else null
+	return null
+
+
+func _vector_payload(value: Vector3) -> Dictionary:
+	return {"x": value.x, "y": value.y, "z": value.z}
+
+
+func _vector_from_payload(value: Variant, fallback: Vector3) -> Vector3:
+	if value is Vector3:
+		return value
+	if not value is Dictionary:
+		return fallback
+	var payload: Dictionary = value as Dictionary
+	return Vector3(
+		float(payload.get("x", fallback.x)),
+		float(payload.get("y", fallback.y)),
+		float(payload.get("z", fallback.z))
+	)
 
 
 # 蘑菇随餐车环绕不受位移风；巨型法棍只承受普通投射物四分之一风偏。
@@ -949,6 +2334,8 @@ func _projectile_environment_velocity(food: FoodData, giant_baguette: bool) -> V
 func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 	if not is_instance_valid(projectile) or projectile.is_queued_for_deletion():
 		return
+	if _network_active and _network_session.is_client():
+		return
 	for customer: Customer3D in customers:
 		if not is_instance_valid(customer) or not customer.active or not projectile.can_hit(customer):
 			continue
@@ -956,7 +2343,12 @@ func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 			if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
 				_spawn_egg_puddle(projectile, customer)
 			else:
-				_apply_customer_satisfaction(customer, projectile.satisfaction, projectile.food_id)
+				_apply_customer_satisfaction(
+					customer,
+					projectile.satisfaction,
+					projectile.food_id,
+					projectile.owner_slot
+				)
 			if projectile.register_hit(customer):
 				return
 	for child: Node in gates.get_children():
@@ -976,13 +2368,19 @@ func resolve_projectile_hits(projectile: FoodProjectile3D) -> void:
 			if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
 				_spawn_egg_puddle(projectile, boss)
 			else:
-				_apply_boss_satisfaction(boss, projectile.satisfaction, projectile.food_id)
+				_apply_boss_satisfaction(
+					boss,
+					projectile.satisfaction,
+					projectile.food_id,
+					projectile.owner_slot
+				)
 			projectile.register_hit(boss)
 
 
 # 鸡蛋命中任何可攻击目标时只生成蛋液；首跳由蛋液立即结算，鸡蛋本体不扣目标数值。
 func _spawn_egg_puddle(projectile: FoodProjectile3D, target: Node3D) -> void:
 	var source_food: FoodData = _food_data_for_id(projectile.food_id)
+	var source_state: RunState = state_for_slot(projectile.owner_slot)
 	var puddle_data: FoodData = egg_puddle_data
 	if (
 		source_food == null
@@ -994,15 +2392,15 @@ func _spawn_egg_puddle(projectile: FoodProjectile3D, target: Node3D) -> void:
 	var puddle: FoodPuddle3D = EGG_PUDDLE_SCENE.instantiate() as FoodPuddle3D
 	projectiles.add_child(puddle)
 	var target_position: Vector3 = logic_position(target)
-	var puddle_damage: float = state.effective_derived_satisfaction(
-		puddle_data,
-		source_food
+	var puddle_damage: float = MultiplayerRules.ghost_output(
+		source_state.effective_derived_satisfaction(puddle_data, source_food),
+		output_multiplier_for_slot(projectile.owner_slot)
 	)
 	var puddle_radius: float = Playfield.design_to_world(
-		state.effective_projectile_radius(puddle_data)
+		source_state.effective_projectile_radius(puddle_data)
 	)
-	var puddle_duration: float = state.effective_duration(puddle_data)
-	var puddle_interval: float = state.effective_derived_interval(puddle_data, source_food)
+	var puddle_duration: float = source_state.effective_duration(puddle_data)
+	var puddle_interval: float = source_state.effective_derived_interval(puddle_data, source_food)
 	puddle.configure(
 		self,
 		Vector3(target_position.x, 0.03, target_position.z),
@@ -1013,43 +2411,51 @@ func _spawn_egg_puddle(projectile: FoodProjectile3D, target: Node3D) -> void:
 		puddle_duration,
 		puddle_interval
 	)
-	apply_puddle_damage(target, puddle.satisfaction, puddle.food_id)
+	puddle.owner_slot = projectile.owner_slot
+	apply_puddle_damage(target, puddle.satisfaction, puddle.food_id, projectile.owner_slot)
 	puddle.prime_target(target)
 
 
 func _apply_customer_satisfaction(
 	customer: Customer3D,
 	amount: float,
-	food_id: StringName
+	food_id: StringName,
+	player_slot: int = 1
 ) -> void:
 	var applied: float = minf(amount, customer.remaining_appetite)
 	customer.receive_satisfaction(amount)
-	state.record_food_satisfaction(food_id, applied)
+	state_for_slot(player_slot).record_food_satisfaction(food_id, applied)
 
 
 func _apply_boss_satisfaction(
 	target_boss: PrototypeBoss3D,
 	amount: float,
-	food_id: StringName
+	food_id: StringName,
+	player_slot: int = 1
 ) -> void:
 	var applied: float = minf(amount, target_boss.remaining_appetite)
 	target_boss.receive_satisfaction(amount)
-	state.record_food_satisfaction(food_id, applied)
+	state_for_slot(player_slot).record_food_satisfaction(food_id, applied)
 
 
 # 蛋液与普通投射物共用目标效果语义；门和奖励门通过父节点暴露自己的扣血接口。
-func apply_puddle_damage(target: Node3D, amount: float, food_id: StringName) -> void:
+func apply_puddle_damage(
+	target: Node3D,
+	amount: float,
+	food_id: StringName,
+	player_slot: int = 1
+) -> void:
 	if target == null or not is_instance_valid(target) or amount <= 0.0:
 		return
 	if target is Customer3D:
 		var customer: Customer3D = target as Customer3D
 		if customer.active:
-			_apply_customer_satisfaction(customer, amount, food_id)
+			_apply_customer_satisfaction(customer, amount, food_id, player_slot)
 		return
 	if target is PrototypeBoss3D:
 		var target_boss: PrototypeBoss3D = target as PrototypeBoss3D
 		if target_boss.active:
-			_apply_boss_satisfaction(target_boss, amount, food_id)
+			_apply_boss_satisfaction(target_boss, amount, food_id, player_slot)
 		return
 	var parent: Node = target.get_parent()
 	if parent is UpgradeGate3D:
@@ -1064,6 +2470,8 @@ func resolve_gate_projectile_hit(
 	target: Node3D,
 	projectile: FoodProjectile3D
 ) -> void:
+	if _network_active and _network_session.is_client():
+		return
 	if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
 		_spawn_egg_puddle(projectile, target)
 	else:
@@ -1075,6 +2483,8 @@ func resolve_reward_projectile_hit(
 	target: Node3D,
 	projectile: FoodProjectile3D
 ) -> void:
+	if _network_active and _network_session.is_client():
+		return
 	if projectile.attack_kind == FoodData.AttackKind.EGG_PROJECTILE:
 		_spawn_egg_puddle(projectile, target)
 	else:
@@ -1083,6 +2493,8 @@ func resolve_reward_projectile_hit(
 
 func resolve_puddle_hits(puddle: FoodPuddle3D) -> void:
 	if not is_instance_valid(puddle) or puddle.is_queued_for_deletion():
+		return
+	if _network_active and _network_session.is_client():
 		return
 	puddle.begin_contact_scan()
 	for customer: Customer3D in customers:
@@ -1093,7 +2505,12 @@ func resolve_puddle_hits(puddle: FoodPuddle3D) -> void:
 		):
 			continue
 		if puddle.observe_target(customer):
-			apply_puddle_damage(customer, puddle.satisfaction, puddle.food_id)
+			apply_puddle_damage(
+				customer,
+				puddle.satisfaction,
+				puddle.food_id,
+				puddle.owner_slot
+			)
 	for child: Node in gates.get_children():
 		if child is UpgradeGate3D and not child.is_queued_for_deletion():
 			(child as UpgradeGate3D).try_receive_puddle(puddle)
@@ -1103,8 +2520,137 @@ func resolve_puddle_hits(puddle: FoodPuddle3D) -> void:
 	if boss != null and is_instance_valid(boss) and boss.active:
 		if puddle.overlaps_target(logic_position(boss), boss.hit_radius()):
 			if puddle.observe_target(boss):
-				apply_puddle_damage(boss, puddle.satisfaction, puddle.food_id)
+				apply_puddle_damage(
+					boss,
+					puddle.satisfaction,
+					puddle.food_id,
+					puddle.owner_slot
+				)
 	puddle.end_contact_scan()
+
+
+# 生成适合重复网络传输的强化稳定引用，而不是复制整份 Resource 文案。
+func _serialize_network_upgrade_ref(upgrade: UpgradeData) -> Dictionary:
+	if upgrade == null:
+		return {}
+	return {
+		"id": str(upgrade.id),
+		"value": upgrade.value,
+		"value_ratio": upgrade.value_ratio,
+		"source_scale": upgrade.source_scale,
+		"source_label": upgrade.source_label,
+		"uses_value_range": upgrade.uses_value_range,
+	}
+
+
+func _serialize_start_options(options_by_slot: Dictionary[int, Array]) -> Dictionary:
+	var payload: Dictionary = {}
+	for player_slot: int in options_by_slot:
+		var options: Array = []
+		for option: UpgradeData in options_by_slot[player_slot]:
+			options.append(_serialize_network_upgrade_ref(option))
+		payload[str(player_slot)] = options
+	return payload
+
+
+# 用本地已加载模板还原强化；找不到模板时才回退到数值快照。
+func _deserialize_network_upgrade_ref(payload: Variant) -> UpgradeData:
+	if not payload is Dictionary:
+		return null
+	var data: Dictionary = payload as Dictionary
+	var upgrade_id: StringName = StringName(str(data.get("id", "")))
+	for template: UpgradeData in _normal_upgrade_pool:
+		if template.id != upgrade_id:
+			continue
+		var upgrade: UpgradeData = template.duplicate(true) as UpgradeData
+		upgrade.source_scale = maxf(0.0, float(data.get("source_scale", upgrade.source_scale)))
+		upgrade.source_label = str(data.get("source_label", upgrade.source_label))
+		upgrade.set_value_ratio(float(data.get("value_ratio", upgrade.value_ratio)))
+		return upgrade
+	var food: FoodData = _food_data_for_id(upgrade_id)
+	if food != null:
+		var food_option: UpgradeData = _make_start_food_option(food)
+		food_option.source_scale = maxf(0.0, float(data.get("source_scale", 1.0)))
+		food_option.source_label = str(data.get("source_label", ""))
+		return food_option
+	return _deserialize_network_upgrade(payload)
+
+
+func _serialize_network_upgrade(upgrade: UpgradeData) -> Dictionary:
+	if upgrade == null:
+		return {}
+	return {
+		"id": str(upgrade.id),
+		"display_name": upgrade.display_name,
+		"kind": int(upgrade.kind),
+		"value": upgrade.value,
+		"value_suffix": upgrade.value_suffix,
+		"effect_text_template": upgrade.effect_text_template,
+		"minimum_value": upgrade.minimum_value,
+		"maximum_value": upgrade.maximum_value,
+		"value_ratio": upgrade.value_ratio,
+		"uses_value_range": upgrade.uses_value_range,
+		"source_scale": upgrade.source_scale,
+		"source_label": upgrade.source_label,
+		"rarity_name": upgrade.rarity_name,
+		"rarity_color": upgrade.rarity_color.to_html(false),
+	}
+
+
+func _deserialize_network_upgrade(payload: Variant) -> UpgradeData:
+	if not payload is Dictionary:
+		return null
+	var data: Dictionary = payload as Dictionary
+	var upgrade: UpgradeData = UpgradeData.new()
+	upgrade.id = StringName(str(data.get("id", "network_upgrade")))
+	upgrade.display_name = str(data.get("display_name", "强化"))
+	upgrade.kind = int(data.get("kind", UpgradeData.Kind.SUGAR))
+	upgrade.value = float(data.get("value", 0.0))
+	upgrade.value_suffix = str(data.get("value_suffix", "%"))
+	upgrade.effect_text_template = str(data.get("effect_text_template", ""))
+	upgrade.minimum_value = float(data.get("minimum_value", 0.0))
+	upgrade.maximum_value = float(data.get("maximum_value", 0.0))
+	upgrade.value_ratio = clampf(float(data.get("value_ratio", 0.0)), 0.0, 1.0)
+	upgrade.uses_value_range = bool(data.get("uses_value_range", false))
+	upgrade.source_scale = maxf(0.0, float(data.get("source_scale", 1.0)))
+	upgrade.source_label = str(data.get("source_label", ""))
+	upgrade.rarity_name = str(data.get("rarity_name", "寻常"))
+	var rarity_color_text: String = str(data.get("rarity_color", "d7c59a"))
+	if not rarity_color_text.begins_with("#"):
+		rarity_color_text = "#" + rarity_color_text
+	upgrade.rarity_color = Color(rarity_color_text)
+	return upgrade
+
+
+func _apply_upgrade_for_player(
+	player_slot: int,
+	upgrade: UpgradeData,
+	count_as_gate: bool,
+	was_ghost: bool,
+	show_feedback: bool = true
+) -> bool:
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	if context == null or upgrade == null:
+		return false
+	var repair_points: float = (
+		context.state.maximum_durability * upgrade.value
+		if upgrade.kind == UpgradeData.Kind.REPAIR
+		else 0.0
+	)
+	context.state.apply_upgrade(upgrade, count_as_gate, not was_ghost)
+	if was_ghost and upgrade.kind == UpgradeData.Kind.REPAIR:
+		context.cache_repair(repair_points)
+	if show_feedback and (player_slot == _network_session.local_slot or not _network_active):
+		context.cart.play_upgrade_feedback(upgrade.rarity_color)
+		hud.show_toast(
+			"%s：%s\n%s" % [
+				upgrade.display_name,
+				upgrade.effect_text(context.state.maximum_durability),
+				_cumulative_upgrade_text(upgrade.kind, context.state),
+			],
+			upgrade.rarity_color
+		)
+	return true
 
 
 func on_gate_selected(
@@ -1112,60 +2658,98 @@ func on_gate_selected(
 	start_food_gate: bool,
 	remaining_base_health: float = 0.0
 ) -> void:
+	on_gate_selected_for_player(1, upgrade, start_food_gate, remaining_base_health)
+
+
+func on_gate_selected_for_player(
+	player_slot: int,
+	upgrade: UpgradeData,
+	start_food_gate: bool,
+	remaining_base_health: float = 0.0
+) -> void:
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	if context == null:
+		return
+	if _network_active and not _network_session.is_host():
+		return
 	if start_food_gate:
 		if upgrade == null:
 			push_error("START_FOOD_SELECTION_MISSING")
 			return
 		var selected_food: FoodData = _food_data_for_id(upgrade.id)
 		if selected_food == null:
-			push_error("START_FOOD_NOT_UNLOCKED food=%s" % String(upgrade.id))
+			push_error("START_FOOD_NOT_UNLOCKED food=%s" % str(upgrade.id))
 			return
-		weapon_controller.add_food(selected_food)
-		hud.show_toast("%s装车！自动寻找最近的食客" % selected_food.display_name)
+		context.weapon_controller.add_food(selected_food)
+		if _network_active:
+			_network_session.send_game_event({
+				"type": "player_food_added",
+				"slot": player_slot,
+				"food_id": str(selected_food.id),
+			})
+		if player_slot == _network_session.local_slot or not _network_active:
+			hud.show_toast("%s装车！自动寻找最近的食客" % selected_food.display_name)
 		return
-	state.apply_upgrade(upgrade)
-	cart.play_upgrade_feedback(upgrade.rarity_color)
-	hud.show_toast(
-		"%s：%s\n%s" % [
-			upgrade.display_name,
-			upgrade.effect_text(state.maximum_durability),
-			_cumulative_upgrade_text(upgrade.kind),
-		],
-		upgrade.rarity_color
-	)
+	if upgrade == null:
+		return
+	var was_ghost: bool = context.is_ghost()
+	if not _apply_upgrade_for_player(player_slot, upgrade, true, was_ghost):
+		return
+	if _network_active:
+		_network_session.send_game_event({
+			"type": "upgrade_applied",
+			"slot": player_slot,
+			"count_as_gate": true,
+			"was_ghost": was_ghost,
+			"upgrade": _serialize_network_upgrade(upgrade),
+		})
 	if remaining_base_health > 0.0:
-		damage_cart(remaining_base_health, "撞门")
+		damage_cart(remaining_base_health, "撞门", player_slot)
 
 
 func on_customer_reward_gate_collected(upgrade: UpgradeData) -> void:
-	state.apply_upgrade(upgrade, false)
-	cart.play_upgrade_feedback(upgrade.rarity_color)
-	hud.show_toast(
-		"奖励门 %s：%s\n%s" % [
-			upgrade.display_name,
-			upgrade.effect_text(state.maximum_durability),
-			_cumulative_upgrade_text(upgrade.kind),
-		],
-		upgrade.rarity_color
-	)
+	on_customer_reward_gate_collected_for_player(1, upgrade)
+
+
+func on_customer_reward_gate_collected_for_player(
+	player_slot: int,
+	upgrade: UpgradeData
+) -> void:
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	if context == null or upgrade == null:
+		return
+	if _network_active and not _network_session.is_host():
+		return
+	var was_ghost: bool = context.is_ghost()
+	if not _apply_upgrade_for_player(player_slot, upgrade, false, was_ghost):
+		return
+	if _network_active:
+		_network_session.send_game_event({
+			"type": "upgrade_applied",
+			"slot": player_slot,
+			"count_as_gate": false,
+			"was_ghost": was_ghost,
+			"upgrade": _serialize_network_upgrade(upgrade),
+		})
 
 
 # 物理强化按已拥有食材显示实际倍率，避免把门牌原始百分比误读为线性终值。
-func _cumulative_upgrade_text(kind: UpgradeData.Kind) -> String:
+func _cumulative_upgrade_text(kind: UpgradeData.Kind, source_state: RunState = null) -> String:
+	var display_state: RunState = source_state if source_state != null else state
 	if kind not in [
 		UpgradeData.Kind.WINE,
 		UpgradeData.Kind.SCALLION,
 		UpgradeData.Kind.STARCH,
 	]:
 		if kind == UpgradeData.Kind.LIGHT_CART:
-			var bonus: float = state.effective_cart_speed_bonus(Cart3D.BASE_MOVE_SPEED_DESIGN)
+			var bonus: float = display_state.effective_cart_speed_bonus(Cart3D.BASE_MOVE_SPEED_DESIGN)
 			return "实际横移加值 +%.0f · 基础保留 %.0f%%" % [
 				bonus,
-				state.cart_base_speed_factor * 100.0,
+				display_state.cart_base_speed_factor * 100.0,
 			]
-		return state.cumulative_effect_text(kind)
+		return display_state.cumulative_effect_text(kind)
 	var texts: PackedStringArray = []
-	for food_id: StringName in state.foods:
+	for food_id: StringName in display_state.foods:
 		var food: FoodData = _food_data_for_id(food_id)
 		if food == null:
 			continue
@@ -1173,18 +2757,23 @@ func _cumulative_upgrade_text(kind: UpgradeData.Kind) -> String:
 		match kind:
 			UpgradeData.Kind.WINE:
 				if food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM:
-					multiplier = state.effective_orbit_angular_speed(food) / food.orbit_angular_speed
+					multiplier = display_state.effective_orbit_angular_speed(food) / food.orbit_angular_speed
 				else:
-					multiplier = state.effective_projectile_speed(food) / food.projectile_speed
+					multiplier = display_state.effective_projectile_speed(food) / food.projectile_speed
 			UpgradeData.Kind.SCALLION:
-				multiplier = state.effective_projectile_radius(food) / food.projectile_radius
+				multiplier = display_state.effective_projectile_radius(food) / food.projectile_radius
 			UpgradeData.Kind.STARCH:
-				multiplier = state.effective_duration(food) / food.base_lifetime
+				multiplier = display_state.effective_duration(food) / food.base_lifetime
 		texts.append("%s×%.2f" % [food.display_name, multiplier])
 	return "实际：%s" % (" · ".join(texts) if not texts.is_empty() else "待装车后生效")
 
 
-func damage_cart(amount: float, source: String) -> void:
+func damage_cart(amount: float, source: String, player_slot: int = 1) -> void:
+	if _network_active:
+		if not _network_session.is_host():
+			return
+		_apply_network_damage_batch({player_slot: amount}, source)
+		return
 	if _debug_invincible:
 		hud.show_toast("DEBUG 无敌：已忽略 %s 的伤害" % source, Color("#a9e69d"))
 		return
@@ -1204,7 +2793,75 @@ func damage_cart(amount: float, source: String) -> void:
 			hud.show_toast("%s：耐久 -%.0f" % [source, durability_damage], Color("#ff7858"))
 
 
+func damage_carts(damages: Dictionary[int, float], source: String) -> void:
+	if not _network_active:
+		if damages.has(1):
+			damage_cart(float(damages[1]), source)
+		return
+	if not _network_session.is_host():
+		return
+	_apply_network_damage_batch(damages, source)
+
+
+func _apply_network_damage_batch(damages: Dictionary[int, float], source: String) -> void:
+	if _debug_invincible:
+		return
+	var newly_dead: Array[int] = []
+	for player_slot: int in damages:
+		var context: PlayerRunContext = _player_contexts.get(player_slot)
+		if context == null or not context.can_receive_damage():
+			continue
+		var applied: bool = context.cart.take_damage(
+			maxf(0.0, float(damages[player_slot])),
+			false
+		)
+		if not applied:
+			continue
+		if context.state.current_durability <= 0.0:
+			newly_dead.append(player_slot)
+		if player_slot == _network_session.local_slot:
+			hud.show_toast("%s：耐久受到影响" % source, Color("#ff7858"))
+	if newly_dead.is_empty():
+		return
+	var respawn_seconds: float = MultiplayerRules.respawn_delay(
+		_respawn_base_seconds,
+		_respawn_increment_seconds,
+		_respawn_max_seconds,
+		_team_death_count
+	)
+	for player_slot: int in newly_dead:
+		var context: PlayerRunContext = _player_contexts[player_slot]
+		context.enter_ghost(respawn_seconds)
+	_team_death_count += newly_dead.size()
+	if _all_network_players_ghost():
+		_on_cart_destroyed()
+	else:
+		_broadcast_player_snapshot()
+
+
+func _all_network_players_ghost() -> bool:
+	var life_states: Array[bool] = []
+	for context: PlayerRunContext in _player_contexts.values():
+		life_states.append(context.is_ghost())
+	return MultiplayerRules.all_players_ghost(life_states)
+
+
+func _tick_network_lives(delta: float) -> void:
+	if not _network_active or not _network_session.is_host():
+		return
+	var respawned: Array[int] = []
+	for player_slot: int in _player_contexts:
+		var context: PlayerRunContext = _player_contexts[player_slot]
+		if context.tick_respawn(delta):
+			context.respawn(_respawn_durability_ratio, _respawn_invincibility_seconds)
+			respawned.append(player_slot)
+	if not respawned.is_empty():
+		_broadcast_player_snapshot()
+
+
 func _on_timeline_event(event_id: StringName) -> void:
+	if _network_active and _network_session.is_client():
+		return
 	if event_id == &"start_gate":
 		_queue_gate(0, true)
 	elif event_id == &"basic":
@@ -1217,8 +2874,8 @@ func _on_timeline_event(event_id: StringName) -> void:
 		_queue_elite()
 	elif event_id == &"boss":
 		_start_boss()
-	elif String(event_id).begins_with("gate_"):
-		var gate_index: int = String(event_id).trim_prefix("gate_").to_int()
+	elif str(event_id).begins_with("gate_"):
+		var gate_index: int = str(event_id).trim_prefix("gate_").to_int()
 		_queue_gate(gate_index, false, _scheduled_baseline_appetite(event_id))
 
 
@@ -1410,17 +3067,15 @@ func _spawn_customer_now(
 ) -> void:
 	state.normal_customers_spawned += 1
 	_spawn_counter += 1
-	var customer: Customer3D = _instantiate_customer(customer_data)
 	var max_start: int = Playfield.REGION_COUNT - customer_data.occupied_regions
 	var first_region: int = spawn_first_region
 	if first_region < 0:
 		first_region = _spawn_rng.randi_range(0, max_start)
-	customer.position = Vector3(
+	var spawn_position: Vector3 = Vector3(
 		playfield.spawn_x(first_region, customer_data.occupied_regions),
 		0.0,
 		Playfield.FORWARD_SPAWN_Z
 	)
-	entities.add_child(customer)
 	var baseline_appetite: float = scheduled_baseline_appetite
 	if baseline_appetite <= 0.0:
 		baseline_appetite = _current_baseline_appetite()
@@ -1430,6 +3085,26 @@ func _spawn_customer_now(
 		reward_upgrade.value_ratio,
 		reward_upgrade.source_scale
 	)
+	if _network_active:
+		appetite = MultiplayerRules.scale_enemy_appetite(appetite, _network_player_count)
+	var payload: Dictionary = {
+		"data_id": str(customer_data.id),
+		"spawn_index": _spawn_counter,
+		"x": spawn_position.x,
+		"z": spawn_position.z,
+		"appetite": appetite,
+		"baseline_appetite": baseline_appetite,
+		"reward_upgrade_ref": _serialize_network_upgrade_ref(reward_upgrade),
+	}
+	if _network_active and _network_session.is_host() and customer_spawner != null:
+		var spawned_customer: Customer3D = customer_spawner.spawn(payload) as Customer3D
+		if spawned_customer != null:
+			return
+	var customer: Customer3D = _instantiate_customer(customer_data)
+	if customer == null:
+		return
+	customer.position = spawn_position
+	entities.add_child(customer)
 	customer.configure(customer_data, self, _spawn_counter, appetite, reward_upgrade, baseline_appetite)
 	customer.satisfied.connect(_on_customer_satisfied)
 	customer.collided_with_cart.connect(_on_customer_collided_with_cart)
@@ -1441,10 +3116,32 @@ func _spawn_customer_now(
 func _spawn_elite_now() -> void:
 	_elite_started_at = state.elapsed_seconds
 	_spawn_counter += 1
+	var baseline_appetite: float = _current_baseline_appetite()
+	var appetite: float = elite_guest_data.appetite_at(baseline_appetite)
+	if _network_active:
+		appetite = MultiplayerRules.scale_enemy_appetite(appetite, _network_player_count)
+	var payload: Dictionary = {
+		"data_id": str(elite_guest_data.id),
+		"spawn_index": _spawn_counter,
+		"x": 3.6,
+		"z": Playfield.FORWARD_SPAWN_Z,
+		"appetite": appetite,
+		"baseline_appetite": baseline_appetite,
+		"reward_upgrade_ref": {},
+	}
+	if _network_active and _network_session.is_host() and customer_spawner != null:
+		var spawned_elite: Customer3D = customer_spawner.spawn(payload) as Customer3D
+		if spawned_elite == null:
+			push_error("NETWORK_ELITE_SPAWN_FAILED")
+		else:
+			hud.set_phase("精英检查 · 六区无法绕行")
+			hud.show_toast("六席贵客挡住整条路，尽快满足它！", Color("#f0c45f"))
+			return
 	var elite: Customer3D = _instantiate_customer(elite_guest_data)
+	if elite == null:
+		return
 	elite.position = Vector3(3.6, 0.0, Playfield.FORWARD_SPAWN_Z)
 	entities.add_child(elite)
-	var appetite: float = elite_guest_data.appetite_at(_current_baseline_appetite())
 	elite.configure(elite_guest_data, self, _spawn_counter, appetite)
 	elite.satisfied.connect(_on_customer_satisfied)
 	elite.collided_with_cart.connect(_on_customer_collided_with_cart)
@@ -1463,27 +3160,50 @@ func _instantiate_customer(customer_data: CustomerData) -> Customer3D:
 	var customer: Customer3D = packed_scene.instantiate() as Customer3D
 	if customer != null:
 		return customer
-	push_error("食客场景根节点必须继承 Customer3D: %s" % String(customer_data.id))
+	push_error("食客场景根节点必须继承 Customer3D: %s" % str(customer_data.id))
 	return DEFAULT_CUSTOMER_SCENE.instantiate() as Customer3D
 
 
 func _spawn_gate_now(_index: int, is_start_gate: bool, scheduled_baseline_appetite: float = 0.0) -> void:
 	_spawn_counter += 1
-	var gate: UpgradeGate3D = GATE_SCENE.instantiate() as UpgradeGate3D
-	gates.add_child(gate)
 	if is_start_gate:
-		var start_options: Array[UpgradeData] = _roll_start_food_options()
+		var start_options: Array[UpgradeData] = _roll_start_food_options(1)
 		if start_options.size() != 2:
 			push_error("START_FOOD_POOL_EMPTY")
-			gate.queue_free()
 			return
-		gate.configure(
+		var per_player_start_options: Dictionary[int, Array] = {1: start_options}
+		if _network_active:
+			for context: PlayerRunContext in get_player_contexts():
+				if context.slot == 1:
+					continue
+				var player_options: Array[UpgradeData] = _roll_start_food_options(context.slot)
+				if player_options.size() == 2:
+					per_player_start_options[context.slot] = player_options
+		var start_payload: Dictionary = {
+			"left_upgrade_ref": _serialize_network_upgrade_ref(start_options[0]),
+			"right_upgrade_ref": _serialize_network_upgrade_ref(start_options[1]),
+			"start_food_gate": true,
+			"baseline_appetite": _current_baseline_appetite(),
+			"spawn_index": _spawn_counter,
+			"start_options_by_slot": _serialize_start_options(per_player_start_options),
+		}
+		if _network_active and _network_session.is_host() and gate_spawner != null:
+			var spawned_start_gate: UpgradeGate3D = gate_spawner.spawn(start_payload) as UpgradeGate3D
+			if spawned_start_gate == null:
+				push_error("NETWORK_START_GATE_SPAWN_FAILED")
+			return
+		var start_gate: UpgradeGate3D = GATE_SCENE.instantiate() as UpgradeGate3D
+		if start_gate == null:
+			return
+		gates.add_child(start_gate)
+		start_gate.configure(
 			self,
 			start_options[0],
 			start_options[1],
 			true,
 			_current_baseline_appetite(),
-			_spawn_counter
+			_spawn_counter,
+			per_player_start_options
 		)
 		return
 	var baseline_appetite: float = scheduled_baseline_appetite
@@ -1492,9 +3212,25 @@ func _spawn_gate_now(_index: int, is_start_gate: bool, scheduled_baseline_appeti
 	var options: Array[UpgradeData] = _roll_normal_upgrade_options(2)
 	if options.size() != 2:
 		push_error("NORMAL_UPGRADE_POOL_TOO_SMALL")
-		gate.queue_free()
 		return
 	state.record_normal_upgrade_offer(options)
+	var normal_payload: Dictionary = {
+		"left_upgrade_ref": _serialize_network_upgrade_ref(options[0]),
+		"right_upgrade_ref": _serialize_network_upgrade_ref(options[1]),
+		"start_food_gate": false,
+		"baseline_appetite": baseline_appetite,
+		"spawn_index": _spawn_counter,
+		"start_options_by_slot": {},
+	}
+	if _network_active and _network_session.is_host() and gate_spawner != null:
+		var spawned_gate: UpgradeGate3D = gate_spawner.spawn(normal_payload) as UpgradeGate3D
+		if spawned_gate == null:
+			push_error("NETWORK_GATE_SPAWN_FAILED")
+		return
+	var gate: UpgradeGate3D = GATE_SCENE.instantiate() as UpgradeGate3D
+	if gate == null:
+		return
+	gates.add_child(gate)
 	gate.configure(self, options[0], options[1], false, baseline_appetite, _spawn_counter)
 
 
@@ -1535,32 +3271,71 @@ func _has_pending_boss_blocker() -> bool:
 # 最后一门完成后才停止道路并清场，避免编辑器位置变化吞掉既定强化门。
 func _begin_boss() -> void:
 	_boss_pending = false
+	_network_announced_boss = false
 	_bosses_started += 1
 	phase = Phase.BOSS
 	background.scrolling = false
 	_clear_forward_objects()
 	_boss_started_at = state.elapsed_seconds
-	boss = BOSS_SCENE.instantiate() as PrototypeBoss3D
-	entities.add_child(boss)
-	boss.configure(boss_data, self, _current_baseline_appetite())
+	var boss_payload: Dictionary = {
+		"baseline_appetite": _current_baseline_appetite(),
+		"player_count": _network_player_count if _network_active else 1,
+	}
+	if _network_active and _network_session.is_host() and boss_spawner != null:
+		boss = boss_spawner.spawn(boss_payload) as PrototypeBoss3D
+	else:
+		boss = BOSS_SCENE.instantiate() as PrototypeBoss3D
+		if boss != null:
+			entities.add_child(boss)
+			boss.configure(
+				boss_data,
+				self,
+				_current_baseline_appetite(),
+				_network_player_count if _network_active else 1
+			)
+			boss.satisfied.connect(_on_boss_satisfied)
+	if boss == null:
+		push_error("NETWORK_BOSS_SPAWN_FAILED")
+		return
 	cart.begin_boss_movement(boss)
-	boss.satisfied.connect(_on_boss_satisfied)
+	for context: PlayerRunContext in get_player_contexts():
+		if context.cart != cart:
+			context.cart.begin_boss_movement(boss)
 	hud.set_phase("Boss服务 · 自由移动并自动反击")
 	hud.show_toast("前进停止！危险预警后会出现反击窗口", Color("#ff7957"))
 
 
 func _on_customer_satisfied(customer: Customer3D) -> void:
+	if _network_active and not _network_session.is_host():
+		return
 	_finish_customer(customer, false)
 
 
 func _on_customer_collided_with_cart(customer: Customer3D) -> void:
+	if _network_active and not _network_session.is_host():
+		return
 	var remaining: float = customer.remaining_appetite
-	damage_cart(remaining, "漏客投诉")
+	if _network_active:
+		var damages: Dictionary[int, float] = {}
+		var per_player_damage: float = MultiplayerRules.per_player_damage(
+			remaining,
+			_network_player_count
+		)
+		for context: PlayerRunContext in get_player_contexts():
+			if context.is_ghost() or context.cart == null:
+				continue
+			if customer.collision_rect_xz().intersects(context.cart.collision_rect_xz()):
+				damages[context.slot] = per_player_damage
+		damage_carts(damages, "漏客投诉")
+	else:
+		damage_cart(remaining, "漏客投诉")
 	_finish_customer(customer, true)
 
 
 # 绕开餐车的食客只离开模拟，不产生伤害、击败或掉落。
 func _on_customer_escaped(customer: Customer3D) -> void:
+	if _network_active and not _network_session.is_host():
+		return
 	customers.erase(customer)
 	customer.queue_free()
 
@@ -1630,8 +3405,23 @@ func _spawn_customer_reward_gate_now(
 ) -> void:
 	state.upgrade_drops_spawned += 1
 	_spawn_counter += 1
-	var drop: UpgradeDrop3D = REWARD_GATE_SCENE.instantiate() as UpgradeDrop3D
 	start_position.z = safe_z
+	var payload: Dictionary = {
+		"upgrade_ref": _serialize_network_upgrade_ref(upgrade),
+		"x": start_position.x,
+		"z": start_position.z,
+		"baseline_appetite": baseline_appetite,
+		"occupied_regions": occupied_regions,
+		"spawn_index": _spawn_counter,
+	}
+	if _network_active and _network_session.is_host() and drop_spawner != null:
+		var spawned_drop: UpgradeDrop3D = drop_spawner.spawn(payload) as UpgradeDrop3D
+		if spawned_drop != null:
+			return
+		push_error("NETWORK_REWARD_GATE_SPAWN_FAILED")
+	var drop: UpgradeDrop3D = REWARD_GATE_SCENE.instantiate() as UpgradeDrop3D
+	if drop == null:
+		return
 	drops.add_child(drop)
 	drop.configure(self, upgrade, start_position, baseline_appetite, occupied_regions, _spawn_counter)
 
@@ -1761,16 +3551,84 @@ func _reward_gate_spawn_is_safe(
 
 
 func _on_customer_ranged_attack(_customer: Customer3D, amount: float) -> void:
-	damage_cart(amount, "拍桌投诉")
+	if not _network_active:
+		damage_cart(amount, "拍桌投诉")
+		return
+	if not _network_session.is_host():
+		return
+	var candidates: Array[PlayerRunContext] = []
+	for context: PlayerRunContext in get_player_contexts():
+		if context.can_receive_damage():
+			candidates.append(context)
+	if candidates.is_empty():
+		return
+	var target: PlayerRunContext = candidates[_target_rng.randi_range(0, candidates.size() - 1)]
+	damage_cart(
+		MultiplayerRules.per_player_damage(amount, _network_player_count),
+		"拍桌投诉",
+		target.slot
+	)
+
+
+func select_boss_target_position(boss_position: Vector3) -> Vector3:
+	if _network_active and not _network_session.is_host():
+		return cart.position
+	var candidates: Array[PlayerRunContext] = []
+	for context: PlayerRunContext in get_player_contexts():
+		if context.can_receive_damage():
+			candidates.append(context)
+	if candidates.is_empty():
+		return cart.position
+	var selected: PlayerRunContext = candidates[_target_rng.randi_range(0, candidates.size() - 1)]
+	return selected.cart.position
+
+
+func resolve_boss_attack(
+	base_damage: float,
+	locked_target_position: Vector3,
+	area_attack: bool,
+	source: String
+) -> void:
+	if not _network_active:
+		var hit: bool = (
+			PrototypeBoss3D.area_attack_hits(cart.position, locked_target_position)
+			if area_attack
+			else PrototypeBoss3D.line_attack_hits(cart.position, boss.position, locked_target_position)
+		)
+		if hit:
+			damage_cart(base_damage, source)
+		return
+	var damages: Dictionary[int, float] = {}
+	var per_player_damage: float = MultiplayerRules.per_player_damage(
+		base_damage,
+		_network_player_count
+	)
+	for context: PlayerRunContext in get_player_contexts():
+		if not context.can_receive_damage():
+			continue
+		var hit: bool = (
+			PrototypeBoss3D.area_attack_hits(context.cart.position, locked_target_position)
+			if area_attack
+			else PrototypeBoss3D.line_attack_hits(context.cart.position, boss.position, locked_target_position)
+		)
+		if hit:
+			damages[context.slot] = per_player_damage
+	damage_carts(damages, source)
 
 
 func _on_special_choice_selected(choice_id: StringName) -> void:
+	if _network_active:
+		if _network_session.is_host():
+			_on_network_choice_received(1, choice_id)
+		else:
+			_network_session.submit_choice(choice_id)
+		return
 	if not _active_special_choices.has(choice_id):
-		push_error("SPECIAL_CHOICE_REJECTED choice=%s" % String(choice_id))
+		push_error("SPECIAL_CHOICE_REJECTED choice=%s" % str(choice_id))
 		return
 	var upgrade: SpecialUpgradeData = _special_upgrades_by_id.get(choice_id)
 	if upgrade == null:
-		push_error("SPECIAL_CHOICE_DATA_MISSING choice=%s" % String(choice_id))
+		push_error("SPECIAL_CHOICE_DATA_MISSING choice=%s" % str(choice_id))
 		return
 	get_tree().paused = false
 	state.record_special_choice(choice_id)
@@ -1795,24 +3653,39 @@ func _on_special_choice_selected(choice_id: StringName) -> void:
 			state.add_pierce_bonus(pierce_amount)
 			state.add_special(choice_id)
 			hud.show_toast("%s：所有食材穿透次数 +%d" % [upgrade.display_name, pierce_amount])
-	_active_special_choices.clear()
-	hud.hide_special_choices()
-	if _boss_reward_pending:
-		_boss_reward_pending = false
-		if boss != null and is_instance_valid(boss):
-			boss.queue_free()
-	phase = Phase.FORWARD
-	_normal_waves_suspended = false
-	background.scrolling = true
-	hud.set_phase("继续前进 · 构筑已变化")
+	_finish_special_choice_phase()
+
+
+func _on_network_choice_received(player_slot: int, choice_id: StringName) -> void:
+	if not _network_active or not _network_session.is_host():
+		return
+	var choices: Array = _active_special_choices_by_slot.get(player_slot, [])
+	if not choices.has(str(choice_id)) and not choices.has(choice_id):
+		push_error("SPECIAL_CHOICE_REJECTED slot=%d choice=%s" % [player_slot, str(choice_id)])
+		return
+	if _selected_special_choices_by_slot.has(player_slot):
+		return
+	var normalized_choice: StringName = StringName(choice_id)
+	_selected_special_choices_by_slot[player_slot] = normalized_choice
+	_apply_special_choice_for_player(player_slot, normalized_choice)
+	_network_session.send_game_event({
+		"type": "special_choice_applied",
+		"slot": player_slot,
+		"choice": str(normalized_choice),
+	})
+	if _selected_special_choices_by_slot.size() >= _player_contexts.size():
+		_finish_special_choice_phase()
 
 
 func _on_boss_satisfied() -> void:
+	if _network_active and not _network_session.is_host():
+		return
 	state.boss_duration = state.elapsed_seconds - _boss_started_at
 	state.boss_durations.append(state.boss_duration)
 	_bosses_completed += 1
 	state.customers_satisfied += 1
-	cart.end_boss_movement()
+	for context: PlayerRunContext in get_player_contexts():
+		context.cart.end_boss_movement()
 	if _bosses_completed >= 2:
 		if boss != null and is_instance_valid(boss):
 			boss.queue_free()
@@ -1827,11 +3700,37 @@ func _on_boss_satisfied() -> void:
 
 func _show_special_choices(source: StringName, title: String) -> void:
 	_special_choice_source = source
-	_active_special_choices = _roll_special_choices()
+	if _network_active and _network_session.is_host():
+		_active_special_choices_by_slot.clear()
+		_selected_special_choices_by_slot.clear()
+		for context: PlayerRunContext in get_player_contexts():
+			var player_choices: Array[StringName] = _roll_special_choices(context.state, context.slot)
+			_active_special_choices_by_slot[context.slot] = _string_name_array_to_strings(player_choices)
+			context.state.record_special_offer(source, player_choices)
+		var payload_choices: Dictionary = {}
+		for player_slot: int in _active_special_choices_by_slot:
+			payload_choices[str(player_slot)] = _active_special_choices_by_slot[player_slot]
+		_network_session.send_game_event({
+			"type": "special_choices",
+			"choices": payload_choices,
+			"source": str(source),
+			"title": title,
+			"boss_reward": _boss_reward_pending,
+		})
+		_active_special_choices.clear()
+		for choice_text: String in _active_special_choices_by_slot.get(1, []):
+			_active_special_choices.append(StringName(choice_text))
+		hud.show_special_choices(_active_special_choices, _special_choice_texts(_active_special_choices), title)
+		if _smoke_test:
+			_on_network_choice_received(1, _active_special_choices[0])
+		else:
+			get_tree().paused = true
+		return
+	_active_special_choices = _roll_special_choices(state, 1)
 	if _active_special_choices.size() != 3:
 		push_error(
 			"SPECIAL_CHOICE_POOL_INVALID source=%s count=%d" % [
-				String(source),
+				str(source),
 				_active_special_choices.size(),
 			]
 		)
@@ -1844,29 +3743,91 @@ func _show_special_choices(source: StringName, title: String) -> void:
 		get_tree().paused = true
 
 
+func _apply_special_choice_for_player(player_slot: int, choice_id: StringName) -> void:
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	if context == null:
+		return
+	var upgrade: SpecialUpgradeData = _special_upgrades_by_id.get(choice_id)
+	if upgrade == null:
+		return
+	context.state.record_special_choice(choice_id)
+	match upgrade.effect_kind:
+		SpecialUpgradeData.EffectKind.FOOD_CARD:
+			_apply_food_card_for_player(player_slot, _food_data_for_id(upgrade.target_id))
+		SpecialUpgradeData.EffectKind.SERVING:
+			context.state.servings += maxi(1, roundi(upgrade.effect_value))
+			context.state.add_special(choice_id)
+		SpecialUpgradeData.EffectKind.TARGET_AIM:
+			context.state.enable_target_aim(upgrade.target_id)
+			context.state.add_special(choice_id)
+		SpecialUpgradeData.EffectKind.EVOLUTION:
+			context.state.enable_food_evolution(choice_id)
+			context.state.add_special(choice_id)
+		SpecialUpgradeData.EffectKind.PIERCE:
+			context.state.add_pierce_bonus(maxi(1, roundi(upgrade.effect_value)))
+			context.state.add_special(choice_id)
+
+
+func _finish_special_choice_phase() -> void:
+	if _network_active and _network_session.is_host():
+		_network_session.send_game_event({"type": "special_choices_complete"})
+	get_tree().paused = false
+	_active_special_choices.clear()
+	_active_special_choices_by_slot.clear()
+	_selected_special_choices_by_slot.clear()
+	hud.hide_special_choices()
+	if _boss_reward_pending:
+		_boss_reward_pending = false
+		if (
+			boss != null
+			and is_instance_valid(boss)
+			and (not _native_network_spawning_enabled() or _network_session.is_host())
+		):
+			boss.queue_free()
+	phase = Phase.FORWARD
+	_normal_waves_suspended = false
+	background.scrolling = true
+	hud.set_phase("继续前进 · 构筑已变化")
+
+
 func _apply_food_card(food: FoodData) -> void:
+	_apply_food_card_for_player(1, food)
+
+
+func _apply_food_card_for_player(player_slot: int, food: FoodData) -> void:
 	if food == null:
 		return
-	if state.has_food(food.id):
-		var next_level: int = state.level_food(food.id)
-		state.add_special(StringName("%s_level_%d" % [String(food.id), next_level]))
-		hud.show_toast(
+	var context: PlayerRunContext = _player_contexts.get(player_slot)
+	if context == null:
+		return
+	if context.state.has_food(food.id):
+		var next_level: int = context.state.level_food(food.id)
+		context.state.add_special(StringName("%s_level_%d" % [str(food.id), next_level]))
+		if player_slot == _network_session.local_slot or not _network_active:
+			hud.show_toast(
 			"%s升至 Lv.%d：自身基础满足值 ×%.2f" % [
 				food.display_name,
 				next_level,
-				state.food_level_satisfaction_multiplier,
+				context.state.food_level_satisfaction_multiplier,
 			]
-		)
+			)
 		return
-	weapon_controller.add_food(food)
-	state.add_special(StringName("%s_acquired" % String(food.id)))
-	hud.show_toast("获得%s：加入自动投喂构筑" % food.display_name)
+	context.weapon_controller.add_food(food)
+	context.state.add_special(StringName("%s_acquired" % str(food.id)))
+	if player_slot == _network_session.local_slot or not _network_active:
+		hud.show_toast("获得%s：加入自动投喂构筑" % food.display_name)
 
 
 func _finish_run() -> void:
 	if phase == Phase.RESULTS:
 		return
+	if _network_active and not _network_session.is_host():
+		return
 	phase = Phase.RESULTS
+	if _network_active and _network_session.is_host():
+		_broadcast_final_player_stats()
+		_network_session.send_game_event({"type": "match_completed"})
+		_network_session.return_to_lobby()
 	var unlock_message: String = _record_final_boss_unlock()
 	_save_playtest_record(&"completed")
 	hud.set_phase("构筑验证完成")
@@ -2015,6 +3976,10 @@ func _on_cart_destroyed() -> void:
 	if phase == Phase.RESULTS or phase == Phase.FAILED:
 		return
 	phase = Phase.FAILED
+	if _network_active and _network_session.is_host():
+		_broadcast_final_player_stats()
+		_network_session.send_game_event({"type": "match_failed"})
+		_network_session.return_to_lobby()
 	_save_playtest_record(&"failed")
 	hud.set_phase("餐车失控 · 本局结束")
 	hud.show_results("服务失败", _build_results_text())
@@ -2024,11 +3989,19 @@ func _on_cart_destroyed() -> void:
 func _on_restart_requested() -> void:
 	_manual_pause_active = false
 	get_tree().paused = false
+	if _network_active:
+		if _network_session.is_host() and _network_session.is_in_match():
+			_network_session.return_to_lobby()
+		return
 	get_tree().reload_current_scene()
 
 
 func _on_pause_requested() -> void:
 	if _manual_pause_active or (phase != Phase.FORWARD and phase != Phase.BOSS):
+		return
+	if _network_active:
+		cart.cancel_pointer_input()
+		_network_session.request_pause()
 		return
 	_manual_pause_active = true
 	cart.cancel_pointer_input()
@@ -2038,6 +4011,9 @@ func _on_pause_requested() -> void:
 
 func _on_resume_requested() -> void:
 	if not _manual_pause_active:
+		return
+	if _network_active:
+		_network_session.request_resume()
 		return
 	_manual_pause_active = false
 	hud.hide_pause()
@@ -2141,7 +4117,7 @@ func _on_debug_action_requested(action_id: StringName) -> void:
 		var debug_food: FoodData = _food_data_for_id(debug_food_id)
 		if debug_food == null:
 			success = false
-			feedback = "未找到食材数据：%s" % String(debug_food_id)
+			feedback = "未找到食材数据：%s" % str(debug_food_id)
 		elif state.has_food(debug_food.id):
 			success = false
 			feedback = "%s 已在车上" % debug_food.display_name
@@ -2265,7 +4241,7 @@ func _on_debug_action_requested(action_id: StringName) -> void:
 			feedback = "正式 HUD 已%s" % ("显示" if hud.visible else "隐藏")
 		_:
 			success = false
-			feedback = "未知 Debug 操作：%s" % String(action_id)
+			feedback = "未知 Debug 操作：%s" % str(action_id)
 	debug_menu.show_feedback(feedback, success)
 	_refresh_debug_menu()
 
@@ -2286,7 +4262,7 @@ func _refresh_debug_menu() -> void:
 	var food_texts: PackedStringArray = []
 	for food_id: StringName in state.foods:
 		var food: FoodData = _food_data_for_id(food_id)
-		var display_name: String = food.display_name if food != null else String(food_id)
+		var display_name: String = food.display_name if food != null else str(food_id)
 		food_texts.append("%s Lv.%d" % [display_name, state.food_level(food_id)])
 	var boss_text: String = "无"
 	if boss != null and is_instance_valid(boss) and boss.active:
@@ -2437,6 +4413,11 @@ func _debug_remove_all_foods() -> int:
 func _clear_forward_objects() -> void:
 	_forward_spawn_requests.clear()
 	_reward_spawn_requests.clear()
+	if _native_network_spawning_enabled() and not _network_session.is_host():
+		# 客户端的门、食客和奖励由 MultiplayerSpawner 接收房主 despawn；这里只清本地视觉投射物。
+		for child: Node in projectiles.get_children():
+			child.queue_free()
+		return
 	for customer: Customer3D in customers:
 		if is_instance_valid(customer):
 			customer.queue_free()
@@ -2587,7 +4568,7 @@ func _build_results_text() -> String:
 	for food_id: StringName in state.foods:
 		food_lines.append(
 			"%s Lv.%d 贡献 %.0f" % [
-				String(food_id),
+				str(food_id),
 				state.food_level(food_id),
 				state.satisfaction_by_food.get(food_id, 0.0),
 			]
@@ -2633,12 +4614,18 @@ func _save_playtest_record(outcome: StringName) -> void:
 	var food_levels_record: Dictionary = {}
 	var food_satisfaction_record: Dictionary = {}
 	for food_id: StringName in state.foods:
-		food_levels_record[String(food_id)] = state.food_level(food_id)
-		food_satisfaction_record[String(food_id)] = state.satisfaction_by_food.get(food_id, 0.0)
+		food_levels_record[str(food_id)] = state.food_level(food_id)
+		food_satisfaction_record[str(food_id)] = state.satisfaction_by_food.get(food_id, 0.0)
 	var record: Dictionary = {
-		"schema": "xiaochuxi.playtest_run.v1",
+		"schema": "xiaochuxi.playtest_run.v2",
 		"seed": state.run_seed,
-		"outcome": String(outcome),
+		"outcome": str(outcome),
+		"network_mode": "lan" if _network_active else "solo",
+		"room_id": _network_session.room_id if _network_active else "",
+		"player_slot": _network_session.local_slot if _network_active else 1,
+		"player_count": _network_player_count if _network_active else 1,
+		"team_death_count": _team_death_count,
+		"players": _build_player_history_record(),
 		"elapsed_seconds": state.elapsed_seconds,
 		"food_levels": food_levels_record,
 		"food_evolutions": _string_name_array_to_strings(state.food_evolutions),
@@ -2659,7 +4646,7 @@ func _save_playtest_record(outcome: StringName) -> void:
 		"normal_defeats": state.normal_defeats,
 		"normal_customers_spawned": state.normal_customers_spawned,
 		"collided_defeats": state.collided_defeats,
-		"final_boss_unlock_status": String(_final_boss_unlock_status),
+		"final_boss_unlock_status": str(_final_boss_unlock_status),
 		"post_boss_performance": _build_post_boss_performance_record(),
 	}
 	var file: FileAccess
@@ -2677,14 +4664,28 @@ func _save_playtest_record(outcome: StringName) -> void:
 	print("PLAYTEST_RECORD_SAVED path=%s seed=%d" % [PLAYTEST_RECORD_PATH, state.run_seed])
 
 
+func _build_player_history_record() -> Array[Dictionary]:
+	var records: Array[Dictionary] = []
+	for player_slot: int in _player_contexts:
+		var context: PlayerRunContext = _player_contexts[player_slot]
+		records.append({
+			"slot": player_slot,
+			"deaths": context.death_count,
+			"ghost_seconds": context.ghost_elapsed_seconds,
+			"final_ghost": context.is_ghost(),
+			"respawn_remaining": context.respawn_remaining,
+		})
+	return records
+
+
 # 每项同时保留提供、选择、实际结算值与点数贡献，供12局横向比较。
 func _build_normal_upgrade_playtest_record() -> Array[Dictionary]:
 	var ids: Array[String] = []
 	for upgrade_id: StringName in state.normal_upgrade_offer_counts:
-		ids.append(String(upgrade_id))
+		ids.append(str(upgrade_id))
 	for upgrade_id: StringName in state.normal_upgrade_choice_counts:
-		if not ids.has(String(upgrade_id)):
-			ids.append(String(upgrade_id))
+		if not ids.has(str(upgrade_id)):
+			ids.append(str(upgrade_id))
 	ids.sort()
 	var records: Array[Dictionary] = []
 	for id_text: String in ids:
@@ -2711,7 +4712,7 @@ func _build_final_food_multiplier_record() -> Dictionary:
 			if food.attack_kind == FoodData.AttackKind.ORBITING_MUSHROOM
 			else state.effective_projectile_speed(food) / maxf(0.001, food.projectile_speed)
 		)
-		records[String(food_id)] = {
+		records[str(food_id)] = {
 			"satisfaction": state.effective_satisfaction(food) / maxf(0.001, food.base_satisfaction),
 			"attack_speed": 1.0 + state.attack_speed_bonus * food.attack_speed_upgrade_scale,
 			"wine": wine_multiplier,
@@ -2724,13 +4725,13 @@ func _build_final_food_multiplier_record() -> Dictionary:
 func _build_post_boss_performance_record() -> Dictionary:
 	var satisfaction_delta: Dictionary = {}
 	for food_id: StringName in state.foods:
-		satisfaction_delta[String(food_id)] = (
+		satisfaction_delta[str(food_id)] = (
 			state.satisfaction_by_food.get(food_id, 0.0)
 			- _post_boss_satisfaction_start.get(food_id, 0.0)
 		)
 	var boss_reward: String = ""
 	if not state.special_choice_records.is_empty():
-		boss_reward = String(state.special_choice_records.back().selected)
+		boss_reward = str(state.special_choice_records.back().selected)
 	return {
 		"reward": boss_reward,
 		"duration_seconds": maxf(0.0, state.elapsed_seconds - _post_boss_started_at),
@@ -2743,7 +4744,7 @@ func _build_post_boss_performance_record() -> Dictionary:
 func _string_name_array_to_strings(values: Array[StringName]) -> Array[String]:
 	var result: Array[String] = []
 	for value: StringName in values:
-		result.append(String(value))
+		result.append(str(value))
 	return result
 
 
@@ -2799,16 +4800,28 @@ func _roll_normal_upgrade_options(option_count: int) -> Array[UpgradeData]:
 
 
 # 开局门从已解锁池无放回抽取；只有一种食材时两侧显示同一候选。
-func _roll_start_food_options() -> Array[UpgradeData]:
+func _roll_start_food_options(player_slot: int = 1) -> Array[UpgradeData]:
 	var available: Array[FoodData] = _available_start_foods()
 	var options: Array[UpgradeData] = []
+	var choice_rng: RandomNumberGenerator = _player_choice_rng(player_slot)
 	while not available.is_empty() and options.size() < 2:
-		var index: int = _upgrade_rng.randi_range(0, available.size() - 1)
+		var index: int = choice_rng.randi_range(0, available.size() - 1)
 		options.append(_make_start_food_option(available[index]))
 		available.remove_at(index)
 	if options.size() == 1:
 		options.append(_make_start_food_option(_food_data_for_id(options[0].id)))
 	return options
+
+
+func _player_choice_rng(player_slot: int) -> RandomNumberGenerator:
+	var safe_slot: int = maxi(1, player_slot)
+	var existing: RandomNumberGenerator = _player_choice_rngs.get(safe_slot)
+	if existing != null:
+		return existing
+	var choice_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	choice_rng.seed = _run_seed ^ (0x13579BDF + safe_slot * 104729)
+	_player_choice_rngs[safe_slot] = choice_rng
+	return choice_rng
 
 
 # 当前原型未配置解锁子集时，全部已装配食材共同构成默认解锁池。
@@ -2858,41 +4871,47 @@ func _roll_customer_reward() -> UpgradeData:
 
 
 # 从当前有效池完全随机抽出三个不同选项；不做新食材或进化保底。
-func _roll_special_choices() -> Array[StringName]:
+func _roll_special_choices(
+	source_state: RunState = null,
+	player_slot: int = 1
+) -> Array[StringName]:
 	_ensure_special_upgrade_data()
+	var choice_state: RunState = source_state if source_state != null else state
 	var available: Array[StringName] = []
 	for choice_id: StringName in _special_choice_pool:
-		if _special_choice_is_valid(choice_id):
+		if _special_choice_is_valid(choice_id, choice_state):
 			available.append(choice_id)
 	var choices: Array[StringName] = []
 	var choice_count: int = mini(3, available.size())
+	var choice_rng: RandomNumberGenerator = _player_choice_rng(player_slot)
 	while choices.size() < choice_count:
-		var index: int = _upgrade_rng.randi_range(0, available.size() - 1)
+		var index: int = choice_rng.randi_range(0, available.size() - 1)
 		choices.append(available[index])
 		available.remove_at(index)
 	return choices
 
 
-func _special_choice_is_valid(choice_id: StringName) -> bool:
+func _special_choice_is_valid(choice_id: StringName, source_state: RunState = null) -> bool:
 	_ensure_special_upgrade_data()
+	var choice_state: RunState = source_state if source_state != null else state
 	var upgrade: SpecialUpgradeData = _special_upgrades_by_id.get(choice_id)
 	if upgrade == null:
 		return false
 	match upgrade.effect_kind:
 		SpecialUpgradeData.EffectKind.FOOD_CARD:
-			return state.food_level(upgrade.target_id) < state.food_max_level
+			return choice_state.food_level(upgrade.target_id) < choice_state.food_max_level
 		SpecialUpgradeData.EffectKind.TARGET_AIM:
 			return (
-				state.has_food(upgrade.target_id)
-				and not state.is_food_target_aimed(upgrade.target_id)
+				choice_state.has_food(upgrade.target_id)
+				and not choice_state.is_food_target_aimed(upgrade.target_id)
 			)
 		SpecialUpgradeData.EffectKind.EVOLUTION:
 			return (
-				state.has_food(upgrade.target_id)
-				and not state.has_food_evolution(upgrade.id)
+				choice_state.has_food(upgrade.target_id)
+				and not choice_state.has_food_evolution(upgrade.id)
 			)
 		SpecialUpgradeData.EffectKind.SERVING, SpecialUpgradeData.EffectKind.PIERCE:
-			return upgrade.repeatable or not state.specials.has(upgrade.id)
+			return upgrade.repeatable or not choice_state.specials.has(upgrade.id)
 	return false
 
 
@@ -2953,7 +4972,7 @@ func _special_choice_texts(choice_ids: Array[StringName]) -> Dictionary[StringNa
 	for choice_id: StringName in choice_ids:
 		var upgrade: SpecialUpgradeData = _special_upgrades_by_id.get(choice_id)
 		if upgrade == null:
-			texts[choice_id] = String(choice_id)
+			texts[choice_id] = str(choice_id)
 			continue
 		if upgrade.effect_kind == SpecialUpgradeData.EffectKind.FOOD_CARD:
 			var current_level: int = state.food_level(upgrade.target_id)

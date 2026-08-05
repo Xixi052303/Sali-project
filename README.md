@@ -46,6 +46,36 @@ Godot 4.7 制作的竖屏移动端直接 3D 纸艺玩法竖切片。当前使用
 - 固定相机使用近宽远窄的斜俯透视，远端生成区由Mobile深度雾遮蔽；道路延长不改变食客与门的原接近速度。
 - 未命中的食材会在`0.2s`内快速缩小淡出；食客奖励门优先保留在食客原位置附近。
 - 720×1280、19.5:9和20:9竖屏适配结构。
+- 局域网合作支持1～4人：主菜单可创建/发现/手输IP加入房间，房主开始并在结算后带队回房；多人敌人胃口按开局人数缩放，队友使用独立构筑与耐久，幽灵会按15/15/180秒档位自动复活。
+
+## 局域网本地测试
+
+1. 在同一局域网的设备上分别打开 Godot 4.7 项目。Windows 同机测试时，在编辑器顶部菜单选择“调试”→“自定义运行实例…”，勾选“启用多个实例”，把数量设为 `2` 或 `4`，然后按 F6/F5 启动多个游戏窗口；如果启用了“嵌入游戏”，多开测试时先关闭它，确保每个实例都是独立窗口。
+2. 主机运行 `scenes/run_3d.tscn`，点击“局域网联机”→“创建房间”，把联机页显示的本机 IPv4 记下。
+3. 其他窗口点击“局域网联机”，等待房间列表出现后选择房间；列表受防火墙或 AP 隔离影响时，在 IPv4 输入框手动填写主机地址，再点“加入房间”。
+4. 房间页看到 P1～P4 槽位后，由主机点击“房主开始”。开局后检查左上角队伍血量、暂停/恢复、幽灵倒计时和结算回房。
+5. 编辑器多开时不要使用 `--fixed-fps` 加速网络探针；它会让房主在客户端完成场景加载前跑完等待计时。正式游戏不需要任何命令行参数。
+
+如果顶部菜单里没有“自定义运行实例…”，确认打开的是 Godot 4.7 编辑器而不是导出后的游戏程序；也可以直接启动多个游戏进程作为备用方案：
+
+```powershell
+$godot = "D:\SteamLibrary\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe"
+$project = "D:\gameproduct\小厨西"
+Start-Process -FilePath $godot -ArgumentList @("--path", $project)
+Start-Process -FilePath $godot -ArgumentList @("--path", $project)
+```
+
+需要复现完整网络验收时，在四个 PowerShell 窗口分别运行同一个探针场景；把 `--network-role=host` 放在房主窗口，客户端依次使用 `--network-index=1/2/3`：
+
+```powershell
+$godot = "D:\SteamLibrary\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe"
+$null = New-Item -ItemType Directory -Force ".\tmp\net_probe"
+$probe = (Resolve-Path ".\tmp\net_probe").Path
+& $godot --headless --path . --scene res://tests/network_acceptance_scene.tscn --log-file "$probe\host.log" -- --network-role=host --network-index=0 --expected-players=4 --probe-dir="$probe" --network-seed=424242 --network-smoke-test
+& $godot --headless --path . --scene res://tests/network_acceptance_scene.tscn --log-file "$probe\client1.log" -- --network-role=client --network-index=1 --expected-players=4 --probe-dir="$probe" --network-seed=424242 --network-smoke-test
+```
+
+如果 Godot 安装目录不同，只需修改 `$godot`；先创建一次 `tmp\net_probe` 文件夹，再把另外两个客户端的 `--network-index` 改为 `2`、`3`。延迟验收再附加 `--net-delay-ms=100 --net-loss-percent=2`。自动发现验收给客户端加 `--network-discovery-test`，同机端口冲突时双方同时加 `--network-discovery-port=28963`；特殊选择断线验收使用 `--network-disconnect-choice-test`，房主断线验收使用 `--network-host-disconnect-test`。全灭失败验收把 `--network-smoke-test` 换成 `--network-fail-test`。四个进程都出现 `RETURN_READY`，且日志没有 `SCRIPT ERROR`、`Parser Error`、`MTU` 或 `ERR_UNAUTHORIZED` 才算通过。
 
 策划案中尚未确认的概率、区间和正式角色内容仍然是原型值。当前时间轴、战斗规则、食客、武器、
 普通强化和特殊强化分别以`balance_tables/`中的同名工作簿为运行主源；场景装配的食客、
@@ -84,13 +114,25 @@ Excel 数值链专项测试：
 Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tests/test_balance_excel.gd
 ```
 
+多人规则测试：
+
+```powershell
+Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tests/test_multiplayer_rules.gd
+```
+
+HUD竖屏布局测试：
+
+```powershell
+Godot_v4.7-stable_win64_console.exe --headless --path . --script res://tests/test_hud_layout.gd
+```
+
 完整流程烟雾测试：
 
 ```powershell
 Godot_v4.7-stable_win64_console.exe --headless --fixed-fps 60 --path . --quit-after 4000 -- --smoke-test
 ```
 
-成功时分别输出`CORE_TESTS_OK`、`BALANCE_EXCEL_TEST_OK`与`SMOKE_TEST_OK`。
+成功时分别输出`CORE_TESTS_OK`、`BALANCE_EXCEL_TEST_OK`、`MULTIPLAYER_RULES_TEST_OK`、`HUD_LAYOUT_TEST_OK`与`SMOKE_TEST_OK`。
 
 ## 目录
 

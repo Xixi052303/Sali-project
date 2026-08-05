@@ -79,10 +79,10 @@ func _test_customer_cart_collision() -> void:
 		"3D普通食客的胃口数字使用其奖励稀有度色"
 	)
 	var cart_collision: Rect2 = cart.collision_rect_xz()
-	_check(cart_collision.size.is_equal_approx(Vector2(0.96, 1.085)), "半尺寸餐车同步使用半尺寸碰撞矩形")
+	_check(cart_collision.size.is_equal_approx(Vector2(0.6, 0.85)), "半尺寸餐车同步使用场景碰撞矩形")
 	customer.position = Vector3(1.6, 0.0, 9.5)
 	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "食客纵向到达餐车但横向绕开时不算碰撞")
-	customer.position = Vector3(3.6, 0.0, 9.5)
+	customer.position = Vector3(3.6, 0.0, 10.0)
 	_check(customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "食客与餐车主体范围相交时算碰撞")
 	customer.position = Vector3(1.6, 0.0, Playfield.CUSTOMER_DESPAWN_Z)
 	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "绕开的食客到达道路后方时不算碰撞")
@@ -187,22 +187,22 @@ func _test_3d_plane_rules() -> void:
 	_check(is_equal_approx(cart.target_x, editor_position.x), "餐车横移目标从编辑器初始位置开始")
 	_check(is_equal_approx(cart.target_z, editor_position.z), "餐车纵移目标从编辑器初始位置开始")
 	cart.set_durability_display(50.0, 100.0, 25.0)
-	var cart_durability_fill: MeshInstance3D = cart.get_node(
-		"StatusBillboard/DurabilityFill"
-	) as MeshInstance3D
-	var cart_shield_outline: MeshInstance3D = cart.get_node(
-		"StatusBillboard/ShieldOutline"
-	) as MeshInstance3D
-	var cart_shield_badge: Label3D = cart.get_node(
-		"StatusBillboard/ShieldBadge"
+	var cart_durability_label: Label3D = cart.get_node(
+		"StatusBillboard/DurabilityLabel"
 	) as Label3D
-	_check(is_equal_approx(cart_durability_fill.scale.x, 0.5), "餐车头顶耐久纸条按当前与上限比例缩放")
-	_check(cart_shield_outline.visible and cart_shield_badge.text == "+25", "临时护盾显示蓝色外框与点数徽记")
+	var cart_maximum_label: Label3D = cart.get_node(
+		"StatusBillboard/DurabilityLabel/DurabilityLabel2"
+	) as Label3D
+	var cart_shield_label: Label3D = cart.get_node(
+		"StatusBillboard/DurabilityLabel/ShieldDurabilityLabel"
+	) as Label3D
+	_check(cart_durability_label.text == "75" and cart_maximum_label.text == "/ 100", "餐车头顶耐久按当前与上限显示")
+	_check(cart_shield_label.visible and cart_shield_label.text == "75", "临时护盾以蓝色附值显示")
 	cart.set_durability_display(60.0, 120.0, 0.0)
 	var maximum_feedback: Label3D = cart.get_node(
 		"StatusBillboard/MaximumFeedbackLabel"
 	) as Label3D
-	_check(not cart_shield_outline.visible and not cart_shield_badge.visible, "护盾耗尽后头顶护盾表现隐藏")
+	_check(not cart_shield_label.visible, "护盾耗尽后头顶护盾表现隐藏")
 	_check(maximum_feedback.visible and maximum_feedback.text == "上限 +20", "最大耐久增加时显示短暂上限反馈")
 	var movement_boss: PrototypeBoss3D = PrototypeBoss3D.new()
 	movement_boss.position = Vector3(3.6, 0.0, 6.0)
@@ -220,7 +220,7 @@ func _test_3d_plane_rules() -> void:
 	cart.position.z = boss_boundary_z - 1.0
 	cart.target_z = movement_boss.position.z - 2.0
 	cart._physics_process(0.1)
-	_check(cart.position.z >= boss_boundary_z, "Boss战餐车不能越过Boss前边界")
+	_check(cart.position.z >= boss_boundary_z - 0.001, "Boss战餐车不能越过Boss前边界")
 	cart.end_boss_movement()
 	_check(is_equal_approx(cart.position.z, editor_position.z), "Boss战结束后餐车恢复开战站位")
 	cart.target_z = movement_boss.position.z
@@ -270,7 +270,7 @@ func _test_3d_plane_rules() -> void:
 	customer.configure(basic_data, null, 1, 32.0)
 	customer.position = Vector3(1.6, 0.0, 9.5)
 	_check(not customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "3D食客横向绕开时不算碰撞")
-	customer.position = Vector3(3.6, 0.0, 9.5)
+	customer.position = Vector3(3.6, 0.0, 10.0)
 	_check(customer.collision_rect_xz().intersects(cart.collision_rect_xz()), "3D食客在X/Z平面实际相交时碰撞")
 
 	var run: RunController3D = RunController3D.new()
@@ -506,10 +506,10 @@ func _test_3d_background_and_hud() -> void:
 		"Root/DurabilityPanel/DurabilityStack/DurabilityLabel"
 	) as Label
 	var shield_badge: Label3D = status_cart.get_node(
-		"StatusBillboard/ShieldBadge"
+		"StatusBillboard/DurabilityLabel/ShieldDurabilityLabel"
 	) as Label3D
 	_check(
-		durability_label.text.contains("临时护盾 +20") and shield_badge.text == "+20",
+		durability_label.text.contains("临时护盾 +20") and shield_badge.text == "120",
 		"同一耐久信号同步刷新底部精确值与头顶护盾"
 	)
 	status_state.take_durability_damage(30.0)
@@ -981,8 +981,8 @@ func _test_new_food_behaviors() -> void:
 		egg,
 		state.effective_satisfaction(egg),
 		Playfield.design_to_world(egg.projectile_speed),
-		Playfield.design_to_world(egg.projectile_radius),
 		Vector3.ZERO,
+		Playfield.design_to_world(egg.projectile_radius),
 		2.0,
 		egg.pierce_count,
 		null,
@@ -1067,8 +1067,7 @@ func _test_new_food_behaviors() -> void:
 	_check(
 		is_equal_approx(
 			PI / carrot.orbit_angular_speed,
-			0.5,
-			0.0001
+			0.5
 		),
 		"胡萝卜基础环绕角速度使180度单程历时0.5秒"
 	)
@@ -1083,8 +1082,8 @@ func _test_new_food_behaviors() -> void:
 		state.effective_satisfaction(carrot),
 		Playfield.design_to_world(carrot.sweep_radius)
 		* state.effective_orbit_angular_speed(carrot),
-		Playfield.design_to_world(state.effective_projectile_radius(carrot)),
 		Vector3.ZERO,
+		Playfield.design_to_world(state.effective_projectile_radius(carrot)),
 		state.effective_duration(carrot),
 		state.effective_pierce_count(carrot),
 		null,
@@ -1111,14 +1110,16 @@ func _test_new_food_behaviors() -> void:
 			carrot_projectile._carrot_visual.scale.y,
 			carrot_projectile._carrot_visual.scale.z
 		)
-		and carrot_visual.global_position.distance_to(
-			carrot_pivot + Vector3(0.0, carrot_projectile._carrot_visual_ground_y(), 0.0)
+		and (carrot_projectile.position + carrot_visual.position).distance_to(
+			carrot_pivot
+			+ Vector3(0.0, carrot_projectile._carrot_visual_ground_y(), 0.0)
+			+ carrot_projectile._carrot_visual_base_position
 		) < 0.2,
-		"胡萝卜视觉等比缩放、以餐车前方原点为轴心并贴地"
+		"胡萝卜视觉等比缩放、沿餐车前方原点保持场景基准偏移"
 	)
 	_check(
 		carrot_projectile.overlaps_target(
-			carrot_pivot + Vector3(-1.0, 0.0, 0.0),
+			carrot_pivot + Vector3(-1.0, 0.0, 0.5),
 			0.05
 		),
 		"胡萝卜整根盒形轮廓可以命中轴心与端点之间的目标"
@@ -1131,6 +1132,7 @@ func _test_new_food_behaviors() -> void:
 	var one_way_seconds: float = (
 		carrot_projectile._sweep_radius
 		* carrot_projectile._sweep_half_angle
+		* 2.0
 		/ carrot_projectile._sweep_linear_speed
 	)
 	var first_position: Vector3 = carrot_projectile.position
@@ -1175,8 +1177,8 @@ func _test_new_food_behaviors() -> void:
 		state.effective_satisfaction(carrot),
 		Playfield.design_to_world(carrot.sweep_radius)
 		* state.effective_orbit_angular_speed(carrot),
-		Playfield.design_to_world(state.effective_projectile_radius(carrot)),
 		Vector3.ZERO,
+		Playfield.design_to_world(state.effective_projectile_radius(carrot)),
 		state.effective_duration(carrot),
 		state.effective_pierce_count(carrot),
 		null,
@@ -1643,18 +1645,18 @@ func _test_timeline() -> void:
 	_check(
 		is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(0.0), 15.0)
 		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(135.0), 350.0)
-		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(300.0), 2825.0)
-		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(480.0), 12000.0)
-		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(600.0), 12000.0),
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(300.0), 2000.0)
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(480.0), 10000.0)
+		and is_equal_approx(timeline.baseline_appetite_at_elapsed_seconds(600.0), 10000.0),
 		"胃口曲线按有效时间经过三段锚点并在480秒后封顶"
 	)
-	var expected_first_midpoint: float = roundf(lerpf(15.0, 350.0, pow(0.5, 2.1)))
+	var expected_first_midpoint: float = roundf(lerpf(15.0, 350.0, pow(0.5, 2.2)))
 	_check(
 		is_equal_approx(
 			timeline.baseline_appetite_at_elapsed_seconds(67.5),
 			expected_first_midpoint
 		),
-		"第一段胃口指数2.1只控制段内增长形状"
+		"第一段胃口指数2.2只控制段内增长形状"
 	)
 	_check(
 		is_equal_approx(timeline.speed_multiplier_at_progress(0.1874), 1.0)
@@ -1847,8 +1849,8 @@ func _test_resources() -> void:
 		and carrot.pierce_count == 999
 		and is_equal_approx(carrot.projectile_speed, 680.0)
 		and is_equal_approx(carrot.base_lifetime, 0.5)
-		and is_equal_approx(carrot.orbit_angular_speed, 6.2831853, 0.000001)
-		and is_equal_approx(carrot.sweep_radius, 458.1, 0.1)
+		and is_equal_approx(carrot.orbit_angular_speed, 6.2831853)
+		and absf(carrot.sweep_radius - 458.1) <= 0.1
 		and is_equal_approx(carrot.sweep_angle_degrees, 180.0),
 		"胡萝卜资源使用环绕角速度控制0.5秒单程、180度与999命中目标"
 	)

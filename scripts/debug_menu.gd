@@ -174,7 +174,7 @@ func _add_action_row(definitions: Array) -> void:
 	row.add_theme_constant_override(&"separation", 12)
 	_actions.add_child(row)
 	for definition: Array in definitions:
-		_add_action_button(row, String(definition[0]), StringName(definition[1]))
+		_add_action_button(row, str(definition[0]), StringName(definition[1]))
 
 
 func _add_action_button(parent: HBoxContainer, label: String, action_id: StringName) -> void:

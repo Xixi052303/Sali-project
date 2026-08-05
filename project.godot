@@ -19,6 +19,10 @@ config/icon="res://icon.svg"
 
 default_bus_layout="res://default_bus_layout.tres"
 
+[autoload]
+
+NetworkSession="*res://scripts/network/network_session.gd"
+
 [debug]
 
 gdscript/warnings/untyped_declaration=2

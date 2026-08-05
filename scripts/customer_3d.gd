@@ -80,6 +80,24 @@ func receive_satisfaction(amount: float) -> void:
 		satisfied.emit(self)
 
 
+func network_snapshot() -> Dictionary:
+	return {
+		"spawn_index": spawn_index,
+		"x": position.x,
+		"z": position.z,
+		"appetite": remaining_appetite,
+		"active": active,
+	}
+
+
+func apply_network_snapshot(snapshot: Dictionary) -> void:
+	position.x = float(snapshot.get("x", position.x))
+	position.z = float(snapshot.get("z", position.z))
+	remaining_appetite = float(snapshot.get("appetite", remaining_appetite))
+	active = bool(snapshot.get("active", active))
+	_refresh_label()
+
+
 func hit_radius() -> float:
 	if data == null:
 		return 0.4

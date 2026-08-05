@@ -16,6 +16,7 @@ const MUSHROOM_MODEL_SIZE: Vector3 = Vector3(0.986328125, 0.998046875, 0.9121093
 const EGG_MODEL_SIZE: Vector3 = Vector3(0.376953125, 0.998046875, 0.806640625)
 
 var run: RunController3D
+var owner_slot: int = 1
 var velocity: Vector3 = Vector3.ZERO
 var satisfaction: float = 0.0
 var radius: float = 0.16
@@ -109,10 +110,12 @@ func configure(
 	orbit_phase: float,
 	giant_baguette: bool,
 	giant_width: float,
-	breathing_enabled: bool
+	breathing_enabled: bool,
+	projectile_owner_slot: int = 1
 ) -> void:
 	_resolve_visual_nodes()
 	run = run_controller
+	owner_slot = maxi(1, projectile_owner_slot)
 	position = start_position
 	_previous_position = start_position
 	_environment_velocity = environment_velocity
@@ -128,8 +131,8 @@ func configure(
 	food_id = food.id
 	_carrot_bounce_enabled = (
 		food.id == &"carrot"
-		and run.state != null
-		and run.state.has_food_evolution(&"carrot_bounce")
+		and run.state_for_slot(owner_slot) != null
+		and run.state_for_slot(owner_slot).has_food_evolution(&"carrot_bounce")
 	)
 	_carrot_sweep_finished = false
 	_carrot_spin_angle = 0.0
@@ -465,6 +468,8 @@ func _carrot_hitbox_overlaps_target(target_position: Vector3, target_radius: flo
 			Vector2(target_position.x, target_position.z),
 			radius + target_radius
 		)
+	if run == null:
+		return false
 	var box_shape: BoxShape3D = _carrot_damage_hitbox.shape as BoxShape3D
 	if box_shape == null:
 		return _segment_overlaps_target(
@@ -473,10 +478,7 @@ func _carrot_hitbox_overlaps_target(target_position: Vector3, target_radius: flo
 			Vector2(target_position.x, target_position.z),
 			radius + target_radius
 		)
-	var hitbox_to_run: Transform3D = (
-		run.global_transform.affine_inverse()
-		* _carrot_damage_hitbox.global_transform
-	)
+	var hitbox_to_run: Transform3D = _relative_transform_to_ancestor(_carrot_damage_hitbox, run)
 	var target_local: Vector3 = hitbox_to_run.affine_inverse() * target_position
 	var x_scale: float = maxf(0.001, hitbox_to_run.basis.x.length())
 	var z_scale: float = maxf(0.001, hitbox_to_run.basis.z.length())
@@ -494,9 +496,9 @@ func _carrot_hitbox_corners_in_space(target_space: Node3D) -> PackedVector2Array
 	var box_shape: BoxShape3D = _carrot_damage_hitbox.shape as BoxShape3D
 	if box_shape == null:
 		return PackedVector2Array()
-	var hitbox_to_space: Transform3D = (
-		target_space.global_transform.affine_inverse()
-		* _carrot_damage_hitbox.global_transform
+	var hitbox_to_space: Transform3D = _relative_transform_between(
+		_carrot_damage_hitbox,
+		target_space
 	)
 	var half_size: Vector3 = box_shape.size * 0.5
 	var local_corners: Array[Vector3] = [
@@ -510,6 +512,23 @@ func _carrot_hitbox_corners_in_space(target_space: Node3D) -> PackedVector2Array
 		var corner: Vector3 = hitbox_to_space * local_corner
 		corners.append(Vector2(corner.x, corner.z))
 	return corners
+
+
+# 离树测试没有 global_transform；沿节点父链计算同一场景内的局部变换。
+func _relative_transform_to_ancestor(node: Node3D, ancestor: Node) -> Transform3D:
+	var result: Transform3D = Transform3D.IDENTITY
+	var current: Node = node
+	while current != null and current != ancestor:
+		if current is Node3D:
+			result = (current as Node3D).transform * result
+		current = current.get_parent()
+	return result
+
+
+func _relative_transform_between(node: Node3D, target_space: Node3D) -> Transform3D:
+	if node.is_inside_tree() and target_space.is_inside_tree():
+		return target_space.global_transform.affine_inverse() * node.global_transform
+	return _relative_transform_to_ancestor(node, target_space)
 
 
 # 用分离轴检测旋转盒与门板矩形，确保整根胡萝卜横跨门板时也能命中。
@@ -629,8 +648,9 @@ func _cache_carrot_visual_bottom_y() -> void:
 		if visual == null:
 			continue
 		var visual_to_carrot: Transform3D = (
-			_carrot_visual.global_transform.affine_inverse()
-			* visual.global_transform
+			_carrot_visual.transform.affine_inverse() * visual.transform
+			if not _carrot_visual.is_inside_tree() or not visual.is_inside_tree()
+			else _carrot_visual.global_transform.affine_inverse() * visual.global_transform
 		)
 		var local_aabb: AABB = visual.get_aabb()
 		for corner_index: int in range(8):

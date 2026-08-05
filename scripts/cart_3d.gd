@@ -3,6 +3,7 @@ extends Node3D
 
 signal damaged(amount: float)
 signal destroyed
+signal target_changed(target_x: float, target_z: float)
 
 const BASE_MOVE_SPEED: float = 9.0
 const BASE_MOVE_SPEED_DESIGN: float = BASE_MOVE_SPEED / Playfield.WORLD_UNITS_PER_PIXEL
@@ -11,11 +12,22 @@ const COLLISION_RECT: Rect2 = Rect2(-0.96, -1.5, 1.92, 2.17)
 const MAXIMUM_FEEDBACK_DURATION: float = 1.2
 const DEFAULT_INVINCIBILITY_DURATION_SECONDS: float = 0.5
 const SHIELD_COLOR: Color = Color("#78d8ff")
+const NETWORK_INTERPOLATION_DELAY_SECONDS: float = 0.1
 
 var state: RunState
 var playfield: Playfield
 var target_x: float = 3.6
 var target_z: float = Playfield.CART_Z
+var player_slot: int = 1
+var input_enabled: bool = true
+var _ghost_visual: bool = false
+# 客户端接收房主位置时的短校正目标，保留本地拖动预测的连续感。
+var _network_correction_target: Vector3 = Vector3.ZERO
+var _network_correction_active: bool = false
+# 远端餐车保留约100ms的位置样本，按渲染时刻插值而不是追逐最新点。
+var _network_interpolation_enabled: bool = false
+var _network_interpolation_clock: float = 0.0
+var _network_position_samples: Array[Dictionary] = []
 # Boss 战期间保留开战站位作为后方边界，结束后也据此恢复普通横移状态。
 var _default_z: float = Playfield.CART_Z
 var _boss_movement_active: bool = false
@@ -45,6 +57,7 @@ func configure(
 	field: Playfield,
 	invincibility_duration_seconds: float = DEFAULT_INVINCIBILITY_DURATION_SECONDS
 ) -> void:
+	_resolve_runtime_nodes()
 	state = run_state
 	playfield = field
 	_invincibility_duration_seconds = maxf(0.0, invincibility_duration_seconds)
@@ -57,6 +70,7 @@ func configure(
 		state.maximum_durability,
 		state.temporary_shield
 	)
+	_apply_ghost_visual()
 
 
 func _physics_process(delta: float) -> void:
@@ -64,18 +78,32 @@ func _physics_process(delta: float) -> void:
 		return
 	if _invincible_remaining > 0.0:
 		_invincible_remaining = maxf(0.0, _invincible_remaining - delta)
-		_visual_root.visible = int(_invincible_remaining * 12.0) % 2 != 0
+		if _visual_root != null:
+			_visual_root.visible = int(_invincible_remaining * 12.0) % 2 != 0
 	else:
-		_visual_root.visible = true
+		if _visual_root != null:
+			_visual_root.visible = true
 	if _upgrade_feedback_remaining > 0.0:
 		_upgrade_feedback_remaining = maxf(0.0, _upgrade_feedback_remaining - delta)
 	if _maximum_feedback_remaining > 0.0:
 		_maximum_feedback_remaining = maxf(0.0, _maximum_feedback_remaining - delta)
-		_maximum_feedback_label.visible = _maximum_feedback_remaining > 0.0
+		if _maximum_feedback_label != null:
+			_maximum_feedback_label.visible = _maximum_feedback_remaining > 0.0
+	_network_interpolation_clock += maxf(0.0, delta)
+	if _network_interpolation_enabled:
+		_apply_network_interpolated_position()
+		if not input_enabled:
+			return
 	var speed: float = (
 		BASE_MOVE_SPEED * clampf(state.cart_base_speed_factor, 0.0, 1.0)
 		+ Playfield.design_to_world(state.effective_cart_speed_bonus(BASE_MOVE_SPEED_DESIGN))
 	)
+	if _network_correction_active:
+		var correction_weight: float = clampf(delta / 0.1, 0.0, 1.0)
+		position.x = lerpf(position.x, _network_correction_target.x, correction_weight)
+		position.z = lerpf(position.z, _network_correction_target.z, correction_weight)
+		if position.distance_to(_network_correction_target) <= 0.01:
+			_network_correction_active = false
 	var current_position: Vector2 = Vector2(position.x, position.z)
 	var movement_target: Vector2 = Vector2(target_x, target_z if _boss_movement_active else position.z)
 	var next_position: Vector2 = current_position.move_toward(movement_target, speed * delta)
@@ -87,7 +115,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if playfield == null:
+	if playfield == null or not input_enabled:
 		return
 	if event is InputEventScreenTouch:
 		var touch: InputEventScreenTouch = event
@@ -114,10 +142,117 @@ func _unhandled_input(event: InputEvent) -> void:
 func _set_pointer_target(screen_position: Vector2) -> void:
 	if not _boss_movement_active:
 		target_x = playfield.clamp_cart_x(Playfield.design_to_world(screen_position.x))
+		target_changed.emit(target_x, target_z)
 		return
 	var ground_position: Vector3 = _screen_to_ground(screen_position)
 	target_x = playfield.clamp_cart_x(ground_position.x)
 	target_z = clampf(ground_position.z, boss_minimum_z(), _default_z)
+	target_changed.emit(target_x, target_z)
+
+
+func set_player_slot(slot: int) -> void:
+	player_slot = maxi(1, slot)
+
+
+func set_input_enabled(enabled: bool) -> void:
+	input_enabled = enabled
+	if not enabled:
+		cancel_pointer_input()
+
+
+func apply_network_target(next_x: float, next_z: float) -> void:
+	if playfield == null:
+		return
+	target_x = playfield.clamp_cart_x(next_x)
+	if _boss_movement_active:
+		target_z = clampf(next_z, boss_minimum_z(), _default_z)
+
+
+func set_network_interpolation(enabled: bool) -> void:
+	_network_interpolation_enabled = enabled
+	_network_position_samples.clear()
+	_network_interpolation_clock = 0.0
+	_network_correction_active = false
+
+
+func apply_network_position(
+	authoritative_position: Vector3,
+	smooth: bool = true,
+	interpolate: bool = false
+) -> void:
+	if not smooth:
+		if interpolate:
+			_network_interpolation_enabled = true
+			_network_position_samples.append({
+				"time": _network_interpolation_clock,
+				"position": authoritative_position,
+			})
+			while _network_position_samples.size() > 8:
+				_network_position_samples.remove_at(0)
+			_network_correction_active = false
+			return
+		position = authoritative_position
+		_network_position_samples.clear()
+		_network_correction_active = false
+		return
+	_network_interpolation_enabled = false
+	_network_position_samples.clear()
+	_network_correction_target = authoritative_position
+	_network_correction_active = true
+
+
+func _apply_network_interpolated_position() -> void:
+	if _network_position_samples.is_empty():
+		return
+	var render_time: float = (
+		_network_interpolation_clock - NETWORK_INTERPOLATION_DELAY_SECONDS
+	)
+	if _network_position_samples.size() == 1:
+		position = _network_position_samples[0]["position"]
+		return
+	while (
+		_network_position_samples.size() > 2
+		and float(_network_position_samples[1]["time"]) <= render_time
+	):
+		_network_position_samples.remove_at(0)
+	var first: Dictionary = _network_position_samples[0]
+	var second: Dictionary = _network_position_samples[1]
+	var first_time: float = float(first["time"])
+	var second_time: float = float(second["time"])
+	if render_time <= first_time or is_equal_approx(first_time, second_time):
+		position = first["position"]
+		return
+	var blend: float = clampf(
+		(render_time - first_time) / maxf(0.0001, second_time - first_time),
+		0.0,
+		1.0
+	)
+	position = (first["position"] as Vector3).lerp(second["position"] as Vector3, blend)
+
+
+func set_ghost_visual(ghost: bool) -> void:
+	_ghost_visual = ghost
+	_apply_ghost_visual()
+
+
+func is_ghost_visual() -> bool:
+	return _ghost_visual
+
+
+func begin_respawn_protection(duration_seconds: float = 2.0) -> void:
+	_invincible_remaining = maxf(_invincible_remaining, maxf(0.0, duration_seconds))
+
+
+func _apply_ghost_visual() -> void:
+	if _visual_root == null:
+		return
+	var transparency: float = 0.58 if _ghost_visual else 0.0
+	if _visual_root is GeometryInstance3D:
+		(_visual_root as GeometryInstance3D).transparency = transparency
+	for child: Node in _visual_root.find_children("*", "GeometryInstance3D", true, false):
+		var geometry: GeometryInstance3D = child as GeometryInstance3D
+		if geometry != null:
+			geometry.transparency = transparency
 
 
 # 斜俯相机下用地面射线恢复真实道路坐标；无活动相机时维持现有横向映射。
@@ -165,15 +300,15 @@ func boss_minimum_z() -> float:
 	)
 
 
-func take_damage(amount: float) -> bool:
-	if state == null or _invincible_remaining > 0.0 or amount <= 0.0:
+func take_damage(amount: float, emit_destroyed_signal: bool = true) -> bool:
+	if state == null or _ghost_visual or _invincible_remaining > 0.0 or amount <= 0.0:
 		return false
 	var applied: float = state.take_durability_damage(amount)
 	if applied <= 0.0:
 		return false
 	_invincible_remaining = _invincibility_duration_seconds
 	damaged.emit(applied)
-	if state.current_durability <= 0.0:
+	if emit_destroyed_signal and state.current_durability <= 0.0:
 		destroyed.emit()
 	return true
 
@@ -224,21 +359,46 @@ func play_upgrade_feedback(_color: Color) -> void:
 
 # 头顶纸条把实际耐久与上限分层显示；有护盾时只覆盖当前值，保留白色上限作为阅读锚点。
 func set_durability_display(current: float, maximum: float, temporary_shield: float) -> void:
+	_resolve_runtime_nodes()
 	var safe_maximum: float = maxf(1.0, maximum)
 	var safe_current: float = maxf(0.0, current)
 	var safe_shield: float = maxf(0.0, temporary_shield)
 	var has_shield: bool = safe_shield > 0.0001
 	var effective_current: float = safe_current + safe_shield
 	# 白色底值与蓝色护盾层始终显示同一有效值，蓝色只负责表达护盾状态。
-	_durability_label.text = "%.0f" % effective_current
-	_durability_label.modulate = Color.WHITE
-	_maximum_durability_label.text = "/ %.0f" % safe_maximum
-	_maximum_durability_label.modulate = Color.WHITE
-	_effective_durability_label.text = "%.0f" % effective_current
-	_effective_durability_label.modulate = SHIELD_COLOR
-	_effective_durability_label.visible = has_shield
+	if _durability_label != null:
+		_durability_label.text = "%.0f" % effective_current
+		_durability_label.modulate = Color.WHITE
+	if _maximum_durability_label != null:
+		_maximum_durability_label.text = "/ %.0f" % safe_maximum
+		_maximum_durability_label.modulate = Color.WHITE
+	if _effective_durability_label != null:
+		_effective_durability_label.text = "%.0f" % effective_current
+		_effective_durability_label.modulate = SHIELD_COLOR
+		_effective_durability_label.visible = has_shield
 	if _last_maximum_durability > 0.0 and maximum > _last_maximum_durability + 0.0001:
-		_maximum_feedback_label.text = "上限 +%.0f" % (maximum - _last_maximum_durability)
-		_maximum_feedback_label.visible = true
+		if _maximum_feedback_label != null:
+			_maximum_feedback_label.text = "上限 +%.0f" % (maximum - _last_maximum_durability)
+			_maximum_feedback_label.visible = true
 		_maximum_feedback_remaining = MAXIMUM_FEEDBACK_DURATION
 	_last_maximum_durability = maximum
+
+
+# 场景测试可能在节点进入树前调用 configure；此时按固定路径补齐可选表现节点。
+func _resolve_runtime_nodes() -> void:
+	if _visual_root == null:
+		_visual_root = get_node_or_null("PaperCartVisual") as Node3D
+	if _durability_label == null:
+		_durability_label = get_node_or_null("StatusBillboard/DurabilityLabel") as Label3D
+	if _maximum_durability_label == null:
+		_maximum_durability_label = get_node_or_null(
+			"StatusBillboard/DurabilityLabel/DurabilityLabel2"
+		) as Label3D
+	if _effective_durability_label == null:
+		_effective_durability_label = get_node_or_null(
+			"StatusBillboard/DurabilityLabel/ShieldDurabilityLabel"
+		) as Label3D
+	if _maximum_feedback_label == null:
+		_maximum_feedback_label = get_node_or_null(
+			"StatusBillboard/MaximumFeedbackLabel"
+		) as Label3D

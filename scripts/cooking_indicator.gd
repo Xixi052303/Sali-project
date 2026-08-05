@@ -21,6 +21,7 @@ var _ring_color: Color = Color("#e2b650")
 
 
 func configure(food: FoodData, level: int) -> void:
+	_resolve_runtime_nodes()
 	food_id = food.id
 	_ring_color = food.visual_color
 	var icon_path: String = ICON_PATHS.get(food.id, "")
@@ -38,13 +39,29 @@ func configure(food: FoodData, level: int) -> void:
 
 
 func set_level(level: int) -> void:
-	_level_label.text = "Lv.%d" % maxi(1, level)
+	_resolve_runtime_nodes()
+	if _level_label != null:
+		_level_label.text = "Lv.%d" % maxi(1, level)
 
 
 func set_cooking_progress(progress: float, remaining_seconds: float) -> void:
+	_resolve_runtime_nodes()
 	_progress = clampf(progress, 0.0, 1.0)
-	_remaining_label.text = "%.1fs" % maxf(0.0, remaining_seconds)
+	if _remaining_label != null:
+		_remaining_label.text = "%.1fs" % maxf(0.0, remaining_seconds)
 	queue_redraw()
+
+
+# 测试脚本可能在节点完成 ready 前配置圆环，按固定路径补齐可选控件。
+func _resolve_runtime_nodes() -> void:
+	if _icon == null:
+		_icon = get_node_or_null("Icon") as TextureRect
+	if _fallback_label == null:
+		_fallback_label = get_node_or_null("FallbackLabel") as Label
+	if _remaining_label == null:
+		_remaining_label = get_node_or_null("RemainingLabel") as Label
+	if _level_label == null:
+		_level_label = get_node_or_null("LevelLabel") as Label
 
 
 func _draw() -> void:

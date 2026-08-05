@@ -11,6 +11,7 @@ var run: RunController3D
 var left_upgrade: UpgradeData
 var right_upgrade: UpgradeData
 var start_food_gate: bool = false
+var start_options_by_slot: Dictionary[int, Array] = {}
 var resolved: bool = false
 # 道路延长只让门提前出现，接近速度继续保持原竖切片节奏。
 var move_speed: float = 2.5
@@ -21,6 +22,7 @@ var left_base_health: float = 0.0
 var right_base_health: float = 0.0
 var left_upgrade_health: float = 0.0
 var right_upgrade_health: float = 0.0
+var _player_resolved: Dictionary[int, bool] = {}
 
 @onready var _left_target: Node3D = %LeftTarget
 @onready var _right_target: Node3D = %RightTarget
@@ -32,6 +34,8 @@ var _right_hit_feedback: float = 0.0
 @onready var _right_health_label: Label3D = %RightHealthLabel
 @onready var _left_mesh: MeshInstance3D = %LeftPanel
 @onready var _right_mesh: MeshInstance3D = %RightPanel
+# 门节点在编辑器脚本测试中也会被单独解析，因此通过根节点访问网络会话。
+@onready var _network_session: Variant = get_node_or_null("/root/NetworkSession")
 
 
 # 生成时锁定门的基准胃口，并分别建立公开基础层和隐藏升值层。
@@ -41,15 +45,21 @@ func configure(
 	right: UpgradeData,
 	is_start_gate: bool = false,
 	gate_baseline_appetite: float = 1.0,
-	index: int = 0
+	index: int = 0,
+	per_player_start_options: Dictionary[int, Array] = {}
 ) -> void:
 	_resolve_visual_nodes()
 	run = run_controller
 	left_upgrade = left
 	right_upgrade = right
 	start_food_gate = is_start_gate
+	start_options_by_slot = per_player_start_options.duplicate(true)
+	resolved = false
+	if start_options_by_slot.is_empty() and left != null and right != null:
+		start_options_by_slot[1] = [left, right]
 	baseline_appetite = maxf(1.0, gate_baseline_appetite)
 	spawn_index = index
+	_player_resolved.clear()
 	# 开局门也从远端屏外进入，避免开始出餐后在道路中段突然出现。
 	position = Vector3(0.0, 0.0, Playfield.FORWARD_SPAWN_Z)
 	if not start_food_gate:
@@ -63,7 +73,14 @@ func configure(
 func _process(delta: float) -> void:
 	if run == null:
 		return
+	var network_client: bool = (
+		_network_session != null
+		and _network_session.is_networked()
+		and not _network_session.is_host()
+	)
 	if resolved:
+		if network_client:
+			return
 		if not run.is_world_scrolling():
 			queue_free()
 			return
@@ -77,27 +94,48 @@ func _process(delta: float) -> void:
 		_refresh_feedback()
 	if run.is_world_scrolling():
 		position.z += travel_speed() * delta
-	var cart: Cart3D = run.cart
-	if cart == null:
+	if _network_session != null and _network_session.is_networked() and not _network_session.is_host():
 		return
-	var overlap_side: int = _cart_overlap_side(cart)
-	if overlap_side >= 0:
+	var contexts: Array[PlayerRunContext] = run.get_player_contexts()
+	if contexts.is_empty():
+		return
+	for context: PlayerRunContext in contexts:
+		if _player_resolved.get(context.slot, false):
+			continue
+		var cart: Cart3D = context.cart
+		if cart == null:
+			continue
+		var overlap_side: int = _cart_overlap_side(cart)
+		if overlap_side >= 0:
+			var use_left: bool = overlap_side == 0
+			var base_health: float = left_base_health if use_left else right_base_health
+			if context.is_ghost() and not start_food_gate and not MultiplayerRules.ghost_can_claim_normal_gate(base_health):
+				continue
+			_player_resolved[context.slot] = true
+			var selected_upgrade: UpgradeData = (
+				selected_upgrade_for_x(cart.position.x, context.slot)
+				if start_food_gate
+				else (left_upgrade if use_left else right_upgrade)
+			)
+			run.on_gate_selected_for_player(
+				context.slot,
+				selected_upgrade,
+				start_food_gate,
+				base_health
+			)
+		elif start_food_gate and position.z >= cart.position.z:
+			_player_resolved[context.slot] = true
+			run.on_gate_selected_for_player(
+				context.slot,
+				selected_upgrade_for_x(cart.position.x, context.slot),
+				true,
+				0.0
+			)
+		elif _has_passed_cart(cart):
+			_player_resolved[context.slot] = true
+	if _all_players_resolved(contexts):
 		resolved = true
-		var use_left: bool = overlap_side == 0
-		run.on_gate_selected(
-			left_upgrade if use_left else right_upgrade,
-			start_food_gate,
-			left_base_health if use_left else right_base_health
-		)
 		queue_free()
-	elif start_food_gate and position.z >= run.cart_destination_z():
-		# 开局门的两块面板中间存在视觉分隔，中心线作为无法重叠时的安全兜底。
-		resolved = true
-		var cart_x: float = cart.position.x
-		run.on_gate_selected(selected_upgrade_for_x(cart_x), true, 0.0)
-		queue_free()
-	elif _has_passed_cart(cart):
-		resolved = true
 
 
 func target_for_cart_x(cart_x: float) -> Node3D:
@@ -109,12 +147,54 @@ func target_for_cart_x(cart_x: float) -> Node3D:
 	return _left_target if use_left else _right_target
 
 
-func selected_upgrade_for_x(cart_x: float) -> UpgradeData:
-	return left_upgrade if cart_x < SIDE_DIVIDER_X else right_upgrade
+func selected_upgrade_for_x(cart_x: float, player_slot: int = 1) -> UpgradeData:
+	var options: Array = start_options_by_slot.get(player_slot, [left_upgrade, right_upgrade])
+	if options.size() < 2:
+		return left_upgrade if cart_x < SIDE_DIVIDER_X else right_upgrade
+	return options[0] if cart_x < SIDE_DIVIDER_X else options[1]
 
 
 func selected_base_health_for_x(cart_x: float) -> float:
 	return left_base_health if cart_x < SIDE_DIVIDER_X else right_base_health
+
+
+func _all_players_resolved(contexts: Array[PlayerRunContext]) -> bool:
+	for context: PlayerRunContext in contexts:
+		if not _player_resolved.get(context.slot, false):
+			return false
+	return true
+
+
+func network_snapshot() -> Dictionary:
+	var resolved_slots: Array[int] = []
+	for slot: int in _player_resolved:
+		if _player_resolved[slot]:
+			resolved_slots.append(slot)
+	return {
+		"spawn_index": spawn_index,
+		"x": position.x,
+		"z": position.z,
+		"left_base": left_base_health,
+		"right_base": right_base_health,
+		"left_upgrade": left_upgrade_health,
+		"right_upgrade": right_upgrade_health,
+		"resolved": resolved,
+		"resolved_slots": resolved_slots,
+	}
+
+
+func apply_network_snapshot(snapshot: Dictionary) -> void:
+	position.x = float(snapshot.get("x", position.x))
+	position.z = float(snapshot.get("z", position.z))
+	left_base_health = float(snapshot.get("left_base", left_base_health))
+	right_base_health = float(snapshot.get("right_base", right_base_health))
+	left_upgrade_health = float(snapshot.get("left_upgrade", left_upgrade_health))
+	right_upgrade_health = float(snapshot.get("right_upgrade", right_upgrade_health))
+	resolved = bool(snapshot.get("resolved", resolved))
+	_player_resolved.clear()
+	for slot: int in snapshot.get("resolved_slots", []):
+		_player_resolved[slot] = true
+	_refresh_labels()
 
 
 # 把左右门板的逻辑范围转换为餐车所在的 X/Z 世界平面。
@@ -254,9 +334,16 @@ func _resolve_visual_nodes() -> void:
 func _refresh_labels() -> void:
 	if _left_label == null or left_upgrade == null or right_upgrade == null:
 		return
+	if _network_session == null and is_inside_tree():
+		_network_session = get_node_or_null("/root/NetworkSession")
+	var networked: bool = _network_session != null and _network_session.is_networked()
+	var display_slot: int = _network_session.local_slot if networked else 1
+	var display_options: Array = start_options_by_slot.get(display_slot, [left_upgrade, right_upgrade])
+	var display_left: UpgradeData = display_options[0] if display_options.size() > 0 else left_upgrade
+	var display_right: UpgradeData = display_options[1] if display_options.size() > 1 else right_upgrade
 	var maximum_durability: float = 100.0 if run == null else run.state.maximum_durability
-	_left_label.text = _label_text(left_upgrade, maximum_durability)
-	_right_label.text = _label_text(right_upgrade, maximum_durability)
+	_left_label.text = _label_text(display_left, maximum_durability)
+	_right_label.text = _label_text(display_right, maximum_durability)
 	_left_label.modulate = Color.WHITE
 	_right_label.modulate = Color.WHITE
 	_left_health_label.visible = not start_food_gate
