@@ -265,8 +265,8 @@ func _refresh_label() -> void:
 	if _label == null or upgrade == null:
 		return
 	var maximum_durability: float = 100.0 if run == null else run.state.maximum_durability
-	_label.text = "%s%s\n%s\n%s" % [
-		"小份 " if not upgrade.source_label.is_empty() else "",
+	# 来源缩放只影响奖励数值，不在门牌上额外提示“小份”来源。
+	_label.text = "%s\n%s\n%s" % [
 		upgrade.display_name,
 		upgrade.effect_text(maximum_durability),
 		upgrade.rarity_name,
@@ -280,6 +280,7 @@ func _refresh_label() -> void:
 func _refresh_feedback() -> void:
 	var material: StandardMaterial3D = _panel_mesh.material_override as StandardMaterial3D
 	var enabled: bool = _hit_feedback_remaining > 0.0
-	material.emission_enabled = enabled
+	# 常驻 emission 材质变体，避免第一次命中掉落门时切换渲染分支。
+	material.emission_enabled = true
 	material.emission = Color.WHITE if enabled else Color.BLACK
 	material.emission_energy_multiplier = 0.75 if enabled else 0.0

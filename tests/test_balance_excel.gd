@@ -353,11 +353,13 @@ func _test_normal_upgrade_workbook() -> void:
 	_check(result.upgrades.size() == 8, "普通门与食客奖励共用八项候选池")
 	_check(
 		is_equal_approx(result.reward_effect_scale, 0.7)
+		and result.reward_effect_scale_after_elite == PackedFloat32Array([0.6, 0.4, 0.25])
+		and is_equal_approx(result.reward_effect_scale_transition_seconds, 10.0)
 		and is_equal_approx(result.wine_curve_c, 1.0)
 		and is_equal_approx(result.range_curve_c, 4.0)
 		and is_equal_approx(result.duration_curve_c, 1.0)
 		and is_equal_approx(result.cart_speed_curve_c, 0.5),
-		"小份奖励与四项对数曲线参数由普通强化表读取"
+		"食客奖励缩放曲线与四项对数曲线参数由普通强化表读取"
 	)
 	var expected_ranges: Dictionary[int, Vector2] = {
 		UpgradeData.Kind.SUGAR: Vector2(0.05, 0.30),

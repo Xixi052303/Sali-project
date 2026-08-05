@@ -5,7 +5,7 @@ const CONFIG_SHEET: String = "配置"
 const EXPECTED_SCHEMA_VERSION: int = 1
 const COMBAT_RULES_SCHEMA_VERSION: int = 3
 const WEAPON_SCHEMA_VERSION: int = 5
-const NORMAL_UPGRADE_SCHEMA_VERSION: int = 2
+const NORMAL_UPGRADE_SCHEMA_VERSION: int = 3
 const REQUIRED_CUSTOMER_IDS: Array[StringName] = [
 	&"basic_guest",
 	&"fast_guest",
@@ -52,7 +52,12 @@ class NormalUpgradeLoadResult:
 	extends RefCounted
 
 	var upgrades: Array[UpgradeData] = []
-	var reward_effect_scale: float = 0.4
+	var reward_effect_scale: float = 0.7
+	# 每只精英出现后，普通食客奖励缩放依次过渡到这些目标值。
+	var reward_effect_scale_after_elite: PackedFloat32Array = PackedFloat32Array([
+		0.6, 0.4, 0.25,
+	])
+	var reward_effect_scale_transition_seconds: float = 10.0
 	var wine_curve_c: float = RunState.WINE_CURVE_C
 	var range_curve_c: float = RunState.RANGE_CURVE_C
 	var duration_curve_c: float = RunState.DURATION_CURVE_C
@@ -538,6 +543,14 @@ static func load_normal_upgrades(path: String) -> NormalUpgradeLoadResult:
 	result.reward_effect_scale = _required_dictionary_number(
 		config, "reward_effect_scale", errors
 	)
+	result.reward_effect_scale_after_elite = PackedFloat32Array([
+		_required_dictionary_number(config, "reward_effect_scale_after_elite_1", errors),
+		_required_dictionary_number(config, "reward_effect_scale_after_elite_2", errors),
+		_required_dictionary_number(config, "reward_effect_scale_after_elite_3", errors),
+	])
+	result.reward_effect_scale_transition_seconds = _required_dictionary_number(
+		config, "reward_effect_scale_transition_seconds", errors
+	)
 	result.wine_curve_c = _required_dictionary_number(config, "wine_curve_c", errors)
 	result.range_curve_c = _required_dictionary_number(config, "range_curve_c", errors)
 	result.duration_curve_c = _required_dictionary_number(config, "duration_curve_c", errors)
@@ -549,6 +562,15 @@ static func load_normal_upgrades(path: String) -> NormalUpgradeLoadResult:
 	)
 	if result.reward_effect_scale <= 0.0 or result.reward_effect_scale > 1.0:
 		errors.append("reward_effect_scale 必须大于0且不超过1")
+	var elite_scale_index: int = 1
+	for elite_scale: float in result.reward_effect_scale_after_elite:
+		if elite_scale <= 0.0 or elite_scale > 1.0:
+			errors.append(
+				"reward_effect_scale_after_elite_%d 必须大于0且不超过1" % elite_scale_index
+			)
+		elite_scale_index += 1
+	if result.reward_effect_scale_transition_seconds <= 0.0:
+		errors.append("reward_effect_scale_transition_seconds 必须大于0")
 	if (
 		result.wine_curve_c <= 0.0
 		or result.range_curve_c <= 0.0

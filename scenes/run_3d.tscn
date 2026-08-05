@@ -35,6 +35,20 @@ ranged_guest_data = ExtResource("11_ranged")
 elite_guest_data = ExtResource("12_elite")
 boss_data = ExtResource("13_boss")
 
+[node name="FirstHitFontPrewarm" type="Label3D" parent="."]
+visible = false
+position = Vector3(0, -100, 0)
+pixel_size = 0.01
+render_priority = 100
+no_depth_test = true
+outline_render_priority = 99
+width = 720.0
+font_size = 64
+outline_size = 3
+modulate = Color(1, 0.941176, 0.784314, 1)
+outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
+text = "0123456789"
+
 [node name="Background" parent="." unique_id=202723656 instance=ExtResource("2_background")]
 unique_name_in_owner = true
 

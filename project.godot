@@ -41,7 +41,7 @@ window/handheld/orientation=1
 
 [gui]
 
-theme/default_font_multichannel_signed_distance_field=true
+theme/custom_font="uid://debrr2wu5akiu"
 
 [input_devices]
 

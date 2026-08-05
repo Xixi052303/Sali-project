@@ -390,6 +390,7 @@ func _refresh_feedback() -> void:
 
 func _set_emission(mesh: MeshInstance3D, enabled: bool) -> void:
 	var material: StandardMaterial3D = mesh.material_override as StandardMaterial3D
-	material.emission_enabled = enabled
+	# 常驻 emission 材质变体，避免第一次命中时切换渲染分支并同步编译。
+	material.emission_enabled = true
 	material.emission = Color.WHITE if enabled else Color.BLACK
 	material.emission_energy_multiplier = 0.75 if enabled else 0.0

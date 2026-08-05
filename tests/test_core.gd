@@ -1985,6 +1985,8 @@ func _test_customer_reward_gate() -> void:
 	var reward_gate: UpgradeDrop3D = reward_scene.instantiate() as UpgradeDrop3D
 	reward_gate.configure(null, reward, Vector3(1.6, 0.0, 4.0), 100.0, 2, 3)
 	_check(is_equal_approx(reward_gate.upgrade_health, 26.4), "小份奖励门的隐藏升值血量按40%缩放")
+	var reward_label: Label3D = reward_gate.get_node("DropLabel") as Label3D
+	_check(not reward_label.text.contains("小份"), "奖励门牌不再额外提示小份来源")
 	_check(reward_gate.contains_cart_x(1.6), "餐车经过食客原占地区域可以领取奖励门")
 	_check(not reward_gate.contains_cart_x(3.6), "餐车绕开奖励门时不能领取")
 	reward_gate.receive_damage(13.2)
@@ -2002,6 +2004,27 @@ func _test_customer_reward_gate() -> void:
 		"本机领取后只在本地隐藏，其他未领取玩家仍可选中"
 	)
 	reward_gate.free()
+
+	var scale_run: RunController3D = RunController3D.new()
+	scale_run._reward_effect_scale = 0.7
+	scale_run._reward_effect_scale_after_elite = PackedFloat32Array([0.6, 0.4, 0.25])
+	scale_run._reward_effect_scale_transition_seconds = 10.0
+	scale_run._begin_reward_effect_scale_transition()
+	scale_run._update_reward_effect_scale(5.0)
+	_check(
+		scale_run._reward_effect_scale > 0.6
+		and scale_run._reward_effect_scale < 0.7,
+		"第一个精英后的奖励缩放在过渡期间平滑变化"
+	)
+	scale_run._update_reward_effect_scale(5.0)
+	_check(is_equal_approx(scale_run._reward_effect_scale, 0.6), "第一个精英后的奖励缩放达到0.6")
+	scale_run._begin_reward_effect_scale_transition()
+	scale_run._update_reward_effect_scale(10.0)
+	_check(is_equal_approx(scale_run._reward_effect_scale, 0.4), "第二个精英后的奖励缩放达到0.4")
+	scale_run._begin_reward_effect_scale_transition()
+	scale_run._update_reward_effect_scale(10.0)
+	_check(is_equal_approx(scale_run._reward_effect_scale, 0.25), "第三个精英后的奖励缩放达到0.25")
+	scale_run.free()
 
 
 func _test_reward_gate_spacing() -> void:

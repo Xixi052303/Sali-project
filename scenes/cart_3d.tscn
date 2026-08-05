@@ -78,7 +78,7 @@ outline_render_priority = 99
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 text = "/ 100"
 font_size = 50
-outline_size = 20
+outline_size = 3
 width = 1.72
 
 [node name="ShieldDurabilityLabel" type="Label3D" parent="StatusBillboard/DurabilityLabel" unique_id=603483233]
@@ -130,6 +130,7 @@ mesh = ExtResource("5_peer_indicator_mesh")
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9803145, 0)
 pixel_size = 0.008
+billboard = 1
 no_depth_test = true
 render_priority = 111
 outline_render_priority = 110
@@ -137,4 +138,5 @@ modulate = Color(0.878431, 0.721569, 0.309804, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 text = "P2"
 font_size = 96
+outline_size = 4
 width = 1.5

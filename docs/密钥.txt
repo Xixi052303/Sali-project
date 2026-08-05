@@ -1,0 +1,8 @@
+安装 Godot 4.7 Android Export Templates
+android_debug.apk、android_release.apk 均已安装。
+Godot Android 路径已配置：SDK：C:\godotSDK\AndroidSDK
+JDK：C:\godotSDK\jdk-17.0.15.6-hotspot
+
+已生成并配置 debug keystore：路径：C:\Users\爹v\AppData\Roaming\Godot\keystores\debug.keystore
+Alias：androiddebugkey
+密码：android

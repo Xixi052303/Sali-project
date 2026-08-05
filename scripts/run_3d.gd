@@ -201,7 +201,19 @@ var _baguette_giant_width_regions: float = RunState.BAGUETTE_GIANT_WIDTH_REGIONS
 var _baguette_giant_pierce_count: int = RunState.BAGUETTE_GIANT_PIERCE_COUNT
 var _baguette_giant_duration_multiplier: float = RunState.BAGUETTE_GIANT_DURATION_MULTIPLIER
 var _baguette_giant_satisfaction_multiplier: float = RunState.BAGUETTE_GIANT_SATISFACTION_MULTIPLIER
-var _reward_effect_scale: float = 0.4
+# 普通食客奖励在没有精英节点前使用的初始缩放；实际生成时会锁定当前值。
+var _reward_effect_scale_initial: float = 0.7
+# 每只精英出现后的目标缩放，前三项由普通强化配置表驱动，之后保持最后一项。
+var _reward_effect_scale_after_elite: PackedFloat32Array = PackedFloat32Array([
+	0.6, 0.4, 0.25,
+])
+# 精英节点后当前缩放过渡到目标值所用的有效游戏时间。
+var _reward_effect_scale_transition_seconds: float = 10.0
+var _reward_effect_scale: float = 0.7
+var _reward_effect_scale_transition_start: float = 0.7
+var _reward_effect_scale_transition_target: float = 0.7
+var _reward_effect_scale_transition_elapsed: float = 0.0
+var _elites_spawned: int = 0
 var _wine_curve_c: float = RunState.WINE_CURVE_C
 var _range_curve_c: float = RunState.RANGE_CURVE_C
 var _duration_curve_c: float = RunState.DURATION_CURVE_C
@@ -1723,12 +1735,15 @@ func _load_normal_upgrade_balance() -> void:
 	)
 	if load_result.loaded_from_excel:
 		_normal_upgrade_pool = load_result.upgrades
-		_reward_effect_scale = load_result.reward_effect_scale
+		_reward_effect_scale_initial = load_result.reward_effect_scale
+		_reward_effect_scale_after_elite = load_result.reward_effect_scale_after_elite
+		_reward_effect_scale_transition_seconds = load_result.reward_effect_scale_transition_seconds
 		_wine_curve_c = load_result.wine_curve_c
 		_range_curve_c = load_result.range_curve_c
 		_duration_curve_c = load_result.duration_curve_c
 		_cart_speed_curve_c = load_result.cart_speed_curve_c
 		_range_multiplier_cap = load_result.range_multiplier_cap
+		_reset_reward_effect_scale()
 		print(
 			"BALANCE_NORMAL_UPGRADES_LOADED path=%s shared_pool=%d" % [
 				NORMAL_UPGRADE_WORKBOOK_PATH,
@@ -1742,6 +1757,7 @@ func _load_normal_upgrade_balance() -> void:
 			load_result.error_message,
 		]
 	)
+	_reset_reward_effect_scale()
 
 
 # 特殊表控制候选池、说明和可调效果量，未知效果不会进入运行时。
@@ -1844,6 +1860,7 @@ func _process(delta: float) -> void:
 	)
 	if not network_client_visual_only and phase == Phase.FORWARD:
 		state.elapsed_seconds += delta
+		_update_reward_effect_scale(delta)
 		# Boss请求到达后只让已排队对象完成接近，不再越过后续路程事件。
 		if not _boss_pending:
 			_advance_forward_progress(delta)
@@ -1858,6 +1875,7 @@ func _process(delta: float) -> void:
 		hud.set_time(state.elapsed_seconds)
 	elif not network_client_visual_only and phase == Phase.BOSS:
 		state.elapsed_seconds += delta
+		_update_reward_effect_scale(delta)
 		hud.set_time(state.elapsed_seconds)
 	if _smoke_test:
 		if phase == Phase.BOSS and boss != null and is_instance_valid(boss):
@@ -3200,6 +3218,7 @@ func _spawn_customer_now(
 
 
 func _spawn_elite_now() -> void:
+	_begin_reward_effect_scale_transition()
 	_elite_started_at = state.elapsed_seconds
 	_spawn_counter += 1
 	var baseline_appetite: float = _current_baseline_appetite()
@@ -3236,6 +3255,65 @@ func _spawn_elite_now() -> void:
 	_track_customer(elite)
 	hud.set_phase("精英检查 · 六区无法绕行")
 	hud.show_toast("六席贵客挡住整条路，尽快满足它！", Color("#f0c45f"))
+
+
+# 新精英出现后只改变后续奖励的目标缩放；已生成对象保留生成时快照。
+func _begin_reward_effect_scale_transition() -> void:
+	_elites_spawned += 1
+	if _reward_effect_scale_after_elite.is_empty():
+		return
+	var target_index: int = mini(
+		_elites_spawned - 1,
+		_reward_effect_scale_after_elite.size() - 1
+	)
+	_reward_effect_scale_transition_start = _reward_effect_scale
+	_reward_effect_scale_transition_target = clampf(
+		_reward_effect_scale_after_elite[target_index],
+		0.0,
+		1.0
+	)
+	_reward_effect_scale_transition_elapsed = 0.0
+
+
+# 按有效游戏时间平滑推进奖励缩放，选择阶段暂停时不会偷偷消耗过渡时间。
+func _update_reward_effect_scale(delta: float) -> void:
+	if delta <= 0.0:
+		return
+	var transition_duration: float = maxf(0.001, _reward_effect_scale_transition_seconds)
+	if (
+		is_equal_approx(
+			_reward_effect_scale_transition_start,
+			_reward_effect_scale_transition_target
+		)
+		or _reward_effect_scale_transition_elapsed >= transition_duration
+	):
+		_reward_effect_scale = _reward_effect_scale_transition_target
+		return
+	_reward_effect_scale_transition_elapsed = minf(
+		transition_duration,
+		_reward_effect_scale_transition_elapsed + delta
+	)
+	var ratio: float = clampf(
+		_reward_effect_scale_transition_elapsed / transition_duration,
+		0.0,
+		1.0
+	)
+	# Smoothstep让精英节点后的变化在起止两端都逐渐收敛，避免奖励数值跳变。
+	var eased_ratio: float = ratio * ratio * (3.0 - 2.0 * ratio)
+	_reward_effect_scale = lerpf(
+		_reward_effect_scale_transition_start,
+		_reward_effect_scale_transition_target,
+		eased_ratio
+	)
+
+
+# 重开一局时恢复初始缩放和精英阶段，避免上一局的目标值泄漏到新局。
+func _reset_reward_effect_scale() -> void:
+	_reward_effect_scale = clampf(_reward_effect_scale_initial, 0.0, 1.0)
+	_reward_effect_scale_transition_start = _reward_effect_scale
+	_reward_effect_scale_transition_target = _reward_effect_scale
+	_reward_effect_scale_transition_elapsed = 0.0
+	_elites_spawned = 0
 
 
 # 食客数据只选择完整预制场景；错误或缺失配置回退到通用纸片场景。
@@ -4229,6 +4307,7 @@ func _on_debug_action_requested(action_id: StringName) -> void:
 		&"advance_30":
 			if phase == Phase.FORWARD or phase == Phase.BOSS:
 				state.elapsed_seconds += 30.0
+				_update_reward_effect_scale(30.0)
 				if phase == Phase.FORWARD:
 					state.forward_distance += world_scroll_speed * 30.0
 				hud.set_time(state.elapsed_seconds)
@@ -4950,7 +5029,7 @@ func _roll_customer_reward() -> UpgradeData:
 	if options.is_empty():
 		return null
 	var reward: UpgradeData = options[0]
-	reward.set_source_scale(_reward_effect_scale, "小份奖励")
+	reward.set_source_scale(_reward_effect_scale)
 	if state != null:
 		state.record_normal_upgrade_offer([reward])
 	return reward
