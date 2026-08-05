@@ -7,9 +7,11 @@ func _init() -> void:
 	_test_playfield()
 	_test_customer_cart_collision()
 	_test_network_customer_lifecycle()
+	_test_network_synchronizer_paths()
 	_test_network_projectile_presentation()
 	_test_network_durability_synchronization()
 	_test_peer_indicator_scene()
+	_test_cart_ghost_shader()
 	_test_progression_store()
 	_test_cart_invincibility_duration()
 	_test_3d_plane_rules()
@@ -116,6 +118,25 @@ func _test_network_customer_lifecycle() -> void:
 		run._find_customer_by_spawn_index(17) == null and run.customers.is_empty(),
 		"联机食客销毁后会安全剔除失效引用"
 	)
+	run.free()
+
+
+# 动态同步器的根节点属性必须保留 Godot 可解析的 .:property 路径。
+func _test_network_synchronizer_paths() -> void:
+	var run: RunController3D = RunController3D.new()
+	var replicated_node: Node3D = Node3D.new()
+	run._attach_network_synchronizer(replicated_node, [NodePath(".:position")])
+	var synchronizer: MultiplayerSynchronizer = replicated_node.get_node(
+		"NetworkSynchronizer"
+	) as MultiplayerSynchronizer
+	var replication_config: SceneReplicationConfig = synchronizer.replication_config
+	_check(
+		synchronizer != null
+		and replication_config != null
+		and replication_config.has_property(NodePath(".:position")),
+		"动态网络同步器使用根节点属性路径"
+	)
+	replicated_node.free()
 	run.free()
 
 
@@ -460,11 +481,15 @@ func _test_peer_indicator_scene() -> void:
 	var editor_label: Label3D = editor_cart.get_node(
 		"PeerIndicator/PeerIndicatorLabel"
 	) as Label3D
+	var editor_indicator_mesh: CylinderMesh = editor_mesh.mesh as CylinderMesh
 	_check(
 		editor_indicator.visible
-		and editor_mesh.mesh is CylinderMesh
+		and editor_indicator_mesh != null
+		and editor_indicator_mesh.resource_path == "res://scenes/visuals/peer_indicator_cone.tres"
+		and editor_indicator_mesh.top_radius > 0.0
+		and editor_indicator_mesh.height > 0.0
 		and editor_label.text == "P2",
-		"餐车场景保留可编辑的队友圆锥指针与P槽标签"
+		"餐车场景保留可编辑的立体队友圆锥指针与P槽标签"
 	)
 	editor_cart.free()
 
@@ -497,6 +522,38 @@ func _test_peer_indicator_scene() -> void:
 	_check(not runtime_indicator.visible, "本机切换后不显示自己的队友指针")
 	cart.free()
 	field.free()
+
+
+# 餐车进入幽灵等待复活时叠加隐形边缘材质，复活后必须恢复原有覆盖材质。
+func _test_cart_ghost_shader() -> void:
+	var cart_scene: PackedScene = load("res://scenes/cart_3d.tscn") as PackedScene
+	var cart: Cart3D = cart_scene.instantiate() as Cart3D
+	var source: MeshInstance3D = cart.get_node("GhostShaderSource") as MeshInstance3D
+	var ghost_material: ShaderMaterial = source.material_override as ShaderMaterial
+	var shader: Shader = load("res://shader/spatial_cart_ghost.gdshader") as Shader
+	_check(
+		not source.visible
+		and ghost_material != null
+		and ghost_material.shader == shader,
+		"餐车场景挂载可编辑的幽灵隐形着色器"
+	)
+	var test_geometry: MeshInstance3D = MeshInstance3D.new()
+	test_geometry.mesh = BoxMesh.new()
+	cart.get_node("PaperCartVisual").add_child(test_geometry)
+	var original_overlay: Material = test_geometry.material_overlay
+	cart.set_ghost_visual(true)
+	_check(
+		test_geometry.material_overlay == ghost_material
+		and is_equal_approx(test_geometry.transparency, 0.58),
+		"餐车死亡等待复活时叠加幽灵着色器"
+	)
+	cart.set_ghost_visual(false)
+	_check(
+		test_geometry.material_overlay == original_overlay
+		and is_zero_approx(test_geometry.transparency),
+		"餐车复活后恢复原始材质与不透明度"
+	)
+	cart.free()
 
 
 func _test_progression_store() -> void:

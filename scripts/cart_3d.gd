@@ -45,11 +45,15 @@ var _upgrade_tween: Tween
 var _base_scale: Vector3 = Vector3.ONE
 # 从场景缓存可编辑的餐车碰撞节点；没有完整场景时允许为空并走默认几何。
 var _collision_shape: CollisionShape3D
+# 幽灵态只叠加临时材质，记录原有覆盖材质以便复活时精确还原。
+var _ghost_shader_material: ShaderMaterial
+var _ghost_overlay_originals: Dictionary = {}
 @onready var _visual_root: Node3D = %PaperCartVisual
 @onready var _durability_label: Label3D = %DurabilityLabel
 @onready var _maximum_durability_label: Label3D = %DurabilityLabel2
 @onready var _effective_durability_label: Label3D = %ShieldDurabilityLabel
 @onready var _maximum_feedback_label: Label3D = %MaximumFeedbackLabel
+@onready var _ghost_shader_source: MeshInstance3D = %GhostShaderSource
 @onready var _peer_indicator: Node3D = %PeerIndicator
 @onready var _peer_indicator_mesh: MeshInstance3D = %PeerIndicatorMesh
 @onready var _peer_indicator_label: Label3D = %PeerIndicatorLabel
@@ -57,6 +61,8 @@ var _collision_shape: CollisionShape3D
 
 func _ready() -> void:
 	# 场景默认保留指针用于编辑器预览，实际运行先隐藏并等待联机槽位判定。
+	_resolve_runtime_nodes()
+	_cache_ghost_shader_material()
 	set_peer_indicator_visible(false, player_slot, Color.WHITE)
 
 
@@ -73,6 +79,8 @@ func configure(
 	target_x = position.x
 	target_z = position.z
 	_default_z = position.z
+	# configure 可能在节点完成 _ready 前调用，运行配置阶段必须先隐藏本机指针。
+	set_peer_indicator_visible(false, player_slot, Color.WHITE)
 	set_durability_display(
 		state.current_durability,
 		state.maximum_durability,
@@ -270,15 +278,48 @@ func begin_respawn_protection(duration_seconds: float = 2.0) -> void:
 
 
 func _apply_ghost_visual() -> void:
-	if _visual_root == null:
+	_resolve_runtime_nodes()
+	if _visual_root != null:
+		var transparency: float = 0.58 if _ghost_visual else 0.0
+		if _visual_root is GeometryInstance3D:
+			(_visual_root as GeometryInstance3D).transparency = transparency
+		for child: Node in _visual_root.find_children("*", "GeometryInstance3D", true, false):
+			var geometry: GeometryInstance3D = child as GeometryInstance3D
+			if geometry != null:
+				geometry.transparency = transparency
+	if _ghost_visual:
+		_apply_ghost_shader_overlay()
+	else:
+		_restore_ghost_shader_overlay()
+
+
+func _cache_ghost_shader_material() -> void:
+	if _ghost_shader_material != null or _ghost_shader_source == null:
 		return
-	var transparency: float = 0.58 if _ghost_visual else 0.0
-	if _visual_root is GeometryInstance3D:
-		(_visual_root as GeometryInstance3D).transparency = transparency
+	_ghost_shader_material = _ghost_shader_source.material_override as ShaderMaterial
+
+
+# 幽灵态给餐车模型叠加边缘发光，不覆盖原模型材质；复活时由下方函数还原。
+func _apply_ghost_shader_overlay() -> void:
+	_cache_ghost_shader_material()
+	if _ghost_shader_material == null or _visual_root == null:
+		return
 	for child: Node in _visual_root.find_children("*", "GeometryInstance3D", true, false):
 		var geometry: GeometryInstance3D = child as GeometryInstance3D
-		if geometry != null:
-			geometry.transparency = transparency
+		if geometry == null or geometry.name == "ContactShadow":
+			continue
+		if not _ghost_overlay_originals.has(geometry):
+			_ghost_overlay_originals[geometry] = geometry.material_overlay
+		geometry.material_overlay = _ghost_shader_material
+
+
+func _restore_ghost_shader_overlay() -> void:
+	for target: Variant in _ghost_overlay_originals.keys():
+		var geometry: GeometryInstance3D = target as GeometryInstance3D
+		if not is_instance_valid(geometry):
+			continue
+		geometry.material_overlay = _ghost_overlay_originals[target] as Material
+	_ghost_overlay_originals.clear()
 
 
 # 斜俯相机下用地面射线恢复真实道路坐标；无活动相机时维持现有横向映射。
@@ -428,6 +469,8 @@ func _resolve_runtime_nodes() -> void:
 		_maximum_feedback_label = get_node_or_null(
 			"StatusBillboard/MaximumFeedbackLabel"
 		) as Label3D
+	if _ghost_shader_source == null:
+		_ghost_shader_source = get_node_or_null("GhostShaderSource") as MeshInstance3D
 	if _peer_indicator == null:
 		_peer_indicator = get_node_or_null("PeerIndicator") as Node3D
 	if _peer_indicator_mesh == null:

@@ -3,6 +3,8 @@
 [ext_resource type="Script" uid="uid://ctvx2bkbtqptg" path="res://scripts/cart_3d.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://yjttt8tqvyuq" path="res://assets/models/角色/厨师.glb" id="2_chef"]
 [ext_resource type="PackedScene" uid="uid://kw0lsivosw25" path="res://assets/models/角色/餐车.glb" id="3_cart"]
+[ext_resource type="Shader" uid="uid://honwlvkw4725" path="res://shader/spatial_cart_ghost.gdshader" id="4_ghost_shader"]
+[ext_resource type="CylinderMesh" path="res://scenes/visuals/peer_indicator_cone.tres" id="5_peer_indicator_mesh"]
 
 [sub_resource type="StandardMaterial3D" id="MatShadow"]
 albedo_color = Color(0.168627, 0.141176, 0.113725, 1)
@@ -13,17 +15,19 @@ albedo_color = Color(0.168627, 0.141176, 0.113725, 1)
 resource_local_to_scene = true
 size = Vector3(1.2, 1, 1.7)
 
+[sub_resource type="ShaderMaterial" id="MatGhost"]
+resource_local_to_scene = true
+render_priority = 0
+shader = ExtResource("4_ghost_shader")
+shader_parameter/emission_color = Color(0.305882, 0.8, 1, 0.86)
+shader_parameter/emission_amount = 5.0
+shader_parameter/rim_sharpness = 3.0
+
 [sub_resource type="StandardMaterial3D" id="MatPeerIndicator"]
 resource_local_to_scene = true
-shading_mode = 0
+cull_mode = 2
 albedo_color = Color(0.878431, 0.721569, 0.309804, 1)
-roughness = 0.82
-
-[sub_resource type="CylinderMesh" id="MeshPeerIndicator"]
-top_radius = 0.0
-bottom_radius = 0.28
-height = 0.72
-radial_segments = 12
+roughness = 0.68
 
 [node name="Cart3D" type="Node3D" unique_id=1284887731]
 script = ExtResource("1_script")
@@ -106,28 +110,31 @@ text = "上限 +10"
 font_size = 64
 outline_size = 20
 
-[node name="PeerIndicator" type="Node3D" parent="."]
+[node name="GhostShaderSource" type="MeshInstance3D" parent="." unique_id=1588210103]
 unique_name_in_owner = true
-position = Vector3(0, 3.72, 0)
+visible = false
+material_override = SubResource("MatGhost")
+mesh = SubResource("MeshShadow")
 
-[node name="PeerIndicatorMesh" type="MeshInstance3D" parent="PeerIndicator"]
+[node name="PeerIndicator" type="Node3D" parent="." unique_id=1150617773]
 unique_name_in_owner = true
-rotation = Vector3(3.1415927, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.72, 0)
+
+[node name="PeerIndicatorMesh" type="MeshInstance3D" parent="PeerIndicator" unique_id=804200560]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, -1, 8.742278e-08, 0, -8.742278e-08, -1, 0, 0, 0)
 material_override = SubResource("MatPeerIndicator")
-cast_shadow = 0
-render_priority = 110
-mesh = SubResource("MeshPeerIndicator")
+mesh = ExtResource("5_peer_indicator_mesh")
 
-[node name="PeerIndicatorLabel" type="Label3D" parent="PeerIndicator"]
+[node name="PeerIndicatorLabel" type="Label3D" parent="PeerIndicator" unique_id=987931952]
 unique_name_in_owner = true
-position = Vector3(0, 0.68, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.68, 0)
 pixel_size = 0.008
 no_depth_test = true
 render_priority = 111
 outline_render_priority = 110
+modulate = Color(0.878431, 0.721569, 0.309804, 1)
 outline_modulate = Color(0.141176, 0.121569, 0.101961, 1)
 text = "P2"
 font_size = 96
-outline_size = 12
 width = 1.5
-modulate = Color(0.878431, 0.721569, 0.309804, 1)

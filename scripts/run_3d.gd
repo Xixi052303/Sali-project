@@ -99,6 +99,8 @@ const POST_BOSS_MINIMUM_DURATION: float = 40.0
 const SMOKE_TEST_TIMEOUT: float = 600.0
 const SMOKE_TEST_BOSS_CLEAR_DURATION: float = 30.0
 const SMOKE_MINIMUM_GEOMETRY_GAP: float = 1.1
+# 客户端回大厅前留出一小段时间，让当前 MultiplayerSpawner 消化房主的 despawn 包。
+const NETWORK_SCENE_RELOAD_DELAY_SECONDS: float = 0.5
 const PLAYTEST_RECORD_PATH: String = "user://playtest_runs.jsonl"
 const SPAWN_SEED_SALT: int = 0x5EED5EED
 
@@ -227,6 +229,8 @@ var _network_customer_fragment_cycle: int = -1
 var _network_customer_fragment_seen: Dictionary[int, bool] = {}
 var _team_death_count: int = 0
 var _network_run_finished: bool = false
+# 回大厅与断线可能连续触发；该门闩保证旧场景只重载一次。
+var _network_scene_reload_pending: bool = false
 # 主机只为新出现的世界对象发送一次可靠配置，避免每帧重复传输资源字段。
 var _network_announced_customer_ids: Dictionary[int, bool] = {}
 var _network_announced_gate_ids: Dictionary[int, bool] = {}
@@ -371,6 +375,7 @@ func _native_network_spawning_enabled() -> bool:
 
 
 # 给动态对象配置只包含基础类型的同步器；Resource、随机结果和统计仍走显式快照。
+# 根节点属性必须使用 .:property 形式，避免 Godot 将 property 当作子节点查找。
 func _attach_network_synchronizer(node: Node, properties: Array[NodePath]) -> void:
 	if node == null or node.get_node_or_null("NetworkSynchronizer") != null:
 		return
@@ -1273,7 +1278,7 @@ func _spawn_customer_from_network_payload(payload: Variant) -> Node:
 	customer.ranged_attack.connect(_on_customer_ranged_attack)
 	_attach_network_synchronizer(
 		customer,
-		[NodePath(":position"), NodePath(":active"), NodePath(":remaining_appetite")]
+		[NodePath(".:position"), NodePath(".:active"), NodePath(".:remaining_appetite")]
 	)
 	_track_customer(customer)
 	return customer
@@ -1324,10 +1329,10 @@ func _spawn_gate_from_network_payload(payload: Variant) -> Node:
 	_attach_network_synchronizer(
 		gate,
 		[
-			NodePath(":position"),
-			NodePath(":resolved"),
-			NodePath(":left_base_health"),
-			NodePath(":right_base_health"),
+			NodePath(".:position"),
+			NodePath(".:resolved"),
+			NodePath(".:left_base_health"),
+			NodePath(".:right_base_health"),
 		]
 	)
 	return gate
@@ -1364,7 +1369,7 @@ func _spawn_drop_from_network_payload(payload: Variant) -> Node:
 	)
 	_attach_network_synchronizer(
 		drop,
-		[NodePath(":position"), NodePath(":resolved"), NodePath(":upgrade_health")]
+		[NodePath(".:position"), NodePath(".:resolved"), NodePath(".:upgrade_health")]
 	)
 	return drop
 
@@ -1387,10 +1392,10 @@ func _spawn_boss_from_network_payload(payload: Variant) -> Node:
 	_attach_network_synchronizer(
 		spawned_boss,
 		[
-			NodePath(":position"),
-			NodePath(":active"),
-			NodePath(":remaining_appetite"),
-			NodePath(":host_execution_time"),
+			NodePath(".:position"),
+			NodePath(".:active"),
+			NodePath(".:remaining_appetite"),
+			NodePath(".:host_execution_time"),
 		]
 	)
 	boss = spawned_boss
@@ -1462,7 +1467,7 @@ func _update_party_hud() -> void:
 
 
 func _on_network_match_returned_to_lobby() -> void:
-	call_deferred("_reload_after_network_match")
+	_schedule_network_scene_reload()
 
 
 func _on_network_connection_state_changed(connection_state: StringName, _message: String) -> void:
@@ -1470,7 +1475,7 @@ func _on_network_connection_state_changed(connection_state: StringName, _message
 		return
 	_network_active = false
 	get_tree().paused = false
-	call_deferred("_reload_after_network_disconnect")
+	_schedule_network_scene_reload()
 
 
 func _on_network_roster_changed(roster: Array[Dictionary]) -> void:
@@ -1494,8 +1499,20 @@ func _on_network_roster_changed(roster: Array[Dictionary]) -> void:
 	_update_party_hud()
 
 
+func _schedule_network_scene_reload() -> void:
+	if _network_scene_reload_pending:
+		return
+	_network_scene_reload_pending = true
+	call_deferred("_reload_after_network_match")
+
+
 func _reload_after_network_match() -> void:
 	get_tree().paused = false
+	if _network_session != null and _network_session.is_client():
+		# 客户端仍保留原 Spawner 一帧以上，避免迟到的主机销毁包落到新场景。
+		await get_tree().create_timer(NETWORK_SCENE_RELOAD_DELAY_SECONDS).timeout
+	if not is_inside_tree():
+		return
 	get_tree().reload_current_scene()
 
 
