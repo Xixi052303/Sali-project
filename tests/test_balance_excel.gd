@@ -83,6 +83,10 @@ func _test_combat_rules_workbook() -> void:
 	)
 	_check(result.loaded_from_excel, "战斗规则 Excel 可读取")
 	_check(
+		is_equal_approx(result.boss_appetite_multiplier, BossPatternData.DEFAULT_APPETITE_MULTIPLIER),
+		"Boss胃口倍率由战斗规则表读取为3.0倍"
+	)
+	_check(
 		is_equal_approx(result.cart_invincibility_duration_seconds, 0.5),
 		"餐车受击无敌时间由战斗规则表读取为0.5秒"
 	)
@@ -114,6 +118,7 @@ func _test_combat_rules_workbook() -> void:
 	var invalid_ratio_result: GameplayExcelLoader.CombatRulesLoadResult = (
 		GameplayExcelLoader._parse_combat_rule_values({
 			"cart_invincibility_duration_seconds": 0.9,
+			"boss_appetite_multiplier": 3.0,
 			"respawn_base_seconds": 15.0,
 			"respawn_increment_seconds": 15.0,
 			"respawn_max_seconds": 180.0,
@@ -128,6 +133,26 @@ func _test_combat_rules_workbook() -> void:
 		and is_equal_approx(invalid_ratio_result.respawn_base_seconds, 15.0)
 		and is_equal_approx(invalid_ratio_result.respawn_max_seconds, 180.0),
 		"战斗规则整表失败时不带入前面已解析的部分值"
+	)
+	var invalid_boss_result: GameplayExcelLoader.CombatRulesLoadResult = (
+		GameplayExcelLoader._parse_combat_rule_values({
+			"cart_invincibility_duration_seconds": 0.9,
+			"boss_appetite_multiplier": 0.0,
+			"respawn_base_seconds": 15.0,
+			"respawn_increment_seconds": 15.0,
+			"respawn_max_seconds": 180.0,
+			"ghost_damage_multiplier": 0.01,
+			"respawn_durability_ratio": 0.5,
+			"respawn_invincibility_seconds": 2.0,
+		})
+	)
+	_check(
+		not invalid_boss_result.loaded_from_excel
+			and is_equal_approx(
+				invalid_boss_result.boss_appetite_multiplier,
+				BossPatternData.DEFAULT_APPETITE_MULTIPLIER
+			),
+		"Boss胃口倍率非正时触发战斗规则回退"
 	)
 
 
@@ -496,6 +521,10 @@ func _test_missing_workbook_fallback_signal() -> void:
 		and is_equal_approx(
 			combat_result.cart_invincibility_duration_seconds,
 			Cart3D.DEFAULT_INVINCIBILITY_DURATION_SECONDS
+		)
+		and is_equal_approx(
+			combat_result.boss_appetite_multiplier,
+			BossPatternData.DEFAULT_APPETITE_MULTIPLIER
 		)
 		and not combat_result.error_message.is_empty(),
 		"战斗规则表缺失时返回0.5秒安全回退"

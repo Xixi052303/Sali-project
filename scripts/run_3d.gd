@@ -1603,6 +1603,12 @@ func _load_combat_rules_balance() -> void:
 	if load_result.loaded_from_excel:
 		# 只有整表通过严格校验才应用，避免坏表把前面已解析的部分值带入本局。
 		_cart_invincibility_duration_seconds = load_result.cart_invincibility_duration_seconds
+		# Excel值写入运行时副本，避免改写场景引用的共享Boss Resource。
+		if boss_data != null:
+			var runtime_boss_data: BossPatternData = boss_data.duplicate(true) as BossPatternData
+			if runtime_boss_data != null:
+				runtime_boss_data.appetite_multiplier = load_result.boss_appetite_multiplier
+				boss_data = runtime_boss_data
 		_respawn_base_seconds = load_result.respawn_base_seconds
 		_respawn_increment_seconds = load_result.respawn_increment_seconds
 		_respawn_max_seconds = load_result.respawn_max_seconds
@@ -1610,8 +1616,9 @@ func _load_combat_rules_balance() -> void:
 		_respawn_durability_ratio = load_result.respawn_durability_ratio
 		_respawn_invincibility_seconds = load_result.respawn_invincibility_seconds
 		print(
-			"BALANCE_COMBAT_RULES_LOADED path=%s cart_invincibility=%.3f respawn=%.1f/%.1f/%.1f ghost=%.3f" % [
+			"BALANCE_COMBAT_RULES_LOADED path=%s boss_multiplier=%.3f cart_invincibility=%.3f respawn=%.1f/%.1f/%.1f ghost=%.3f" % [
 				COMBAT_RULES_WORKBOOK_PATH,
+				load_result.boss_appetite_multiplier,
 				_cart_invincibility_duration_seconds,
 				_respawn_base_seconds,
 				_respawn_increment_seconds,

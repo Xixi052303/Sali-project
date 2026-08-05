@@ -3,7 +3,7 @@ extends RefCounted
 
 const CONFIG_SHEET: String = "配置"
 const EXPECTED_SCHEMA_VERSION: int = 1
-const COMBAT_RULES_SCHEMA_VERSION: int = 2
+const COMBAT_RULES_SCHEMA_VERSION: int = 3
 const WEAPON_SCHEMA_VERSION: int = 5
 const NORMAL_UPGRADE_SCHEMA_VERSION: int = 2
 const REQUIRED_CUSTOMER_IDS: Array[StringName] = [
@@ -77,6 +77,7 @@ class SpecialUpgradeLoadResult:
 class CombatRulesLoadResult:
 	extends RefCounted
 
+	var boss_appetite_multiplier: float = BossPatternData.DEFAULT_APPETITE_MULTIPLIER
 	var cart_invincibility_duration_seconds: float = (
 		Cart3D.DEFAULT_INVINCIBILITY_DURATION_SECONDS
 	)
@@ -133,6 +134,7 @@ static func _parse_combat_rule_values(
 	# 先用局部变量收集整表结果；只有全部规则通过校验后才提交，避免失败结果残留半套配置。
 	var cart_invincibility_duration_seconds: float = float(value)
 	var required_values: Dictionary[String, float] = {
+		"boss_appetite_multiplier": BossPatternData.DEFAULT_APPETITE_MULTIPLIER,
 		"respawn_base_seconds": RunState.DEFAULT_RESPAWN_BASE_SECONDS,
 		"respawn_increment_seconds": RunState.DEFAULT_RESPAWN_INCREMENT_SECONDS,
 		"respawn_max_seconds": RunState.DEFAULT_RESPAWN_MAX_SECONDS,
@@ -153,6 +155,7 @@ static func _parse_combat_rule_values(
 		result.error_message = "战斗规则参数 respawn_max_seconds 不能小于 respawn_base_seconds"
 		return result
 	result.cart_invincibility_duration_seconds = cart_invincibility_duration_seconds
+	result.boss_appetite_multiplier = required_values["boss_appetite_multiplier"]
 	result.respawn_base_seconds = required_values["respawn_base_seconds"]
 	result.respawn_increment_seconds = required_values["respawn_increment_seconds"]
 	result.respawn_max_seconds = required_values["respawn_max_seconds"]

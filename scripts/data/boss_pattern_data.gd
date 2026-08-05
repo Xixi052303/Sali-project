@@ -1,9 +1,11 @@
 class_name BossPatternData
 extends Resource
 
+const DEFAULT_APPETITE_MULTIPLIER: float = 3.0
+
 @export var display_name: String = "临时主厨"
 # Boss 胃口在登场时按当前普通食客基准乘算，默认承担三倍火力检查。
-@export var appetite_multiplier: float = 3.0
+@export var appetite_multiplier: float = DEFAULT_APPETITE_MULTIPLIER
 @export var move_speed: float = 110.0
 @export var telegraph_duration: float = 1.15
 @export var recovery_duration: float = 1.0
