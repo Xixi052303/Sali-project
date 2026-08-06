@@ -452,6 +452,32 @@ func _test_network_durability_synchronization() -> void:
 		and hud_durability_label.text.contains("临时护盾 +10"),
 		"加入者底部耐久只显示本机P2权威数值"
 	)
+	host_state.satisfaction_multiplier = 1.1
+	client_state.satisfaction_multiplier = 1.25
+	var client_pause_details: String = run._build_network_pause_details_text(1)
+	_check(
+		client_pause_details.contains("P1 暂停了出餐")
+		and client_pause_details.contains("耐久 80 / 150")
+		and not client_pause_details.contains("耐久 35 / 120")
+		and client_pause_details.contains("累计满足值 +25%")
+		and not client_pause_details.contains("累计满足值 +10%")
+		and client_pause_details.contains("食材详情"),
+		"加入者暂停详情显示本机P2数值与完整构筑栏目"
+	)
+	session.set("mode", 1)
+	session.set("local_slot", 1)
+	var host_pause_details: String = run._build_network_pause_details_text(2)
+	_check(
+		host_pause_details.contains("P2 暂停了出餐")
+		and host_pause_details.contains("耐久 35 / 120")
+		and not host_pause_details.contains("耐久 80 / 150")
+		and host_pause_details.contains("累计满足值 +10%")
+		and not host_pause_details.contains("累计满足值 +25%")
+		and host_pause_details.contains("食材详情"),
+		"房主暂停详情显示本机P1数值与完整构筑栏目"
+	)
+	session.set("mode", 2)
+	session.set("local_slot", 2)
 	client_cart.position.x = 5.0
 	client_cart.apply_network_target(6.0, Playfield.CART_Z)
 	session.call("queue_input", 6.0, Playfield.CART_Z)

@@ -624,7 +624,7 @@ func _on_network_pause_changed(paused: bool, owner_slot: int) -> void:
 		return
 	_manual_pause_active = paused
 	if paused:
-		hud.show_pause("P%d 暂停了出餐\n暂停者或房主可以继续" % owner_slot)
+		hud.show_pause(_build_network_pause_details_text(owner_slot))
 		get_tree().paused = true
 	else:
 		hud.hide_pause()
@@ -4283,49 +4283,67 @@ func _refresh_hud_inventory() -> void:
 		hud.set_cooking_level(runtime.data.id, state.food_level(runtime.data.id))
 
 
+func _build_network_pause_details_text(owner_slot: int) -> String:
+	return "P%d 暂停了出餐\n暂停者或房主可以继续\n\n%s" % [
+		owner_slot,
+		_build_pause_details_text(),
+	]
+
+
 func _build_pause_details_text() -> String:
+	var details_state: RunState = state
+	var details_weapon_controller: WeaponController3D = weapon_controller
+	# 联机双方都从本机槽位生成详情，暂停发起者只影响提示与恢复权限。
+	if _network_active and _network_session != null:
+		var local_slot: int = int(_network_session.local_slot)
+		var local_context: PlayerRunContext = _player_contexts.get(local_slot)
+		if local_context != null:
+			details_state = local_context.state
+			details_weapon_controller = local_context.weapon_controller
 	var sections: PackedStringArray = []
 	sections.append(
 		"餐车\n耐久 %.0f / %.0f　临时护盾 %.0f" % [
-			state.current_durability,
-			state.maximum_durability,
-			state.temporary_shield,
+			details_state.current_durability,
+			details_state.maximum_durability,
+			details_state.temporary_shield,
 		]
 	)
 	var upgrade_lines: PackedStringArray = []
-	upgrade_lines.append("• %s" % state.cumulative_effect_text(UpgradeData.Kind.SUGAR))
+	upgrade_lines.append("• %s" % details_state.cumulative_effect_text(UpgradeData.Kind.SUGAR))
 	upgrade_lines.append(
-		"• %s" % state.cumulative_effect_text(UpgradeData.Kind.QUICK_PREP)
+		"• %s" % details_state.cumulative_effect_text(UpgradeData.Kind.QUICK_PREP)
 	)
-	upgrade_lines.append("• %s" % state.cumulative_effect_text(UpgradeData.Kind.WINE))
+	upgrade_lines.append("• %s" % details_state.cumulative_effect_text(UpgradeData.Kind.WINE))
 	upgrade_lines.append(
-		"• %s" % state.cumulative_effect_text(UpgradeData.Kind.SCALLION)
-	)
-	upgrade_lines.append(
-		"• %s" % state.cumulative_effect_text(UpgradeData.Kind.STARCH)
+		"• %s" % details_state.cumulative_effect_text(UpgradeData.Kind.SCALLION)
 	)
 	upgrade_lines.append(
-		"• %s" % state.cumulative_effect_text(UpgradeData.Kind.LIGHT_CART)
+		"• %s" % details_state.cumulative_effect_text(UpgradeData.Kind.STARCH)
 	)
 	upgrade_lines.append(
-		"• %s" % state.cumulative_effect_text(UpgradeData.Kind.STURDY_CART)
+		"• %s" % details_state.cumulative_effect_text(UpgradeData.Kind.LIGHT_CART)
 	)
-	upgrade_lines.append("• %s" % state.cumulative_effect_text(UpgradeData.Kind.REPAIR))
+	upgrade_lines.append(
+		"• %s" % details_state.cumulative_effect_text(UpgradeData.Kind.STURDY_CART)
+	)
+	upgrade_lines.append("• %s" % details_state.cumulative_effect_text(UpgradeData.Kind.REPAIR))
 	sections.append("累计强化\n%s" % "\n".join(upgrade_lines))
 	var food_lines: PackedStringArray = []
-	for runtime: FoodRuntime in weapon_controller.foods:
+	for runtime: FoodRuntime in details_weapon_controller.foods:
 		var food: FoodData = runtime.data
 		var range_multiplier: float = (
-			state.effective_projectile_radius(food) / maxf(0.001, food.projectile_radius)
+			details_state.effective_projectile_radius(food) / maxf(0.001, food.projectile_radius)
 		)
 		var traits: PackedStringArray = []
-		if state.is_food_target_aimed(food.id):
+		if details_state.is_food_target_aimed(food.id):
 			traits.append("瞄准投喂")
-		if state.is_food_homing(food.id):
+		if details_state.is_food_homing(food.id):
 			traits.append("飞行追踪")
-		if food.id == &"baguette" and state.has_food_evolution(&"baguette_giant"):
-			traits.append("巨型法棍 %.1fs" % state.effective_giant_baguette_interval())
-		if food.id == &"mushroom" and state.has_food_evolution(&"mushroom_breath"):
+		if food.id == &"baguette" and details_state.has_food_evolution(&"baguette_giant"):
+			traits.append(
+				"巨型法棍 %.1fs" % details_state.effective_giant_baguette_interval()
+			)
+		if food.id == &"mushroom" and details_state.has_food_evolution(&"mushroom_breath"):
 			traits.append("呼吸菌圈")
 		var trait_text: String = " · ".join(traits) if not traits.is_empty() else "无"
 		food_lines.append(
@@ -4336,13 +4354,13 @@ func _build_pause_details_text() -> String:
 				+ "  特性 %s"
 			) % [
 				food.display_name,
-				state.food_level(food.id),
-				state.effective_satisfaction(food),
-				state.effective_interval(food),
+				details_state.food_level(food.id),
+				details_state.effective_satisfaction(food),
+				details_state.effective_interval(food),
 				range_multiplier,
-				state.effective_duration(food),
-				state.servings,
-				state.effective_pierce_count(food),
+				details_state.effective_duration(food),
+				details_state.servings,
+				details_state.effective_pierce_count(food),
 				trait_text,
 			]
 		)
