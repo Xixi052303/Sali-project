@@ -28,6 +28,7 @@ var _network_discovery_test: bool = false
 var _network_host_disconnect_test: bool = false
 var _expected_players: int = 4
 var _projectile_burst_events: int = 0
+var _egg_puddle_events: int = 0
 var _failure_logged: bool = false
 var _choice_disconnect_sent: bool = false
 var _choice_disconnect_choice_sent: bool = false
@@ -256,10 +257,11 @@ func _on_match_returned_to_lobby() -> void:
 		Engine.time_scale = 1.0
 		_write_marker("return_requested")
 	_write_marker("returned_signal_%s" % _role_marker())
-	_log("ACCEPT_%s_RETURN_SIGNAL roster=%d bursts=%d" % [
+	_log("ACCEPT_%s_RETURN_SIGNAL roster=%d bursts=%d puddles=%d" % [
 		_role_marker(),
 		_session.get_roster().size(),
 		_projectile_burst_events,
+		_egg_puddle_events,
 	])
 
 
@@ -290,6 +292,9 @@ func _on_room_list_changed(rooms: Array[Dictionary]) -> void:
 func _on_network_event_received(event: Dictionary) -> void:
 	if event.get("type", "") == "projectile_burst":
 		_projectile_burst_events += 1
+	elif event.get("type", "") == "egg_puddle_spawned":
+		_egg_puddle_events += 1
+		_write_marker("egg_puddle_%s" % _role_marker())
 	elif event.get("type", "") == "match_failed":
 		_write_marker("match_failed_%s" % _role_marker())
 		_log("ACCEPT_%s_MATCH_FAILED" % _role_marker())

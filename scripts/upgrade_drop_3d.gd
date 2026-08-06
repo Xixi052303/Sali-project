@@ -8,6 +8,8 @@ const POST_CART_DESPAWN_OFFSET_Z: float = Playfield.CUSTOMER_DESPAWN_Z - Playfie
 var run: RunController3D
 var upgrade: UpgradeData
 var baseline_appetite: float = 1.0
+# 奖励门文案使用房主生成时冻结的耐久基准，避免各客户端按自己的构筑显示不同点数。
+var display_maximum_durability: float = 100.0
 var occupied_regions: int = 2
 var spawn_index: int = 0
 var upgrade_health: float = 0.0
@@ -30,12 +32,14 @@ func configure(
 	start_position: Vector3,
 	gate_baseline_appetite: float,
 	gate_occupied_regions: int,
-	index: int
+	index: int,
+	display_durability: float = 100.0
 ) -> void:
 	_resolve_visual_nodes()
 	run = run_controller
 	upgrade = upgrade_data
 	baseline_appetite = maxf(1.0, gate_baseline_appetite)
+	display_maximum_durability = maxf(1.0, display_durability)
 	occupied_regions = clampi(gate_occupied_regions, 1, Playfield.REGION_COUNT)
 	spawn_index = index
 	_player_resolved.clear()
@@ -160,6 +164,7 @@ func network_snapshot() -> Dictionary:
 		"x": position.x,
 		"z": position.z,
 		"health": upgrade_health,
+		"display_maximum_durability": display_maximum_durability,
 		"resolved": resolved,
 		"resolved_slots": resolved_slots,
 	}
@@ -169,11 +174,21 @@ func apply_network_snapshot(snapshot: Dictionary) -> void:
 	position.x = float(snapshot.get("x", position.x))
 	position.z = float(snapshot.get("z", position.z))
 	upgrade_health = float(snapshot.get("health", upgrade_health))
+	display_maximum_durability = maxf(
+		1.0,
+		float(snapshot.get("display_maximum_durability", display_maximum_durability))
+	)
+	if upgrade != null:
+		var scaled_health_pool: float = (
+			baseline_appetite * maxf(0.001, upgrade.source_scale)
+		)
+		upgrade.set_value_ratio(1.0 - upgrade_health / scaled_health_pool)
 	resolved = bool(snapshot.get("resolved", resolved))
 	_player_resolved.clear()
 	for slot: int in snapshot.get("resolved_slots", []):
 		_player_resolved[slot] = true
 	_refresh_label()
+	_refresh_feedback()
 	_refresh_local_visibility()
 
 
@@ -264,11 +279,10 @@ func _configure_visual() -> void:
 func _refresh_label() -> void:
 	if _label == null or upgrade == null:
 		return
-	var maximum_durability: float = 100.0 if run == null else run.state.maximum_durability
 	# 来源缩放只影响奖励数值，不在门牌上额外提示“小份”来源。
 	_label.text = "%s\n%s\n%s" % [
 		upgrade.display_name,
-		upgrade.effect_text(maximum_durability),
+		upgrade.effect_text(display_maximum_durability),
 		upgrade.rarity_name,
 	]
 	_label.modulate = Color.WHITE
@@ -282,5 +296,6 @@ func _refresh_feedback() -> void:
 	var enabled: bool = _hit_feedback_remaining > 0.0
 	# 常驻 emission 材质变体，避免第一次命中掉落门时切换渲染分支。
 	material.emission_enabled = true
-	material.emission = Color.WHITE if enabled else Color.BLACK
+	# 命中只提高同一稀有度色的亮度，避免房主与客机反馈时差看成品质颜色分叉。
+	material.emission = upgrade.rarity_color if enabled and upgrade != null else Color.BLACK
 	material.emission_energy_multiplier = 0.75 if enabled else 0.0

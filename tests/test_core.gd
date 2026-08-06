@@ -152,6 +152,8 @@ func _test_network_projectile_presentation() -> void:
 	var potato: FoodData = load("res://data/foods/potato.tres") as FoodData
 	var mushroom: FoodData = load("res://data/foods/mushroom.tres") as FoodData
 	var carrot: FoodData = load("res://data/foods/carrot.tres") as FoodData
+	var egg: FoodData = load("res://data/foods/egg.tres") as FoodData
+	var egg_puddle: FoodData = load("res://data/foods/egg_puddle.tres") as FoodData
 	var customer_data: CustomerData = load(
 		"res://data/customers/basic_guest.tres"
 	) as CustomerData
@@ -162,6 +164,8 @@ func _test_network_projectile_presentation() -> void:
 		and potato != null
 		and mushroom != null
 		and carrot != null
+		and egg != null
+		and egg_puddle != null
 		and customer_data != null,
 		"联机投射物表现测试资源可加载"
 	)
@@ -172,6 +176,8 @@ func _test_network_projectile_presentation() -> void:
 		or potato == null
 		or mushroom == null
 		or carrot == null
+		or egg == null
+		or egg_puddle == null
 		or customer_data == null
 	):
 		return
@@ -308,6 +314,31 @@ func _test_network_projectile_presentation() -> void:
 		and client_projectile.remaining_hits == 0,
 		"加入者窗口复现队友投射物命中与回收，但不重复扣除权威胃口"
 	)
+	var puddle_count_before: int = projectiles.get_child_count()
+	run._food_data_by_id[egg.id] = egg
+	run.egg_puddle_data = egg_puddle
+	run._spawn_network_egg_puddle({
+		"owner_slot": 2,
+		"source_food_id": str(egg.id),
+		"derived_attack_id": str(egg_puddle.id),
+		"position": run._vector_payload(customer.position),
+		"satisfaction": 10.0,
+		"radius": Playfield.design_to_world(egg_puddle.projectile_radius),
+		"duration": egg_puddle.base_lifetime,
+		"interval": egg_puddle.base_interval,
+	})
+	var visual_puddle: FoodPuddle3D = projectiles.get_child(
+		projectiles.get_child_count() - 1
+	) as FoodPuddle3D
+	if visual_puddle != null:
+		visual_puddle._process(0.5)
+	_check(
+		projectiles.get_child_count() == puddle_count_before + 1
+		and visual_puddle != null
+		and visual_puddle.owner_slot == 2
+		and is_equal_approx(customer.remaining_appetite, appetite_before_client_hit),
+		"加入者窗口恢复房主蛋液表现，但不重复结算蛋液伤害"
+	)
 
 	customer._hit_feedback_remaining = 0.0
 	session.set("mode", 1)
@@ -421,6 +452,27 @@ func _test_network_durability_synchronization() -> void:
 		and hud_durability_label.text.contains("临时护盾 +10"),
 		"加入者底部耐久只显示本机P2权威数值"
 	)
+	client_cart.position.x = 5.0
+	client_cart.apply_network_target(6.0, Playfield.CART_Z)
+	session.call("queue_input", 6.0, Playfield.CART_Z)
+	run._apply_network_snapshot({
+		"players": [{
+			"slot": 2,
+			"x": 2.0,
+			"z": Playfield.CART_Z,
+			"input_sequence": 0,
+		}],
+	})
+	_check(is_equal_approx(client_cart.position.x, 5.0), "客机忽略尚未确认本机输入的旧位置快照")
+	run._apply_network_snapshot({
+		"players": [{
+			"slot": 2,
+			"x": 2.0,
+			"z": Playfield.CART_Z,
+			"input_sequence": 1,
+		}],
+	})
+	_check(is_equal_approx(client_cart.position.x, 2.0), "房主确认当前输入后客机接受明显位置纠偏")
 	host_state.add_temporary_shield(7.0)
 	_check(
 		host_current_label.text == "47"
@@ -659,6 +711,18 @@ func _test_3d_plane_rules() -> void:
 	) as Label3D
 	_check(not cart_shield_label.visible, "护盾耗尽后头顶护盾表现隐藏")
 	_check(maximum_feedback.visible and maximum_feedback.text == "上限 +20", "最大耐久增加时显示短暂上限反馈")
+	cart.position = Vector3(2.75, 0.25, 12.25)
+	cart.apply_network_target(6.0, 12.25)
+	var latency_position: Vector3 = cart.extrapolate_network_position(cart.position, 0.1)
+	_check(
+		is_equal_approx(latency_position.x - cart.position.x, 0.9)
+		and is_equal_approx(latency_position.z, cart.position.z),
+		"普通阶段半程延迟前推沿横向速度补偿且不改变Z轴"
+	)
+	cart.position.x = 6.55
+	cart.apply_network_target(10.0, 12.25)
+	latency_position = cart.extrapolate_network_position(cart.position, 0.1)
+	_check(latency_position.x <= 6.6001, "延迟前推仍受餐车道路右边界约束")
 	var movement_boss: PrototypeBoss3D = PrototypeBoss3D.new()
 	movement_boss.position = Vector3(3.6, 0.0, 6.0)
 	cart.begin_boss_movement(movement_boss)
@@ -1935,6 +1999,58 @@ func _test_upgrade_gate() -> void:
 	_check(gate.selected_base_health_for_x(3.6) == gate.right_base_health, "中心点只结算右门碰撞损伤")
 	gate.free()
 
+	var host_left: UpgradeData = UpgradeData.new()
+	host_left.display_name = "葱"
+	host_left.kind = UpgradeData.Kind.SCALLION
+	host_left.configure_value_range(0.10, 0.60, 0.34)
+	var host_right: UpgradeData = UpgradeData.new()
+	host_right.display_name = "餐车改造"
+	host_right.kind = UpgradeData.Kind.STURDY_CART
+	host_right.configure_value_range(0.02, 0.30, 0.80)
+	var host_gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
+	host_gate.configure(null, host_left, host_right, false, 100.0, 3, {}, 114.0)
+	host_gate.receive_damage(true, host_gate.left_base_health)
+	host_gate.receive_damage(true, 26.0)
+
+	var client_left: UpgradeData = UpgradeData.new()
+	client_left.display_name = "葱"
+	client_left.kind = UpgradeData.Kind.SCALLION
+	client_left.configure_value_range(0.10, 0.60, 0.34)
+	var client_right: UpgradeData = UpgradeData.new()
+	client_right.display_name = "餐车改造"
+	client_right.kind = UpgradeData.Kind.STURDY_CART
+	client_right.configure_value_range(0.02, 0.30, 0.80)
+	var client_gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
+	# 客机先用不同耐久基准创建，再由房主快照覆盖门牌与品质表现。
+	client_gate.configure(null, client_left, client_right, false, 100.0, 3, {}, 100.0)
+	client_gate.play_hit_feedback(true)
+	client_gate.apply_network_snapshot(host_gate.network_snapshot())
+	var host_left_label: Label3D = host_gate.get_node("LeftLabel") as Label3D
+	var host_right_label: Label3D = host_gate.get_node("RightLabel") as Label3D
+	var client_left_label: Label3D = client_gate.get_node("LeftLabel") as Label3D
+	var client_right_label: Label3D = client_gate.get_node("RightLabel") as Label3D
+	var client_left_health: Label3D = client_gate.get_node("LeftHealthLabel") as Label3D
+	var client_left_panel: MeshInstance3D = client_gate.get_node("LeftPanel") as MeshInstance3D
+	var client_left_material: StandardMaterial3D = (
+		client_left_panel.material_override as StandardMaterial3D
+	)
+	_check(
+		is_equal_approx(client_left.value_ratio, host_left.value_ratio)
+		and is_equal_approx(client_left.value, host_left.value)
+		and client_left.rarity_name == host_left.rarity_name
+		and client_left.rarity_color.is_equal_approx(host_left.rarity_color)
+		and client_left_label.text == host_left_label.text
+		and client_right_label.text == host_right_label.text
+		and client_left_material.albedo_color.is_equal_approx(
+			client_left.rarity_color.darkened(0.22)
+		)
+		and client_left_health.modulate.is_equal_approx(client_left.rarity_color)
+		and client_left_material.emission.is_equal_approx(client_left.rarity_color),
+		"普通门客机快照恢复与房主一致的数值、稀有度颜色和耐久文案"
+	)
+	client_gate.free()
+	host_gate.free()
+
 	var start_gate: UpgradeGate3D = gate_scene.instantiate() as UpgradeGate3D
 	start_gate.configure(null, left, right, true, 100.0, 2)
 	_check(is_equal_approx(start_gate.position.z, Playfield.FORWARD_SPAWN_Z), "开局食材门从屏外远端生成")
@@ -1972,7 +2088,7 @@ func _test_start_food_selection() -> void:
 
 func _test_customer_reward_gate() -> void:
 	var reward: UpgradeData = UpgradeData.new()
-	reward.kind = UpgradeData.Kind.SUGAR
+	reward.kind = UpgradeData.Kind.REPAIR
 	reward.configure_value_range(0.05, 0.45, 0.34)
 	var basic: CustomerData = load("res://data/customers/basic_guest.tres") as CustomerData
 	var elite: CustomerData = load("res://data/customers/elite_guest.tres") as CustomerData
@@ -1983,14 +2099,56 @@ func _test_customer_reward_gate() -> void:
 	_check(is_equal_approx(elite.appetite_at(32.0), 48.0), "精英只使用1.5倍基准且不参与随机稀有度")
 	var reward_scene: PackedScene = load("res://scenes/upgrade_drop_3d.tscn") as PackedScene
 	var reward_gate: UpgradeDrop3D = reward_scene.instantiate() as UpgradeDrop3D
-	reward_gate.configure(null, reward, Vector3(1.6, 0.0, 4.0), 100.0, 2, 3)
+	reward_gate.configure(null, reward, Vector3(1.6, 0.0, 4.0), 100.0, 2, 3, 145.0)
 	_check(is_equal_approx(reward_gate.upgrade_health, 26.4), "小份奖励门的隐藏升值血量按40%缩放")
 	var reward_label: Label3D = reward_gate.get_node("DropLabel") as Label3D
-	_check(not reward_label.text.contains("小份"), "奖励门牌不再额外提示小份来源")
+	_check(
+		not reward_label.text.contains("小份") and reward_label.text.contains("+11点"),
+		"奖励门牌使用房主冻结的耐久基准且不额外提示小份来源"
+	)
 	_check(reward_gate.contains_cart_x(1.6), "餐车经过食客原占地区域可以领取奖励门")
 	_check(not reward_gate.contains_cart_x(3.6), "餐车绕开奖励门时不能领取")
 	reward_gate.receive_damage(13.2)
 	_check(is_equal_approx(reward.value_ratio, 0.67), "攻击小份奖励门继续提高原百分位与稀有度")
+	reward_gate.receive_damage(9.2)
+	var client_reward: UpgradeData = UpgradeData.new()
+	client_reward.kind = UpgradeData.Kind.REPAIR
+	client_reward.configure_value_range(0.05, 0.45, 0.34)
+	client_reward.set_source_scale(0.4, "小份奖励")
+	var client_reward_gate: UpgradeDrop3D = reward_scene.instantiate() as UpgradeDrop3D
+	# 故意用不同的本地耐久基准配置客机，再验证房主快照能完整覆盖显示。
+	client_reward_gate.configure(
+		null,
+		client_reward,
+		Vector3(1.6, 0.0, 4.0),
+		100.0,
+		2,
+		3,
+		100.0
+	)
+	client_reward_gate.apply_network_snapshot(reward_gate.network_snapshot())
+	client_reward_gate.play_hit_feedback()
+	var client_reward_label: Label3D = client_reward_gate.get_node("DropLabel") as Label3D
+	var reward_panel: MeshInstance3D = reward_gate.get_node("Panel") as MeshInstance3D
+	var reward_material: StandardMaterial3D = (
+		reward_panel.material_override as StandardMaterial3D
+	)
+	var client_reward_panel: MeshInstance3D = client_reward_gate.get_node("Panel") as MeshInstance3D
+	var client_reward_material: StandardMaterial3D = (
+		client_reward_panel.material_override as StandardMaterial3D
+	)
+	_check(
+		is_equal_approx(client_reward.value_ratio, reward.value_ratio)
+		and is_equal_approx(client_reward.value, reward.value)
+		and client_reward_material.albedo_color.is_equal_approx(
+			reward_material.albedo_color
+		)
+		and client_reward_material.emission.is_equal_approx(client_reward.rarity_color)
+		and client_reward_label.text == reward_label.text
+		and client_reward_label.text.contains("+24点"),
+		"客机奖励门快照恢复与房主一致的数值、稀有度和反馈色"
+	)
+	client_reward_gate.free()
 	reward_gate.apply_network_snapshot({"resolved": false, "resolved_slots": [2]})
 	_check(
 		reward_gate.visible

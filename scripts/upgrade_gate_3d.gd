@@ -17,6 +17,8 @@ var resolved: bool = false
 var move_speed: float = 2.5
 var spawn_index: int = 0
 var baseline_appetite: float = 1.0
+# 普通门文案使用房主生成时冻结的耐久基准，避免各客户端按自己的构筑显示不同点数。
+var display_maximum_durability: float = 100.0
 # 基础胃口负责撞门损伤并公开显示；隐藏胃口只负责基础层击破后的奖励升值。
 var left_base_health: float = 0.0
 var right_base_health: float = 0.0
@@ -46,7 +48,8 @@ func configure(
 	is_start_gate: bool = false,
 	gate_baseline_appetite: float = 1.0,
 	index: int = 0,
-	per_player_start_options: Dictionary[int, Array] = {}
+	per_player_start_options: Dictionary[int, Array] = {},
+	display_durability: float = 100.0
 ) -> void:
 	_resolve_visual_nodes()
 	run = run_controller
@@ -58,6 +61,7 @@ func configure(
 	if start_options_by_slot.is_empty() and left != null and right != null:
 		start_options_by_slot[1] = [left, right]
 	baseline_appetite = maxf(1.0, gate_baseline_appetite)
+	display_maximum_durability = maxf(1.0, display_durability)
 	spawn_index = index
 	_player_resolved.clear()
 	# 开局门也从远端屏外进入，避免开始出餐后在道路中段突然出现。
@@ -178,6 +182,7 @@ func network_snapshot() -> Dictionary:
 		"right_base": right_base_health,
 		"left_upgrade": left_upgrade_health,
 		"right_upgrade": right_upgrade_health,
+		"display_maximum_durability": display_maximum_durability,
 		"resolved": resolved,
 		"resolved_slots": resolved_slots,
 	}
@@ -190,11 +195,23 @@ func apply_network_snapshot(snapshot: Dictionary) -> void:
 	right_base_health = float(snapshot.get("right_base", right_base_health))
 	left_upgrade_health = float(snapshot.get("left_upgrade", left_upgrade_health))
 	right_upgrade_health = float(snapshot.get("right_upgrade", right_upgrade_health))
+	display_maximum_durability = maxf(
+		1.0,
+		float(snapshot.get("display_maximum_durability", display_maximum_durability))
+	)
+	if not start_food_gate and left_upgrade != null and right_upgrade != null:
+		left_upgrade.set_value_ratio(
+			1.0 - left_upgrade_health / maxf(0.001, baseline_appetite)
+		)
+		right_upgrade.set_value_ratio(
+			1.0 - right_upgrade_health / maxf(0.001, baseline_appetite)
+		)
 	resolved = bool(snapshot.get("resolved", resolved))
 	_player_resolved.clear()
 	for slot: int in snapshot.get("resolved_slots", []):
 		_player_resolved[slot] = true
 	_refresh_labels()
+	_refresh_feedback()
 
 
 # 把左右门板的逻辑范围转换为餐车所在的 X/Z 世界平面。
@@ -347,9 +364,8 @@ func _refresh_labels() -> void:
 	var display_options: Array = start_options_by_slot.get(display_slot, [left_upgrade, right_upgrade])
 	var display_left: UpgradeData = display_options[0] if display_options.size() > 0 else left_upgrade
 	var display_right: UpgradeData = display_options[1] if display_options.size() > 1 else right_upgrade
-	var maximum_durability: float = 100.0 if run == null else run.state.maximum_durability
-	_left_label.text = _label_text(display_left, maximum_durability)
-	_right_label.text = _label_text(display_right, maximum_durability)
+	_left_label.text = _label_text(display_left, display_maximum_durability)
+	_right_label.text = _label_text(display_right, display_maximum_durability)
 	_left_label.modulate = Color.WHITE
 	_right_label.modulate = Color.WHITE
 	_left_health_label.visible = not start_food_gate
@@ -390,7 +406,11 @@ func _refresh_feedback() -> void:
 
 func _set_emission(mesh: MeshInstance3D, enabled: bool) -> void:
 	var material: StandardMaterial3D = mesh.material_override as StandardMaterial3D
+	var rarity_color: Color = (
+		left_upgrade.rarity_color if mesh == _left_mesh else right_upgrade.rarity_color
+	)
 	# 常驻 emission 材质变体，避免第一次命中时切换渲染分支并同步编译。
 	material.emission_enabled = true
-	material.emission = Color.WHITE if enabled else Color.BLACK
+	# 命中只提高当前稀有度色的亮度，避免主客机反馈时差造成色相不一致。
+	material.emission = rarity_color if enabled else Color.BLACK
 	material.emission_energy_multiplier = 0.75 if enabled else 0.0

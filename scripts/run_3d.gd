@@ -593,13 +593,16 @@ func _on_network_input_received(
 	player_slot: int,
 	target_x: float,
 	target_z: float,
-	sequence: int
+	sequence: int,
+	one_way_latency_seconds: float
 ) -> void:
 	var context: PlayerRunContext = _player_contexts.get(player_slot)
 	if context == null or sequence <= context.last_input_sequence:
 		return
 	context.last_input_sequence = sequence
 	context.cart.apply_network_target(target_x, target_z)
+	if _network_session.is_host() and player_slot != _network_session.local_slot:
+		context.cart.compensate_network_latency(one_way_latency_seconds)
 
 
 func _on_player_target_changed(target_x: float, target_z: float, player_slot: int) -> void:
@@ -652,6 +655,9 @@ func _on_network_event_received(event: Dictionary) -> void:
 		var burst_data: Dictionary = event.get("data", {}) as Dictionary
 		if int(burst_data.get("slot", 0)) != _network_session.local_slot:
 			replay_network_projectile_burst(burst_data)
+		return
+	if event.get("type", "") == "egg_puddle_spawned":
+		_spawn_network_egg_puddle(event.get("data", {}) as Dictionary)
 		return
 	if event.get("type", "") == "player_stats":
 		_apply_network_player_stats(
@@ -753,6 +759,7 @@ func _broadcast_player_snapshot() -> void:
 			"slot": player_slot,
 			"x": context.cart.position.x,
 			"z": context.cart.position.z,
+			"input_sequence": context.last_input_sequence,
 			"current": context.state.current_durability,
 			"maximum": context.state.maximum_durability,
 			"shield": context.state.temporary_shield,
@@ -966,11 +973,20 @@ func _apply_network_snapshot(snapshot: Dictionary) -> void:
 			float(record.get("z", context.cart.position.z))
 		)
 		var is_local_player: bool = player_slot == _network_session.local_slot
-		context.cart.apply_network_position(
-			authoritative_position,
-			_network_session.is_client() and is_local_player,
-			_network_session.is_client() and not is_local_player
-		)
+		if _network_session.is_client() and is_local_player:
+			var acknowledged_sequence: int = int(record.get("input_sequence", 0))
+			if acknowledged_sequence >= _network_session.latest_input_sequence():
+				var compensated_position: Vector3 = context.cart.extrapolate_network_position(
+					authoritative_position,
+					_network_session.estimated_one_way_latency_seconds(1)
+				)
+				context.cart.apply_network_position(compensated_position, true, false)
+		else:
+			context.cart.apply_network_position(
+				authoritative_position,
+				false,
+				_network_session.is_client()
+			)
 		context.state.current_durability = float(
 			record.get("current", context.state.current_durability)
 		)
@@ -1338,7 +1354,8 @@ func _spawn_gate_from_network_payload(payload: Variant) -> Node:
 		bool(record.get("start_food_gate", false)),
 		float(record.get("baseline_appetite", 1.0)),
 		int(record.get("spawn_index", 0)),
-		options_by_slot
+		options_by_slot,
+		float(record.get("display_maximum_durability", 100.0))
 	)
 	_attach_network_synchronizer(
 		gate,
@@ -1379,7 +1396,8 @@ func _spawn_drop_from_network_payload(payload: Variant) -> Node:
 		Vector3(float(record.get("x", 0.0)), 0.0, float(record.get("z", 0.0))),
 		float(record.get("baseline_appetite", 1.0)),
 		int(record.get("occupied_regions", 2)),
-		int(record.get("spawn_index", 0))
+		int(record.get("spawn_index", 0)),
+		float(record.get("display_maximum_durability", 100.0))
 	)
 	_attach_network_synchronizer(
 		drop,
@@ -2516,6 +2534,51 @@ func _spawn_egg_puddle(projectile: FoodProjectile3D, target: Node3D) -> void:
 	puddle.owner_slot = projectile.owner_slot
 	apply_puddle_damage(target, puddle.satisfaction, puddle.food_id, projectile.owner_slot)
 	puddle.prime_target(target)
+	if _network_active and _network_session.is_host():
+		_network_session.send_game_event({
+			"type": "egg_puddle_spawned",
+			"data": {
+				"owner_slot": projectile.owner_slot,
+				"source_food_id": str(source_food.id),
+				"derived_attack_id": str(puddle_data.id),
+				"position": _vector_payload(puddle.position),
+				"satisfaction": puddle_damage,
+				"radius": puddle_radius,
+				"duration": puddle_duration,
+				"interval": puddle_interval,
+			},
+		})
+
+
+# 客户端只恢复蛋液表现；FoodPuddle3D 的客户端命中入口不会写入任何权威数值。
+func _spawn_network_egg_puddle(payload: Dictionary) -> void:
+	if not _network_active or not _network_session.is_client():
+		return
+	var source_food: FoodData = _food_data_for_id(
+		StringName(str(payload.get("source_food_id", "")))
+	)
+	var puddle_data: FoodData = egg_puddle_data
+	if (
+		source_food == null
+		or puddle_data == null
+		or StringName(str(payload.get("derived_attack_id", ""))) != puddle_data.id
+	):
+		return
+	var puddle: FoodPuddle3D = EGG_PUDDLE_SCENE.instantiate() as FoodPuddle3D
+	if puddle == null:
+		return
+	projectiles.add_child(puddle)
+	puddle.configure(
+		self,
+		_vector_from_payload(payload.get("position", {}), Vector3.ZERO),
+		source_food,
+		puddle_data,
+		float(payload.get("satisfaction", 0.0)),
+		maxf(0.001, float(payload.get("radius", 0.001))),
+		maxf(0.01, float(payload.get("duration", 0.01))),
+		maxf(0.01, float(payload.get("interval", 0.01)))
+	)
+	puddle.owner_slot = maxi(1, int(payload.get("owner_slot", 1)))
 
 
 func _apply_customer_satisfaction(
@@ -3350,6 +3413,7 @@ func _spawn_gate_now(_index: int, is_start_gate: bool, scheduled_baseline_appeti
 			"baseline_appetite": _current_baseline_appetite(),
 			"spawn_index": _spawn_counter,
 			"start_options_by_slot": _serialize_start_options(per_player_start_options),
+			"display_maximum_durability": state.maximum_durability,
 		}
 		if _network_active and _network_session.is_host() and gate_spawner != null:
 			var spawned_start_gate: UpgradeGate3D = gate_spawner.spawn(start_payload) as UpgradeGate3D
@@ -3367,7 +3431,8 @@ func _spawn_gate_now(_index: int, is_start_gate: bool, scheduled_baseline_appeti
 			true,
 			_current_baseline_appetite(),
 			_spawn_counter,
-			per_player_start_options
+			per_player_start_options,
+			state.maximum_durability
 		)
 		return
 	var baseline_appetite: float = scheduled_baseline_appetite
@@ -3385,6 +3450,7 @@ func _spawn_gate_now(_index: int, is_start_gate: bool, scheduled_baseline_appeti
 		"baseline_appetite": baseline_appetite,
 		"spawn_index": _spawn_counter,
 		"start_options_by_slot": {},
+		"display_maximum_durability": state.maximum_durability,
 	}
 	if _network_active and _network_session.is_host() and gate_spawner != null:
 		var spawned_gate: UpgradeGate3D = gate_spawner.spawn(normal_payload) as UpgradeGate3D
@@ -3395,7 +3461,16 @@ func _spawn_gate_now(_index: int, is_start_gate: bool, scheduled_baseline_appeti
 	if gate == null:
 		return
 	gates.add_child(gate)
-	gate.configure(self, options[0], options[1], false, baseline_appetite, _spawn_counter)
+	gate.configure(
+		self,
+		options[0],
+		options[1],
+		false,
+		baseline_appetite,
+		_spawn_counter,
+		{},
+		state.maximum_durability
+	)
 
 
 func _start_boss() -> void:
@@ -3577,6 +3652,7 @@ func _spawn_customer_reward_gate_now(
 		"baseline_appetite": baseline_appetite,
 		"occupied_regions": occupied_regions,
 		"spawn_index": _spawn_counter,
+		"display_maximum_durability": state.maximum_durability,
 	}
 	if _network_active and _network_session.is_host() and drop_spawner != null:
 		var spawned_drop: UpgradeDrop3D = drop_spawner.spawn(payload) as UpgradeDrop3D
@@ -3587,7 +3663,15 @@ func _spawn_customer_reward_gate_now(
 	if drop == null:
 		return
 	drops.add_child(drop)
-	drop.configure(self, upgrade, start_position, baseline_appetite, occupied_regions, _spawn_counter)
+	drop.configure(
+		self,
+		upgrade,
+		start_position,
+		baseline_appetite,
+		occupied_regions,
+		_spawn_counter,
+		state.maximum_durability
+	)
 
 
 func _process_reward_spawn_requests(delta: float) -> void:

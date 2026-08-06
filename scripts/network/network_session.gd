@@ -7,7 +7,13 @@ signal roster_changed(roster: Array[Dictionary])
 signal connection_state_changed(state: StringName, message: String)
 signal match_started(seed: int, player_count: int, roster: Array[Dictionary])
 signal match_returned_to_lobby
-signal remote_input_received(slot: int, target_x: float, target_z: float, sequence: int)
+signal remote_input_received(
+	slot: int,
+	target_x: float,
+	target_z: float,
+	sequence: int,
+	one_way_latency_seconds: float
+)
 signal pause_changed(paused: bool, owner_slot: int)
 signal network_event_received(event: Dictionary)
 signal choice_received(slot: int, choice_id: StringName)
@@ -15,7 +21,7 @@ signal choice_received(slot: int, choice_id: StringName)
 const GAME_PORT: int = 28960
 const DISCOVERY_PORT: int = 28961
 const MAX_PLAYERS: int = 4
-const PROTOCOL_VERSION: int = 1
+const PROTOCOL_VERSION: int = 2
 const DISCOVERY_INTERVAL_SECONDS: float = 1.0
 const DISCOVERY_EXPIRY_SECONDS: float = 3.0
 # 首次加载工作簿和移动端资源可能占用数秒，给 ENet 握手留出完整启动窗口。
@@ -62,6 +68,7 @@ var _discovery_port: int = DISCOVERY_PORT
 var _discovery_elapsed: float = 0.0
 var _input_sequence: int = 0
 var _pending_input: Vector2 = Vector2.ZERO
+var _pending_input_sequence: int = 0
 var _has_pending_input: bool = false
 var _input_send_elapsed: float = 0.0
 var _connection_wait_elapsed: float = 0.0
@@ -94,7 +101,7 @@ func _process(delta: float) -> void:
 	if _has_pending_input and _input_send_elapsed >= 1.0 / 30.0:
 		_input_send_elapsed = 0.0
 		_has_pending_input = false
-		send_input(_pending_input.x, _pending_input.y)
+		send_input(_pending_input.x, _pending_input.y, _pending_input_sequence)
 	if mode == Mode.CLIENT and room_state == RoomState.IDLE and multiplayer.multiplayer_peer != null:
 		_connection_wait_elapsed += maxf(0.0, delta)
 		if _connection_wait_elapsed >= CONNECTION_TIMEOUT_SECONDS:
@@ -245,6 +252,7 @@ func leave_room() -> void:
 	_connection_wait_elapsed = 0.0
 	_pending_rejected_peers.clear()
 	_unreliable_queue.clear()
+	_reset_input_state()
 	_start_discovery_socket(false)
 	roster_changed.emit(get_roster())
 	connection_state_changed.emit(&"offline", "已离开房间")
@@ -258,6 +266,7 @@ func start_match() -> bool:
 		return false
 	match_seed = _network_seed_override if _has_network_seed_override else randi()
 	room_state = RoomState.IN_GAME
+	_reset_input_state()
 	_match_started.rpc(match_seed, match_player_count, get_roster())
 	_broadcast_room()
 	return true
@@ -269,31 +278,65 @@ func return_to_lobby() -> void:
 	room_state = RoomState.LOBBY
 	match_seed = 0
 	match_player_count = _roster.size()
+	_unreliable_queue.clear()
+	_reset_input_state()
 	_match_returned_to_lobby.rpc()
 	_broadcast_roster.rpc(get_roster())
 	_broadcast_room()
 
 
-func send_input(target_x: float, target_z: float) -> void:
+func send_input(target_x: float, target_z: float, sequence: int = 0) -> void:
 	if not is_networked() or room_state != RoomState.IN_GAME:
 		return
-	_input_sequence += 1
+	if sequence <= 0:
+		_input_sequence += 1
+		sequence = _input_sequence
 	var payload: Dictionary = {
 		"slot": local_slot,
 		"x": target_x,
 		"z": target_z,
-		"sequence": _input_sequence,
+		"sequence": sequence,
 	}
 	if is_host():
-		remote_input_received.emit(local_slot, target_x, target_z, _input_sequence)
+		remote_input_received.emit(local_slot, target_x, target_z, sequence, 0.0)
 		_queue_unreliable(&"input_broadcast", payload)
 	else:
 		_queue_unreliable(&"input_to_host", payload)
 
 
 func queue_input(target_x: float, target_z: float) -> void:
+	_input_sequence += 1
 	_pending_input = Vector2(target_x, target_z)
+	_pending_input_sequence = _input_sequence
 	_has_pending_input = true
+
+
+func latest_input_sequence() -> int:
+	return _input_sequence
+
+
+func _reset_input_state() -> void:
+	_input_sequence = 0
+	_pending_input_sequence = 0
+	_pending_input = Vector2.ZERO
+	_has_pending_input = false
+	_input_send_elapsed = 0.0
+
+
+# ENet 统计值为毫秒；测试注入延迟位于 ENet 之外，因此取两者较大值。
+func estimated_one_way_latency_seconds(peer_id: int = 1) -> float:
+	var measured_seconds: float = 0.0
+	if not is_inside_tree():
+		return clampf(_simulation_delay_seconds, 0.0, 0.25)
+	var enet_peer: ENetMultiplayerPeer = multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if enet_peer != null:
+		var packet_peer: ENetPacketPeer = enet_peer.get_peer(peer_id)
+		if packet_peer != null and packet_peer.get_state() == ENetPacketPeer.STATE_CONNECTED:
+			measured_seconds = maxf(
+				0.0,
+				packet_peer.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME) / 2000.0
+			)
+	return clampf(maxf(measured_seconds, _simulation_delay_seconds), 0.0, 0.25)
 
 
 func request_pause() -> void:
@@ -411,13 +454,19 @@ func _submit_input(target_x: float, target_z: float, sequence: int) -> void:
 	var sender_slot: int = _slot_for_peer(sender_id)
 	if sender_slot <= 0:
 		return
-	remote_input_received.emit(sender_slot, clampf(target_x, -10.0, 10.0), clampf(target_z, -10.0, 20.0), sequence)
+	remote_input_received.emit(
+		sender_slot,
+		clampf(target_x, -10.0, 10.0),
+		clampf(target_z, -10.0, 20.0),
+		sequence,
+		estimated_one_way_latency_seconds(sender_id)
+	)
 	_broadcast_input.rpc(sender_slot, target_x, target_z, sequence)
 
 
 @rpc("authority", "call_local", "unreliable_ordered", 1)
 func _broadcast_input(slot: int, target_x: float, target_z: float, sequence: int) -> void:
-	remote_input_received.emit(slot, target_x, target_z, sequence)
+	remote_input_received.emit(slot, target_x, target_z, sequence, 0.0)
 
 
 @rpc("any_peer", "reliable")
@@ -466,6 +515,7 @@ func _broadcast_pause(paused: bool, owner_slot: int) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _match_started(seed: int, player_count: int, roster: Array[Dictionary]) -> void:
+	_reset_input_state()
 	match_seed = seed
 	match_player_count = player_count
 	room_state = RoomState.IN_GAME
@@ -477,6 +527,8 @@ func _match_started(seed: int, player_count: int, roster: Array[Dictionary]) -> 
 func _match_returned_to_lobby() -> void:
 	room_state = RoomState.LOBBY
 	match_seed = 0
+	_unreliable_queue.clear()
+	_reset_input_state()
 	_apply_roster(get_roster())
 	match_returned_to_lobby.emit()
 

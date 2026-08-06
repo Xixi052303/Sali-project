@@ -13,6 +13,8 @@ const MAXIMUM_FEEDBACK_DURATION: float = 1.2
 const DEFAULT_INVINCIBILITY_DURATION_SECONDS: float = 0.5
 const SHIELD_COLOR: Color = Color("#78d8ff")
 const NETWORK_INTERPOLATION_DELAY_SECONDS: float = 0.1
+const NETWORK_CORRECTION_IGNORE_DISTANCE: float = 0.04
+const NETWORK_CORRECTION_SNAP_DISTANCE: float = 1.25
 
 var state: RunState
 var playfield: Playfield
@@ -110,10 +112,7 @@ func _physics_process(delta: float) -> void:
 		_apply_network_interpolated_position()
 		if not input_enabled:
 			return
-	var speed: float = (
-		BASE_MOVE_SPEED * clampf(state.cart_base_speed_factor, 0.0, 1.0)
-		+ Playfield.design_to_world(state.effective_cart_speed_bonus(BASE_MOVE_SPEED_DESIGN))
-	)
+	var speed: float = movement_speed()
 	if _network_correction_active:
 		var correction_weight: float = clampf(delta / 0.1, 0.0, 1.0)
 		position.x = lerpf(position.x, _network_correction_target.x, correction_weight)
@@ -202,6 +201,42 @@ func apply_network_target(next_x: float, next_z: float) -> void:
 		target_z = clampf(next_z, boss_minimum_z(), _default_z)
 
 
+func movement_speed() -> float:
+	if state == null:
+		return BASE_MOVE_SPEED
+	return (
+		BASE_MOVE_SPEED * clampf(state.cart_base_speed_factor, 0.0, 1.0)
+		+ Playfield.design_to_world(state.effective_cart_speed_bonus(BASE_MOVE_SPEED_DESIGN))
+	)
+
+
+# 房主收到客机目标后只按半程延迟前推，仍受相同速度与场地边界约束。
+func compensate_network_latency(latency_seconds: float) -> void:
+	if playfield == null or latency_seconds <= 0.0:
+		return
+	position = extrapolate_network_position(position, latency_seconds)
+
+
+func extrapolate_network_position(
+	start_position: Vector3,
+	latency_seconds: float
+) -> Vector3:
+	if playfield == null or latency_seconds <= 0.0:
+		return start_position
+	var movement_target: Vector2 = Vector2(
+		target_x,
+		target_z if _boss_movement_active else start_position.z
+	)
+	var next_position: Vector2 = Vector2(start_position.x, start_position.z).move_toward(
+		movement_target,
+		movement_speed() * clampf(latency_seconds, 0.0, 0.25)
+	)
+	next_position.x = playfield.clamp_cart_x(next_position.x)
+	if _boss_movement_active:
+		next_position.y = clampf(next_position.y, boss_minimum_z(), _default_z)
+	return Vector3(next_position.x, start_position.y, next_position.y)
+
+
 func set_network_interpolation(enabled: bool) -> void:
 	_network_interpolation_enabled = enabled
 	_network_position_samples.clear()
@@ -231,6 +266,14 @@ func apply_network_position(
 		return
 	_network_interpolation_enabled = false
 	_network_position_samples.clear()
+	var correction_distance: float = position.distance_to(authoritative_position)
+	if correction_distance <= NETWORK_CORRECTION_IGNORE_DISTANCE:
+		_network_correction_active = false
+		return
+	if correction_distance >= NETWORK_CORRECTION_SNAP_DISTANCE:
+		position = authoritative_position
+		_network_correction_active = false
+		return
 	_network_correction_target = authoritative_position
 	_network_correction_active = true
 
